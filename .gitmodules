@@ -1,0 +1,9 @@
+[submodule "pico-keys-sdk"]
+	path = pico-keys-sdk
+	url = https://github.com/polhenarejos/pico-keys-sdk
+[submodule "pico-fido"]
+	path = pico-fido
+	url = https://github.com/polhenarejos/pico-fido
+[submodule "pico-openpgp"]
+	path = pico-openpgp
+	url = https://github.com/polhenarejos/pico-openpgp
