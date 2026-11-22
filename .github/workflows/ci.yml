@@ -1,0 +1,31 @@
+name: ci
+on:
+  push:
+  pull_request:
+
+jobs:
+  firmware:
+    runs-on: ubuntu-latest
+    container: espressif/idf:v5.5.6
+    strategy:
+      matrix:
+        profile: [dev, prod]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Patches apply cleanly
+        run: git config --global --add safe.directory '*' && python3 tools/apply_patches.py
+      - name: No presence bypass or CI pin override in prod config
+        run: |
+          if [ "${{ matrix.profile }}" = prod ]; then
+            ! grep -E "^CONFIG_MULTIKEY_ALLOW_UNSET_PINS_FOR_CI=y" sdkconfig.prod sdkconfig.defaults
+          fi
+      - name: Build (compile check, pins unset, image unusable)
+        run: . $IDF_PATH/export.sh && python3 tools/build.py ${{ matrix.profile }} --ci-pins
+      - name: Unset pins must fail a normal build
+        run: |
+          . $IDF_PATH/export.sh
+          if python3 tools/build.py ${{ matrix.profile }} --clean; then
+            echo "build must fail when MULTIKEY_BUTTON_GPIO/LED_GPIO are unset"; exit 1
+          fi

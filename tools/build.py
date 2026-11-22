@@ -34,6 +34,10 @@ def main() -> int:
         print("idf.py not found: activate ESP-IDF v5.5.x first (export.ps1 / export.sh)", file=sys.stderr)
         return 2
 
+    rc = subprocess.call([sys.executable, str(ROOT / "tools" / "apply_patches.py")])
+    if rc:
+        return rc
+
     build_dir = ROOT / f"build-{args.profile}"
     sdkconfig = ROOT / f"sdkconfig.{args.profile}.generated"
     if args.clean and build_dir.exists():
