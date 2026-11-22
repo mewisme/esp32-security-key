@@ -1,0 +1,13 @@
+[workspace]
+resolver = "2"
+members = ["multikey-proto", "multikey-host", "multikey-cli"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+repository = "https://github.com/mewisme/esp32-security-key"
+
+[workspace.dependencies]
+multikey-proto = { path = "multikey-proto" }
+multikey-host = { path = "multikey-host" }

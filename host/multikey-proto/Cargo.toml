@@ -1,0 +1,20 @@
+[package]
+name = "multikey-proto"
+description = "MKAUTH v1 wire protocol: APDU encoding, parsing, transcript and signature verification (no I/O)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+# Exposes a fixed, publicly known private key. TEST ONLY - never enable in shipping binaries.
+test-key = []
+
+[dependencies]
+p256 = { version = "0.13", default-features = false, features = ["ecdsa", "std"] }
+thiserror = "1"
+
+[dev-dependencies]
+multikey-proto = { path = ".", features = ["test-key"] }
+hex = "0.4"
+serde_json = "1"

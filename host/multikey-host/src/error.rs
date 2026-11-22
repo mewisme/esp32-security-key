@@ -1,0 +1,40 @@
+use multikey_proto::{ProtoError, VerifyError};
+use thiserror::Error;
+
+pub type Result<T> = std::result::Result<T, Error>;
+
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error("no matching smart-card reader / device found")]
+    NoDevice,
+    #[error("PC/SC service unavailable: {0}")]
+    NoService(String),
+    #[error("device was removed or reset during the operation")]
+    DeviceRemoved,
+    #[error("PC/SC error: {0}")]
+    Pcsc(String),
+    #[error("protocol error: {0}")]
+    Proto(#[from] ProtoError),
+    #[error("MKAUTH applet not present or unexpected SELECT response")]
+    BadSelect,
+    #[error("no button press within the device timeout (user presence)")]
+    NoUserPresence,
+    #[error("device is not enrolled")]
+    NotEnrolled,
+    #[error("device is already enrolled")]
+    AlreadyEnrolled,
+    #[error("wrong PIN, {0} tries remaining")]
+    PinRetries(u8),
+    #[error("PIN is blocked; a FIDO factory reset is required")]
+    PinBlocked,
+    #[error("device returned status word {0:#06x}")]
+    Status(u16),
+    #[error("device identity does not match the trusted entry")]
+    DeviceMismatch,
+    #[error("signature verification failed: {0}")]
+    Verify(#[from] VerifyError),
+    #[error("operation exceeded the {0:?} timeout")]
+    Timeout(std::time::Duration),
+    #[error("random number generation failed")]
+    Random,
+}

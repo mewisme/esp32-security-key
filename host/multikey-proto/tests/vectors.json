@@ -1,0 +1,14 @@
+{
+  "_comment": "TEST ONLY vectors. Private key = bytes 0x01..0x20; never use outside tests.",
+  "host_nonce_hex": "a0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebf",
+  "device_nonce_hex": "c0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedf",
+  "device_id_hex": "d0d1d2d3d4d5d6d7d8d9dadbdcdddedf",
+  "pin_ascii": "123456",
+  "select_apdu_hex": "00a4040008f04d4b4155544801",
+  "get_info_apdu_hex": "8001000000",
+  "enroll_apdu_hex": "800200000631323334353600",
+  "revoke_apdu_hex": "8004000006313233343536",
+  "challenge_apdu_hex": "8003000020a0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebf00",
+  "pubkey_hex": "04515c3d6eb9e396b904d3feca7f54fdcd0cc1e997bf375dca515ad0a6c3b4035f4536be3a50f318fbf9a5475902a221502bef0d57e08c53b2cc0a56f17d9f9354",
+  "signature_der_hex": "30460221009178c2204f5ac2a7b4ccd28482e49c9950753c095b63aa4f9525d22722197809022100badc5ecdcb4f3db762dafc9bb856e8ebf1cd9be66e492a4118f7b5df40ae5378"
+}
