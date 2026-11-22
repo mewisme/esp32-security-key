@@ -7,3 +7,7 @@ host/target/
 *.pyc
 __pycache__/
 .vscode/
+build-*.defaults
+sdkconfig.*.generated
+*.log
+sdkconfig.*.old

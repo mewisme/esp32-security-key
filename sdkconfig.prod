@@ -1,0 +1,6 @@
+# PRODUCTION profile (build only; flashing/fusing is an operator decision, see docs/PROVISIONING.md).
+# Secure Boot v2, flash encryption (Release) and JTAG disabling are added in Phase 7 together with
+# partitions.prod.csv. Nothing in this file ever burns eFuses by itself.
+CONFIG_LOG_DEFAULT_LEVEL_WARN=y
+CONFIG_COMPILER_OPTIMIZATION_SIZE=y
+# CONFIG_MULTIKEY_ALLOW_UNSET_PINS_FOR_CI is not set
