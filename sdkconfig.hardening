@@ -1,0 +1,26 @@
+# HARDENING overlay for production units. Applied ONLY by `tools/build.py prod --harden ...`.
+#
+# WARNING: an image built with these options, once flashed and booted on a blank ESP32-S3, makes the
+# bootloader burn eFuses (Secure Boot v2 key digest, flash encryption key, JTAG/download restrictions).
+# Those fuses are IRREVERSIBLE. There is no recovery for a mistake (lost signing key = a board that can
+# never be updated; wrong settings = a board that can never be re-flashed). Read docs/PROVISIONING.md and
+# rehearse on a sacrificial board first. This repository never flashes or fuses anything by itself.
+
+CONFIG_SECURE_BOOT=y
+CONFIG_SECURE_BOOT_V2_ENABLED=y
+CONFIG_SECURE_BOOT_V2_RSA_ENABLED=y
+CONFIG_SECURE_BOOT_BUILD_SIGNED_BINARIES=y
+# JTAG stays disabled (do not set CONFIG_SECURE_BOOT_ALLOW_JTAG).
+# Bootloader is flashed manually with the printed esptool command, not by `idf.py flash`.
+# CONFIG_SECURE_BOOT_FLASH_BOOTLOADER_DEFAULT is not set
+
+CONFIG_SECURE_FLASH_ENC_ENABLED=y
+CONFIG_SECURE_FLASH_ENCRYPTION_MODE_RELEASE=y
+# Keep a restricted ROM download mode (needs the flash-encryption key to be useful) for recovery of
+# a bricked app; fully disabling it removes the last in-field recovery path.
+CONFIG_SECURE_ENABLE_SECURE_ROM_DL_MODE=y
+
+# The Secure Boot v2 bootloader is larger than 32 KB: move the partition table (same layout as partitions.csv).
+CONFIG_PARTITION_TABLE_OFFSET=0x10000
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.hardened.csv"
+CONFIG_PARTITION_TABLE_FILENAME="partitions.hardened.csv"

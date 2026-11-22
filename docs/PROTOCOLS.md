@@ -35,3 +35,32 @@ All commands use `CLA=0x80`, `P1=P2=0x00`.
   `6700` wrong length · `6983` PIN blocked · `6985` wrong state · `6A86` bad P1/P2 · `6D00` unknown INS · `6E00` unknown CLA · `6F00` internal error.
 - Verification by the host: check `signature` against the **trusted** public key for the user (trust store), using the
   transcript built from the host's own nonce and the returned device nonce and the trusted `device_id`.
+
+## SSH and Git signing (procedure)
+
+Uses the FIDO2 interface of the **fido** image; no firmware code is specific to SSH. Status of everything in this
+section: **Not tested (needs hardware)**. Helper scripts: `tools/ssh_smoke.sh`, `tools/ssh_smoke.ps1`.
+
+- Requirements: OpenSSH client >= 8.3 for the scripts (security-key `ecdsa-sk` keys appeared in 8.2; `-O verify-required` is available from 8.4). `ed25519-sk` additionally needs the device to advertise EdDSA (COSE alg `-8`) in `authenticatorGetInfo`; check with `python tools/ctap_smoke.py` (it prints the algorithm list). If `-8` is not listed, use `ecdsa-sk`.
+- Create a resident key (stored on the device, recoverable on another machine): `ssh-keygen -t ecdsa-sk -O resident -O verify-required -O application=ssh:multikey-test -f ./id_ecdsa_sk` (touch the key when it blinks).
+- `-O verify-required` makes the server demand user verification, i.e. the device PIN, in addition to the button. A FIDO PIN must be set first; without a PIN the device cannot satisfy it.
+- Recover resident keys on a new machine: `ssh-keygen -K` (writes `id_*_rk` files into the current directory; run it in a scratch directory).
+- Windows: use Win32-OpenSSH 9.x. Windows may route security-key access through the WebAuthn API and require an elevated (administrator) shell; this requirement is **unverified**.
+- Git commit signing with the key (shown only; apply it yourself, nothing in this repo edits your git config):
+
+```
+git config --global gpg.format ssh
+git config --global user.signingkey /path/to/id_ecdsa_sk.pub
+git config --global commit.gpgsign true
+git config --global gpg.ssh.allowedSignersFile ~/.config/git/allowed_signers
+```
+
+- Manual signature check: `ssh-keygen -Y sign -f id_ecdsa_sk.pub -n git msg.txt` then `ssh-keygen -Y check-novalidate -n git -s msg.txt.sig < msg.txt`.
+
+| Item | Status |
+|---|---|
+| ssh-keygen ecdsa-sk (resident, verify-required) | Not tested (needs hardware) |
+| ssh-keygen ed25519-sk | Not tested (needs hardware; depends on GetInfo EdDSA) |
+| `ssh-keygen -K` resident download | Not tested (needs hardware) |
+| `ssh-keygen -Y sign` / `check-novalidate` | Not tested (needs hardware) |
+| Win32-OpenSSH path | Not tested (needs hardware; admin/WebAuthn requirement unverified) |

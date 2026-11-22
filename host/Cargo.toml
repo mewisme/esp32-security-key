@@ -1,6 +1,8 @@
 [workspace]
 resolver = "2"
-members = ["multikey-proto", "multikey-host", "multikey-cli"]
+members = ["multikey-proto", "multikey-host", "multikey-cli", "multikey-pam"]
+# multikey-pam links libpam on Linux only; keep it out of plain `cargo test`/`build`.
+default-members = ["multikey-proto", "multikey-host", "multikey-cli"]
 
 [workspace.package]
 version = "0.1.0"

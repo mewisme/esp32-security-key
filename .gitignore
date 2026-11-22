@@ -11,3 +11,6 @@ build-*.defaults
 sdkconfig.*.generated
 *.log
 sdkconfig.*.old
+*.pem
+*.key
+signing*.bin

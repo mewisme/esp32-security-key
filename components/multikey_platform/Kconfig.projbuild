@@ -73,3 +73,17 @@ menu "MultiKey board and USB identity"
             enable this in a flashable configuration; sdkconfig.prod must not set it.
 
 endmenu
+
+menu "MultiKey irreversible hardware operations"
+
+    config MULTIKEY_ALLOW_EFUSE_PROVISIONING
+        bool "Allow the firmware to burn a random master key (MKEK) into eFuse KEY3/KEY4 on first boot"
+        default n
+        help
+            IRREVERSIBLE. Upstream pico-keys-sdk burns two random 256-bit keys into eFuse key
+            blocks KEY3 and KEY4 at first boot and write-protects them. Keep this OFF for development
+            boards. When OFF, stored secrets are wrapped with a key derived from the chip serial only
+            (obfuscation, not protection) and the board relies on flash encryption instead
+            (docs/SECURITY.md). Enable only for a deliberately provisioned production unit.
+
+endmenu

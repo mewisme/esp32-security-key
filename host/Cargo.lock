@@ -394,6 +394,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "multikey-pam"
+version = "0.1.0"
+dependencies = [
+ "multikey-host",
+ "multikey-proto",
+]
+
+[[package]]
 name = "multikey-proto"
 version = "0.1.0"
 dependencies = [

@@ -1,25 +1,62 @@
 # Security model
 
-Status: initial. Updated as features land.
+Status: design and build-time controls exist; **no hardware has been tested and nothing here has had a security review**.
+Do not protect real accounts with development builds.
+
+## What the ESP32-S3 is and is not
+
+The ESP32-S3 is a general-purpose microcontroller, **not a secure element**:
+
+- Private keys are decrypted into internal RAM while in use and are exposed to anything that can read that RAM.
+- ECC and EdDSA run in software on the CPU (no ECC accelerator on the S3), so timing/power side channels were not
+  evaluated. No side-channel or fault-injection resistance is claimed.
+- External flash is outside the chip. Without flash encryption anyone with physical access can read it with a clip.
 
 ## Assets and boundaries
 
-Private keys (FIDO credentials, OpenPGP keys, MKAUTH key), PINs, device identity. The host is untrusted; the device
-enforces PIN retry counters and user presence.
+Assets: FIDO credentials and resident keys, OpenPGP/PIV keys, the MKAUTH P-256 key, PINs, device identity.
+The host is untrusted. The device enforces PIN retry counters and user presence (physical button).
 
-## Threats and current posture
+## Protection at rest: three levels
+
+| Level | How it is reached | What it protects against | Status |
+|---|---|---|---|
+| **Dev (default)** | `build dev`, `build prod` | Nothing meaningful. Stored secrets are wrapped with a key derived from the chip serial only (`derive_kbase` with no OTP key). Flash is readable and writable, JTAG and ROM download are open. | Build verified |
+| **Prod + MKEK in eFuse** | `CONFIG_MULTIKEY_ALLOW_EFUSE_PROVISIONING=y` | A random master key in eFuse KEY3/KEY4 (write-protected) is mixed into the wrapping key, so a dump of external flash alone no longer reveals secrets. Upstream burns it silently at first boot; we make it opt-in. Irreversible. | Build not verified for this option, not hardware verified |
+| **Hardened** | `build prod --harden` (`sdkconfig.hardening`): Secure Boot v2 (RSA-3072) + flash encryption (Release) + restricted ROM download + JTAG disabled | Modified firmware, flash dumping, JTAG readout. Release-mode flash encryption fuses cannot be undone. | Build verified (throwaway key). Fusing: Not performed; hardware flow not verified |
+
+Important consequence: **with the default configuration the "encryption" of keys on flash is obfuscation.** Upstream's
+README makes the same distinction for chips without OTP secrets.
+
+## Irreversible operations: policy
+
+- No script and no default image burns eFuses. `tools/provision_check.py` only reads.
+- Upstream pico-keys-sdk burns eFuses in two places: automatically at first boot (random MKEK into KEY3/KEY4) and from
+  the USB rescue interface (Secure Boot digest bound to the *upstream project's* key plus JTAG fuses). Patch
+  `patches/pico-keys-sdk/0002-multikey-no-automatic-efuse-writes.patch` disables the second path entirely and gates the
+  first behind the Kconfig option above. Without an MKEK the SDK falls back to its no-OTP derivation (an unprogrammed
+  eFuse block is never used as an all-zero key).
+- The hardened image burns fuses by design when booted on a blank chip: `tools/build.py` refuses to build it without
+  `--signing-key` and `--i-understand-irreversible`, and PROVISIONING.md spells out the consequences.
+
+## Threats and posture
 
 | Threat | Posture |
 |---|---|
-| Malicious host / phishing | FIDO origin binding (upstream). User presence needs a physical button press (no bypass in prod). |
-| Flash dump / physical extraction | **Dev builds: keys readable by anyone with physical access.** Prod profile adds flash encryption and Secure Boot v2 (Phase 7, operator-enabled). Keys are decrypted in RAM during use: the ESP32-S3 is not a secure element. |
-| Side channels / fault injection | Not evaluated. No claims. |
-| Firmware tampering | Secure Boot v2 in prod (not yet implemented). |
-| Supply chain | Upstream deps pinned by submodule SHA; mbedTLS/tinycbor are fetched by tag at configure time (see DEPENDENCIES). |
-| Weak RNG | Uses ESP-IDF hardware RNG via upstream; RF subsystem off means entropy quality needs checking (open item). |
+| Malicious host / phishing | FIDO origin binding (upstream). User presence needs a physical button press. |
+| MKAUTH replay / MITM | Fresh verifier nonce + device nonce + device_id in the signed transcript; the device keeps no replay state; a relay attack (malware forwards challenges to a real key) is not prevented, as with any presence-only token. |
+| Stolen device (powered off) | Dev: keys recoverable. Hardened: see table; PIN retry counters protect only against use through the USB interface, not against hardware attacks. |
+| PIN brute force over USB | FIDO/OpenPGP counters from upstream. MKAUTH: 8 tries, persisted, decremented before compare. A blocked MKAUTH applet is not recoverable except by wiping storage. |
+| Firmware tampering | Only with Secure Boot v2 (hardened). |
+| Supply chain | Submodules pinned by SHA; mbedTLS/tinycbor/libcvc are fetched by tag/branch at configure time (not hash-pinned). |
+| Weak RNG | The SDK RNG (hardware RNG based) is used everywhere; entropy quality with Wi-Fi/BT off was not assessed. |
+| Debug/UART output | Dev builds log at INFO; prod at WARN. UART logging is not disabled in prod. |
 
-## Rules
+## Rules enforced in the repository
 
-- No `user_presence=true` shortcuts in prod; CI will grep `sdkconfig.prod` for bypass options.
-- Dev attestation only; no FIDO certification or CTAP 2.1 claim.
-- Never auto-burn eFuses; irreversible steps are manual (PROVISIONING.md).
+- No `user_presence=true` shortcut: MKAUTH policy bit0 is hard-wired; CI asserts `sdkconfig.prod` and
+  `sdkconfig.defaults` do not set `CONFIG_MULTIKEY_ALLOW_UNSET_PINS_FOR_CI`.
+- Dev attestation only; no FIDO certification and no CTAP 2.1 claim.
+- OATH/OTP applets (YubiKey-compatible) are enabled in the fido image because upstream references them unconditionally.
+  They enlarge the attack surface; removing them needs an upstream-level change.
+- Admin-less OpenPGP mode (non-standard, Gnuk-compatible) is **off** (upstream turns it on for non-ESP builds).

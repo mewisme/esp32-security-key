@@ -1,0 +1,10 @@
+# Name,   Type, SubType, Offset,   Size, Flags
+# Hardened layout (sdkconfig.hardening): partition table moved to 0x10000 (CONFIG_PARTITION_TABLE_OFFSET),
+# key-storage partition flagged "encrypted" so flash encryption covers credentials and keys.
+# The pico-keys flash driver erases/programs whole 4 KB sectors via esp_partition_write and reads through
+# esp_partition_mmap, which is compatible with encrypted partitions on paper; UNVERIFIED on hardware.
+# No OTA slots yet: OTA / anti-rollback are not implemented (ROADMAP).
+nvs,      data, nvs,      0x11000,  0x6000
+phy_init, data, phy,      0x17000,  0x1000
+factory,  app,  factory,  0x20000,  0x1E0000
+part0,    0x40, 0x1,      0x200000, 1M, encrypted

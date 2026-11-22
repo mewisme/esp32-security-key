@@ -1,0 +1,18 @@
+[package]
+name = "multikey-pam"
+description = "Linux-PAM module (pam_multikey.so): MKAUTH v1 challenge-response over PC/SC"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "pam_multikey"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+multikey-proto.workspace = true
+multikey-host.workspace = true
+
+[dev-dependencies]
+multikey-proto = { path = "../multikey-proto", features = ["test-key"] }

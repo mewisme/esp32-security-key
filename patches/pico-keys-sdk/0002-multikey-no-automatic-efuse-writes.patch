@@ -1,0 +1,90 @@
+diff --git a/src/otp/otp_esp32.c b/src/otp/otp_esp32.c
+index e75ade7..4623759 100644
+--- a/src/otp/otp_esp32.c
++++ b/src/otp/otp_esp32.c
+@@ -218,6 +218,17 @@ bool otp_platform_is_secure_boot_locked(void) {
+ }
+ 
+ int otp_platform_enable_secure_boot(uint8_t bootkey, bool secure_lock) {
++    /* MultiKey: this path burns Secure Boot digests and JTAG fuses bound to the UPSTREAM project's
++     * boot key digest, triggered from the USB rescue interface. It is disabled: production hardening
++     * uses ESP-IDF's own Secure Boot v2 flow with the operator's key (docs/PROVISIONING.md). */
++    (void)bootkey;
++    (void)secure_lock;
++    printf("Secure boot provisioning through the rescue interface is disabled in MultiKey builds.\n");
++    return ESP_ERR_NOT_SUPPORTED;
++}
++
++/* Upstream implementation kept verbatim below to keep the patch small; intentionally unreferenced. */
++static __attribute__((unused)) int otp_platform_enable_secure_boot_upstream(uint8_t bootkey, bool secure_lock) {
+     if (bootkey > 2) {
+         return ESP_ERR_INVALID_ARG;
+     }
+@@ -283,11 +294,20 @@ int otp_platform_enable_secure_boot(uint8_t bootkey, bool secure_lock) {
+     return PICOKEYS_OK;
+ }
+ 
++/* MultiKey: upstream silently burns random MKEK keys into eFuse blocks KEY3/KEY4 on first boot.
++ * That is irreversible, so it only happens when the operator enables
++ * CONFIG_MULTIKEY_ALLOW_EFUSE_PROVISIONING (default off; see docs/PROVISIONING.md). */
++#ifdef CONFIG_MULTIKEY_ALLOW_EFUSE_PROVISIONING
++#define MULTIKEY_EFUSE_PROVISION 1
++#else
++#define MULTIKEY_EFUSE_PROVISION 0
++#endif
++
+ void otp_platform_init(const uint8_t **otp_key_1_out, const uint8_t **otp_key_2_out) {
+     esp_err_t ret = 0;
+     uint16_t write_otp[2] = {0xFFFF, 0xFFFF};
+ 
+-    if (esp_efuse_key_block_unused(OTP_KEY_1)) {
++    if (MULTIKEY_EFUSE_PROVISION && esp_efuse_key_block_unused(OTP_KEY_1)) {
+         uint8_t mkek[32] = {0};
+         random_fill_buffer(BYTE_ARRAY(mkek, sizeof(mkek)));
+         ret = esp_efuse_write_key(OTP_KEY_1, ESP_EFUSE_KEY_PURPOSE_USER, mkek, sizeof(mkek));
+@@ -297,13 +317,19 @@ void otp_platform_init(const uint8_t **otp_key_1_out, const uint8_t **otp_key_2_
+         mbedtls_platform_zeroize(mkek, sizeof(mkek));
+         write_otp[0] = OTP_KEY_1;
+     }
+-    ret = read_key_from_efuse(OTP_KEY_1, BYTE_ARRAY(_otp_key_1, sizeof(_otp_key_1)));
+-    if (ret != ESP_OK) {
+-        printf("Error reading OTP key 1 [%d]\n", ret);
++    if (esp_efuse_key_block_unused(OTP_KEY_1)) {
++        /* Never expose an all-zero "key" from an unprogrammed block: NULL selects the no-OTP derivation. */
++        *otp_key_1_out = NULL;
++    }
++    else {
++        ret = read_key_from_efuse(OTP_KEY_1, BYTE_ARRAY(_otp_key_1, sizeof(_otp_key_1)));
++        if (ret != ESP_OK) {
++            printf("Error reading OTP key 1 [%d]\n", ret);
++        }
++        *otp_key_1_out = _otp_key_1;
+     }
+-    *otp_key_1_out = _otp_key_1;
+ 
+-    if (esp_efuse_key_block_unused(OTP_KEY_2)) {
++    if (MULTIKEY_EFUSE_PROVISION && esp_efuse_key_block_unused(OTP_KEY_2)) {
+         mbedtls_ecdsa_context ecdsa;
+         size_t olen = 0;
+         uint8_t pkey[MBEDTLS_ECP_MAX_BYTES];
+@@ -321,11 +347,16 @@ void otp_platform_init(const uint8_t **otp_key_1_out, const uint8_t **otp_key_2_
+         mbedtls_platform_zeroize(pkey, sizeof(pkey));
+         write_otp[1] = OTP_KEY_2;
+     }
+-    ret = read_key_from_efuse(OTP_KEY_2, BYTE_ARRAY(_otp_key_2, sizeof(_otp_key_2)));
+-    if (ret != ESP_OK) {
+-        printf("Error reading OTP key 2 [%d]\n", ret);
++    if (esp_efuse_key_block_unused(OTP_KEY_2)) {
++        *otp_key_2_out = NULL;
++    }
++    else {
++        ret = read_key_from_efuse(OTP_KEY_2, BYTE_ARRAY(_otp_key_2, sizeof(_otp_key_2)));
++        if (ret != ESP_OK) {
++            printf("Error reading OTP key 2 [%d]\n", ret);
++        }
++        *otp_key_2_out = _otp_key_2;
+     }
+-    *otp_key_2_out = _otp_key_2;
+ 
+     for (size_t i = 0; i < sizeof(write_otp) / sizeof(write_otp[0]); i++) {
+         if (write_otp[i] != 0xFFFF) {

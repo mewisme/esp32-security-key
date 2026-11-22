@@ -21,6 +21,9 @@ jobs:
       - name: Prod config has no CI pin override
         run: |
           ! grep -E "^CONFIG_MULTIKEY_ALLOW_UNSET_PINS_FOR_CI=y" sdkconfig.prod sdkconfig.defaults
+      - name: No automatic eFuse provisioning in committed configs
+        run: |
+          ! grep -E "^CONFIG_MULTIKEY_ALLOW_EFUSE_PROVISIONING=y" sdkconfig.defaults sdkconfig.dev sdkconfig.prod
       - name: Build (compile check, pins unset, image unusable)
         run: . $IDF_PATH/export.sh && python3 tools/build.py ${{ matrix.profile }} --app ${{ matrix.app }} --ci-pins
       - name: Unset pins must fail a normal build
@@ -49,4 +52,11 @@ jobs:
       - run: cargo clippy --all-targets -- -D warnings
         working-directory: host
       - run: cargo test
+        working-directory: host
+      - name: PAM module builds and tests (Linux only)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get install -y libpam0g-dev
+          cargo build --release -p multikey-pam
+          cargo test -p multikey-pam
         working-directory: host

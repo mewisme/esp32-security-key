@@ -25,6 +25,11 @@ def main() -> int:
     ap.add_argument("--ci-pins", action="store_true",
                     help="allow unset GPIOs (compile check only; never flash the result)")
     ap.add_argument("--clean", action="store_true", help="remove the build directory first")
+    ap.add_argument("--harden", action="store_true",
+                    help="prod only: apply sdkconfig.hardening (Secure Boot v2 + flash encryption). BUILD ONLY.")
+    ap.add_argument("--signing-key", help="Secure Boot v2 RSA-3072 PEM key (with --harden)")
+    ap.add_argument("--i-understand-irreversible", action="store_true",
+                    help="acknowledge that a hardened image burns eFuses when booted on a blank chip")
     args = ap.parse_args()
 
     idf = shutil.which("idf.py")
@@ -36,13 +41,31 @@ def main() -> int:
     if rc:
         return rc
 
-    tag = f"{args.app}-{args.profile}"
+    if args.harden:
+        if args.profile != "prod":
+            print("--harden is only valid with the prod profile", file=sys.stderr)
+            return 2
+        if not args.i_understand_irreversible or not args.signing_key:
+            print("--harden needs --signing-key PATH and --i-understand-irreversible "
+                  "(read docs/PROVISIONING.md: the resulting image burns eFuses when booted on a blank chip)",
+                  file=sys.stderr)
+            return 2
+        if not Path(args.signing_key).is_file():
+            print(f"signing key not found: {args.signing_key}", file=sys.stderr)
+            return 2
+
+    tag = f"{args.app}-{args.profile}" + ("-hardened" if args.harden else "")
     build_dir = ROOT / f"build-{tag}"
     sdkconfig = ROOT / f"sdkconfig.{tag}.generated"
     if args.clean and build_dir.exists():
         shutil.rmtree(build_dir)
 
     defaults = ["sdkconfig.defaults", f"sdkconfig.{args.profile}"]
+    if args.harden:
+        defaults.append("sdkconfig.hardening")
+        key = ROOT / f"build-{tag}-signing.defaults"
+        key.write_text(f'CONFIG_SECURE_BOOT_SIGNING_KEY="{Path(args.signing_key).resolve().as_posix()}"\n')
+        defaults.append(key.name)
     if args.ci_pins:
         ci = ROOT / f"build-{tag}-ci-pins.defaults"
         ci.write_text("CONFIG_MULTIKEY_ALLOW_UNSET_PINS_FOR_CI=y\n")

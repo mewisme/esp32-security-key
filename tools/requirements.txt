@@ -1,0 +1,5 @@
+# Host-side test/inspection tools. Install into a venv: python -m venv .venv && .venv/bin/pip install -r tools/requirements.txt
+# Checked against fido2 2.2.1 and esptool 5.6.0 (the latter provides the read-only `espefuse` used by provision_check.py).
+fido2>=2.0,<3
+esptool>=4.7
+cryptography>=42
