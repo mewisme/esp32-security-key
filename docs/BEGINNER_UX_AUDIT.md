@@ -32,8 +32,7 @@ as it was before the change (commit `b60c31a`); others point at the current tree
 - Hardware coverage of the web installer is one update on one board. First install, switch, replace and repurpose modes
   were not run on hardware. esptool-js's `hard_reset` left the board in download mode (as it did for the developer script,
   which uses `watchdog_reset`); the installer now tells the user to replug, which worked in that run.
-- Production site: https://multikeys.mewis.me is not attached yet; the installer runs at
-  https://multikeys-web-staging.mewisme.workers.dev (staging).
+- Production site: https://multikeys.mewis.me.
 - The published v0.2.0 firmware zip has not itself been flashed; the hardware run used an equivalent local 0.2.0-dev build.
 - No usability test with an actual beginner.
 - Only desktop Chromium browsers can install (Web Serial); Firefox/Safari/mobile users get an explanation, not an install.
