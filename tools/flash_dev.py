@@ -27,21 +27,24 @@ ROOT = Path(__file__).resolve().parent.parent
 
 EXIT_OK, EXIT_FAIL, EXIT_PREREQ, EXIT_DEVICE, EXIT_DECLINED, EXIT_STORAGE, EXIT_VERIFY = 0, 1, 2, 3, 4, 5, 6
 
-# The only offsets this tool may write: (offset, role).
-ALLOWED_WRITES = {0x0: "bootloader", 0x8000: "partition-table", 0x20000: "app"}
-PROTECTED = ("nvs", "phy_init", "part0")  # partitions whose range no image may touch
-PARTITION_TABLE_LEN = 0xC00
+# Shared with tools/package_firmware.py and the web installer (web/src/lib/firmware/policy.ts).
+POLICY = json.loads((Path(__file__).resolve().parent / "flash_policy.json").read_text(encoding="utf-8"))
 
-NATIVE_DOWNLOAD = (0x303A, 0x1001)
-NATIVE_APP = (0x303A, 0x4002)
-UART_BRIDGES = {
-    (0x10C4, 0xEA60): "Silicon Labs CP210x",
-    (0x1A86, 0x7523): "WCH CH340",
-    (0x1A86, 0x55D4): "WCH CH9102",
-    (0x0403, 0x6001): "FTDI FT232R",
-    (0x0403, 0x6010): "FTDI FT2232",
-    (0x0403, 0x6014): "FTDI FT232H",
-}
+# The only offsets this tool may write: (offset, role).
+ALLOWED_WRITES = {w["offset"]: w["role"] for w in POLICY["allowed_writes"]}
+MAX_IMAGE_SIZE = {w["offset"]: w["max_size"] for w in POLICY["allowed_writes"] if "max_size" in w}
+APP_OFFSET = next(w["offset"] for w in POLICY["allowed_writes"] if w["role"] == "app")
+PROTECTED = tuple(POLICY["protected_partitions"])  # partitions whose range no image may touch
+PARTITION_TABLE_OFFSET = POLICY["partition_table"]["offset"]
+PARTITION_TABLE_LEN = POLICY["partition_table"]["read_length"]
+CREDENTIAL_PARTITION = POLICY["credential_partition"]
+
+NATIVE_DOWNLOAD = tuple(POLICY["native_usb"]["download"])
+NATIVE_APP = tuple(POLICY["native_usb"]["app"])
+UART_BRIDGES = {(vid, pid): name for vid, pid, name in POLICY["uart_bridges"]}
+
+APP_DESC_MAGIC = 0xABCD5432
+APP_DESC_IMAGE_OFFSET = 0x20  # esp_app_desc_t follows the 24-byte image header and the 8-byte segment header
 
 # Argument tokens that must never appear in any command this tool runs.
 FORBIDDEN_TOKENS = ("erase_flash", "erase-flash", "erase_region", "erase-region", "--erase-all", "-e",
@@ -126,13 +129,26 @@ def check_images(images: list, sizes: dict, parts: dict) -> list:
                                 f"[{p['offset']:#x},{p['offset'] + p['size']:#x})")
     by_off = dict(images)
     fac = parts.get("factory")
-    if fac and 0x20000 in by_off and sizes.get(by_off[0x20000], 0) > fac["size"]:
+    if fac and APP_OFFSET in by_off and sizes.get(by_off[APP_OFFSET], 0) > fac["size"]:
         problems.append("app image is larger than the factory partition")
-    if 0x0 in by_off and sizes.get(by_off[0x0], 0) > 0x8000:
-        problems.append("bootloader image is larger than 0x8000 bytes")
-    if 0x8000 in by_off and sizes.get(by_off[0x8000], 0) > 0x1000:
-        problems.append("partition table image is larger than 0x1000 bytes")
+    for off, limit in MAX_IMAGE_SIZE.items():
+        if off in by_off and sizes.get(by_off[off], 0) > limit:
+            problems.append(f"{ALLOWED_WRITES[off].replace('-', ' ')} image is larger than {limit:#x} bytes")
     return problems
+
+
+def parse_app_descriptor(blob: bytes) -> dict | None:
+    """esp_app_desc_t fields from the first >= 256 bytes of an app image (or flash read at the app offset).
+    Returns None when the descriptor magic is absent."""
+    d = blob[APP_DESC_IMAGE_OFFSET:APP_DESC_IMAGE_OFFSET + 0xE0]
+    if len(d) < 128 or int.from_bytes(d[0:4], "little") != APP_DESC_MAGIC:
+        return None
+
+    def cstr(start: int, length: int) -> str:
+        return d[start:start + length].split(b"\x00", 1)[0].decode("ascii", "replace")
+
+    return {"version": cstr(16, 32), "project_name": cstr(48, 32), "time": cstr(80, 16),
+            "date": cstr(96, 16), "idf_ver": cstr(112, 32)}
 
 
 def parse_device_table(blob: bytes, parts: dict) -> tuple[str, str]:
@@ -171,8 +187,8 @@ def parse_device_table(blob: bytes, parts: dict) -> tuple[str, str]:
         if got["offset"] != want["offset"] or got["size"] != want["size"]:
             return "mismatch", (f"{name} on the device is [{got['offset']:#x}, size {got['size']:#x}] but this build "
                                 f"expects [{want['offset']:#x}, size {want['size']:#x}]")
-    p0 = entries["part0"]
-    if p0["type"] != 0x40 or p0["subtype"] != 0x01:
+    p0 = entries[CREDENTIAL_PARTITION["name"]]
+    if p0["type"] != CREDENTIAL_PARTITION["type"] or p0["subtype"] != CREDENTIAL_PARTITION["subtype"]:
         return "mismatch", "part0 on the device has an unexpected type/subtype"
     return "match", "device partition table matches this build"
 
@@ -407,7 +423,7 @@ def run_flash(args: argparse.Namespace) -> int:
     opts, images = parse_flash_args((build_dir / "flash_args").read_text())
     sizes = {p: (build_dir / p).stat().st_size for _, p in images if (build_dir / p).is_file()}
     stop_on(check_images(images, sizes, parts), EXIT_STORAGE, "image layout")
-    app_image = next(p for o, p in images if o == 0x20000)
+    app_image = next(p for o, p in images if o == APP_OFFSET)
     sha = hashlib.sha256((build_dir / app_image).read_bytes()).hexdigest()
     if app == "openpgp":
         print("  The OpenPGP image uses the same part0 file system with different applets. Credentials, PINs and keys\n"
@@ -423,7 +439,8 @@ def run_flash(args: argparse.Namespace) -> int:
     print(f"  chip ESP32-S3, 16MB flash, MAC {mac}")
     tmp = ROOT / "build-flash-dev-ptable.bin"
     try:
-        r = run(esptool_readonly(py, port, "read_flash", "0x8000", hex(PARTITION_TABLE_LEN), str(tmp)), cwd=ROOT,
+        r = run(esptool_readonly(py, port, "read_flash", hex(PARTITION_TABLE_OFFSET), hex(PARTITION_TABLE_LEN), str(tmp)),
+                cwd=ROOT,
                 capture_output=True, text=True)
         if r.returncode != 0 or not tmp.is_file():
             raise Stop(EXIT_STORAGE, "could not read the device partition table; credential preservation cannot be "

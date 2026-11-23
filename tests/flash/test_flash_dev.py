@@ -233,5 +233,37 @@ class UsbIdentity(unittest.TestCase):
             self.assertTrue(fd.judge_usb_identity(r, None)[0], drop)
 
 
+def app_image(version=b"0.2.0", project=b"multikey-fido", magic=0xABCD5432):
+    desc = magic.to_bytes(4, "little") + b"\0" * 12 + version.ljust(32, b"\0") + project.ljust(32, b"\0") + \
+        b"12:00:00".ljust(16, b"\0") + b"Nov 23 2026".ljust(16, b"\0") + b"v5.5.6".ljust(32, b"\0")
+    return (b"\xe9" + b"\0" * 31 + desc).ljust(256, b"\0")
+
+
+class AppDescriptor(unittest.TestCase):
+    def test_valid(self):
+        d = fd.parse_app_descriptor(app_image())
+        self.assertEqual(d, {"version": "0.2.0", "project_name": "multikey-fido", "time": "12:00:00",
+                             "date": "Nov 23 2026", "idf_ver": "v5.5.6"})
+
+    def test_wrong_magic(self):
+        self.assertIsNone(fd.parse_app_descriptor(app_image(magic=0x12345678)))
+        self.assertIsNone(fd.parse_app_descriptor(b"\xff" * 256))
+        self.assertIsNone(fd.parse_app_descriptor(b""))
+
+    def test_nul_terminated(self):
+        d = fd.parse_app_descriptor(app_image(version=b"0.1.0-dev\0junk"))
+        self.assertEqual(d["version"], "0.1.0-dev")
+
+
+class Policy(unittest.TestCase):
+    def test_policy_matches_partitions_csv(self):
+        self.assertEqual(fd.ALLOWED_WRITES, {0x0: "bootloader", 0x8000: "partition-table", 0x20000: "app"})
+        self.assertEqual(PARTS["factory"]["offset"], fd.APP_OFFSET)
+        self.assertEqual(fd.POLICY["app_descriptor"]["offset"], fd.APP_OFFSET + fd.APP_DESC_IMAGE_OFFSET)
+        for name in fd.POLICY["repurpose_fill"]:
+            self.assertIn(name, fd.PROTECTED)
+            self.assertIn(name, PARTS)
+
+
 if __name__ == "__main__":
     unittest.main()

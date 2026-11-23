@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "chip": "ESP32-S3",
+  "flash_size": "16MB",
+  "allowed_writes": [
+    {"offset": 0, "role": "bootloader", "max_size": 32768},
+    {"offset": 32768, "role": "partition-table", "max_size": 4096},
+    {"offset": 131072, "role": "app", "partition": "factory"}
+  ],
+  "partition_table": {"offset": 32768, "read_length": 3072},
+  "app_descriptor": {"offset": 131104, "read_length": 256},
+  "protected_partitions": ["nvs", "phy_init", "part0"],
+  "repurpose_fill": ["nvs", "part0"],
+  "credential_partition": {"name": "part0", "type": 64, "subtype": 1},
+  "native_usb": {"download": [12346, 4097], "app": [12346, 16386]},
+  "uart_bridges": [
+    [4292, 60000, "Silicon Labs CP210x"],
+    [6790, 29987, "WCH CH340"],
+    [6790, 21972, "WCH CH9102"],
+    [1027, 24577, "FTDI FT232R"],
+    [1027, 24592, "FTDI FT2232"],
+    [1027, 24596, "FTDI FT232H"]
+  ]
+}
