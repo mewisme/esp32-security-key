@@ -26,7 +26,7 @@ function fake(o: Opts) {
   const queue = [...o.responses];
   const conn: KeyConnection = {
     async identity() {
-      return { productName: o.product ?? null, manufacturerName: null, serialNumber: "s", landingUrl: null };
+      return { productName: o.product ?? null, manufacturerName: null, serialNumber: "s" };
     },
     async transmit(apdu) {
       sent.push(apdu);

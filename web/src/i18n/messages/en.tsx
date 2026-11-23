@@ -546,8 +546,6 @@ export const en = {
           `“Check my key” asks the browser to show the key; pick the entry named after your key (by default “${name}”).${appliesName ? " It then applies the name you chose; you will be asked to press BOOT on the key." : ""}`,
         skip: "Skip this check",
         detectedTitle: (name: string) => `Key detected: ${name}`,
-        landing: (url: string | null) =>
-          `Landing page: ${url ?? "not checked (the browser couldn't read it; that is common on Windows and harmless)"}`,
         unverifiedTitle: "Flash verified; running key not checked",
         unverifiedText: "Firmware written and verified; key not yet detected.",
       },
@@ -580,7 +578,7 @@ export const en = {
       macos: (os: ReactNode) => <>{os} in Chrome or Edge, open Settings → Privacy and security → Security → Manage security keys.</>,
       linux: (os: ReactNode) => <>{os} in Chrome or Edge, open Settings → Privacy and security → Security → Manage security keys.</>,
     },
-    check: { title: "Check your key", text: "Reads the key's USB name and landing page. Nothing is changed." },
+    check: { title: "Check your key", text: "The Your key page shows which firmware the key runs and what it reports. It only reads: nothing is changed.", cta: "Open Your key" },
     rename: {
       title: "Rename your key",
       text: "Choose the name your computer shows for the key. You will press BOOT on the key to confirm.",
@@ -767,12 +765,6 @@ export const en = {
       sendPin: "Send PIN",
       status: (code: string) => `(status ${code})`,
       cli: "Or rename it from the command line with the host tools:",
-    },
-    keyCheck: {
-      unsupported: "This browser can't check USB devices; use Chrome or Edge.",
-      notFound: "No key was selected or found. Plug it in without holding BOOT and try again.",
-      found: (name: string) => `Found: ${name}`,
-      landing: (url: string | null) => `Landing page: ${url ?? "not checked"}`,
     },
     renameKey: { apply: "Apply name", reset: "Reset to default" },
   },

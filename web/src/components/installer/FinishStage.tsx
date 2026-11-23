@@ -123,7 +123,6 @@ export function FinishStage({ inst, headingRef }: { inst: Installer; headingRef:
         {detected && state.device && (
           <div className={cn("flex flex-col gap-1", resolved)}>
             <p className="font-medium">{t.install.finish.key.detectedTitle(shownName)}</p>
-            <p className="text-sm text-muted-foreground">{t.install.finish.key.landing(state.device.landingUrl ?? null)}</p>
           </div>
         )}
         {done && !detected && openpgp && (

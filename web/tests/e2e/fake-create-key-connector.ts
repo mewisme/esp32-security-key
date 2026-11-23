@@ -153,7 +153,7 @@ async function handle(apdu: Uint8Array): Promise<Uint8Array> {
 class FakeKeyConnection implements KeyConnection {
   async identity() {
     if (readScenario().checker === "throw") throw Object.assign(new Error("No device selected."), { name: "NotFoundError" });
-    return { productName: keyState().enumerated, manufacturerName: "MultiKeys", serialNumber: SERIAL, landingUrl: "https://multikeys.mewis.me" };
+    return { productName: keyState().enumerated, manufacturerName: "MultiKeys", serialNumber: SERIAL };
   }
 
   transmit(apdu: Uint8Array) {

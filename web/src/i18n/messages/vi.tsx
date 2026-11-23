@@ -533,8 +533,6 @@ export const vi: Messages = {
           `“Kiểm tra khóa của tôi” yêu cầu trình duyệt hiển thị khóa; hãy chọn mục mang tên khóa của bạn (mặc định là “${name}”).${appliesName ? " Sau đó nó áp dụng tên bạn đã chọn; bạn sẽ được yêu cầu nhấn BOOT trên khóa." : ""}`,
         skip: "Bỏ qua bước kiểm tra này",
         detectedTitle: (name: string) => `Đã phát hiện khóa: ${name}`,
-        landing: (url: string | null) =>
-          `Trang đích (landing page): ${url ?? "chưa kiểm tra (trình duyệt không đọc được; điều này phổ biến trên Windows và vô hại)"}`,
         unverifiedTitle: "Flash đã xác minh; chưa kiểm tra khóa đang chạy",
         unverifiedText: "Firmware đã được ghi và xác minh; chưa phát hiện khóa.",
       },
@@ -566,7 +564,7 @@ export const vi: Messages = {
       macos: (os: ReactNode) => <>{os} trong Chrome hoặc Edge, mở Cài đặt → Quyền riêng tư và bảo mật → Bảo mật → Quản lý khóa bảo mật.</>,
       linux: (os: ReactNode) => <>{os} trong Chrome hoặc Edge, mở Cài đặt → Quyền riêng tư và bảo mật → Bảo mật → Quản lý khóa bảo mật.</>,
     },
-    check: { title: "Kiểm tra khóa của bạn", text: "Đọc tên USB và trang đích (landing page) của khóa. Không có gì bị thay đổi." },
+    check: { title: "Kiểm tra khóa của bạn", text: "Trang Khóa của bạn cho biết khóa đang chạy firmware nào và khóa báo cáo gì. Trang chỉ đọc: không có gì bị thay đổi.", cta: "Mở Khóa của bạn" },
     rename: {
       title: "Đổi tên khóa của bạn",
       text: "Chọn tên mà máy tính hiển thị cho khóa. Bạn sẽ nhấn BOOT trên khóa để xác nhận.",
@@ -751,12 +749,6 @@ export const vi: Messages = {
       sendPin: "Gửi PIN",
       status: (code: string) => `(trạng thái ${code})`,
       cli: "Hoặc đổi tên bằng dòng lệnh với công cụ trên máy:",
-    },
-    keyCheck: {
-      unsupported: "Trình duyệt này không thể kiểm tra thiết bị USB; hãy dùng Chrome hoặc Edge.",
-      notFound: "Không có khóa nào được chọn hoặc tìm thấy. Hãy cắm khóa mà không giữ BOOT rồi thử lại.",
-      found: (name: string) => `Đã tìm thấy: ${name}`,
-      landing: (url: string | null) => `Trang đích (landing page): ${url ?? "chưa kiểm tra"}`,
     },
     renameKey: { apply: "Áp dụng tên", reset: "Đặt lại về mặc định" },
   },

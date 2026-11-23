@@ -1,8 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { decodeUrlDescriptor, WebUsbKeyConnector } from "@/lib/device/key-connector";
+import { WebUsbKeyConnector } from "@/lib/device/key-connector";
 import { NoAnswerError } from "@/lib/device/webccid";
-
-const enc = (s: string) => new TextEncoder().encode(s);
 
 function dev(serial: string, extra: Record<string, unknown> = {}) {
   return { serialNumber: serial, productName: "K", manufacturerName: "M", opened: false, close: vi.fn(async () => {}), open: vi.fn(async () => {}), ...extra };
@@ -25,18 +23,6 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("decodeUrlDescriptor", () => {
-  it("decodes https and http", () => {
-    expect(decodeUrlDescriptor(Uint8Array.from([3 + 5, 3, 1, ...enc("a.com")]))).toBe("https://a.com");
-    expect(decodeUrlDescriptor(Uint8Array.from([3 + 5, 3, 0, ...enc("a.com")]))).toBe("http://a.com");
-  });
-  it("rejects malformed", () => {
-    expect(decodeUrlDescriptor(Uint8Array.from([3, 2, 1]))).toBeNull();
-    expect(decodeUrlDescriptor(Uint8Array.from([9, 3, 1]))).toBeNull();
-    expect(decodeUrlDescriptor(new Uint8Array(2))).toBeNull();
-  });
-});
-
 describe("WebUsbKeyConnector", () => {
   it("supported() reflects navigator.usb", () => {
     vi.stubGlobal("navigator", {});
@@ -45,15 +31,13 @@ describe("WebUsbKeyConnector", () => {
     expect(new WebUsbKeyConnector().supported()).toBe(true);
   });
 
-  it("identity() reads strings and the landing URL without closing a device it did not open", async () => {
-    const d = dev("a", {
-      opened: true,
-      controlTransferIn: vi.fn(async () => ({ status: "ok", data: new DataView(Uint8Array.from([3 + 5, 3, 1, ...enc("a.com")]).buffer) })),
-    });
+  it("identity() returns the USB strings the browser has without opening the device", async () => {
+    const d = dev("a", { controlTransferIn: vi.fn() });
     fakeUsb(d);
     const c = await new WebUsbKeyConnector().connect(1, 2);
-    expect(await c.identity()).toMatchObject({ productName: "K", serialNumber: "a", landingUrl: "https://a.com" });
-    expect(d.close).not.toHaveBeenCalled();
+    expect(await c.identity()).toEqual({ productName: "K", manufacturerName: "M", serialNumber: "a" });
+    expect(d.open).not.toHaveBeenCalled();
+    expect(d.controlTransferIn).not.toHaveBeenCalled();
   });
 
   it("waitForReenumeration resolves on a connect event with the same serial and swaps the device", async () => {

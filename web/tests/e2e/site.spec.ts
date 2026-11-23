@@ -99,12 +99,12 @@ test("the releases page shows a legacy v0.2.0 release as a single 16 MB build", 
 });
 
 test.describe("First use", () => {
-  test("checks the key without changing anything", async ({ page }) => {
+  test("step 4 sends you to the Your key page", async ({ page }) => {
     await setup(page, {});
     await page.goto("/first-use");
-    await page.getByRole("button", { name: "Check my key" }).click();
-    await expect(page.getByText("Found: MultiKeys Security Key")).toBeVisible();
-    expect(await keyWrites(page)).toEqual([]);
+    await expect(page.getByText("Landing page")).toHaveCount(0);
+    await page.getByRole("link", { name: "Open Your key" }).click();
+    await expect(page).toHaveURL(/\/key$/);
   });
 
   test("renames the key and resets it to the default name", async ({ page }) => {

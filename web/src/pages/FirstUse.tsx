@@ -1,6 +1,5 @@
 import { Link } from "react-router";
 import { ExperimentalNotice } from "@/components/common/ExperimentalNotice";
-import { KeyCheck } from "@/components/first-use/KeyCheck";
 import { RenameKey } from "@/components/first-use/RenameKey";
 import { Page } from "@/components/layout/Page";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
@@ -63,7 +62,9 @@ export function FirstUsePage() {
         </ul>
       </Step>
       <Step n={4} title={f.check.title} description={f.check.text}>
-        <KeyCheck />
+        <Button asChild>
+          <Link to="/key">{f.check.cta}</Link>
+        </Button>
       </Step>
       <Step n={5} title={f.rename.title} description={f.rename.text}>
         <RenameKey />

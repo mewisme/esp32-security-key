@@ -72,8 +72,8 @@ fallback; `public/_headers` sets CSP (`connect-src 'self'`), `Permissions-Policy
   offers an RTS `hard_reset` after writing, which left the native-USB board in download mode (as with the developer script, which
   uses `--after watchdog_reset`); the finish stage therefore tells the user to replug. No watchdog-reset workaround is
   implemented without a further hardware test.
-- The WebUSB identity read may not be able to open the device on Windows (HID/CCID drivers hold the interfaces); it then
-  reports the landing page as "not checked". `python tools/check_usb_descriptors.py --live` is the check of record. Renaming uses
+- The WebUSB identity read only reports the USB strings the browser already has; it never opens the device or reads the landing
+  page. `python tools/check_usb_descriptors.py --live` is the check of record. Renaming uses
   the vendor-class interface instead; if the browser cannot claim it the page says so and shows the `multikey device rename`
   command (`name-transport-unavailable`). Linux/macOS are unverified (Linux may need a udev rule for 303A:4002).
 

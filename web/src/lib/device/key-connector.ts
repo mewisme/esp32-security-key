@@ -1,4 +1,4 @@
-// A running key over WebUSB: identity (USB strings + WebUSB landing page, read-only) and the MKAUTH management channel
+// A running key over WebUSB: identity (USB strings, read-only) and the MKAUTH management channel
 // (WebCCID). Re-enumeration after a rename is awaited through navigator.usb connect/disconnect events.
 import { FirmwareError } from "../errors/firmware-error";
 import type { DeviceCheck } from "../flashing/machine";
@@ -25,13 +25,6 @@ export interface KeyConnector {
   connect(vid: number, pid: number): Promise<KeyConnection>;
 }
 
-/** WebUSB URL descriptor (bLength, bDescriptorType=3, bScheme, URL) -> URL; scheme 1 = https. */
-export function decodeUrlDescriptor(bytes: Uint8Array): string | null {
-  if (bytes.length < 3 || bytes[1] !== 3 || bytes[0]! > bytes.length) return null;
-  const prefix = bytes[2] === 1 ? "https://" : bytes[2] === 0 ? "http://" : "";
-  return prefix + new TextDecoder().decode(bytes.subarray(3, bytes[0]));
-}
-
 class WebUsbKeyConnection implements KeyConnection {
   private ccid: WebCcid | null = null;
 
@@ -39,23 +32,7 @@ class WebUsbKeyConnection implements KeyConnection {
 
   async identity(): Promise<DeviceCheck> {
     const dev = this.device;
-    const result: DeviceCheck = {
-      productName: dev.productName ?? null,
-      manufacturerName: dev.manufacturerName ?? null,
-      serialNumber: dev.serialNumber ?? null,
-      landingUrl: null,
-    };
-    const wasOpen = dev.opened;
-    try {
-      if (!wasOpen) await dev.open();
-      const r = await dev.controlTransferIn({ requestType: "vendor", recipient: "device", request: 1, value: 1, index: 2 }, 255);
-      if (r.status === "ok" && r.data) result.landingUrl = decodeUrlDescriptor(new Uint8Array(r.data.buffer, r.data.byteOffset, r.data.byteLength));
-    } catch {
-      // Other interfaces are held by the HID/CCID drivers on many systems; the landing URL then stays "not checked".
-    } finally {
-      if (!wasOpen) await dev.close().catch(() => {});
-    }
-    return result;
+    return { productName: dev.productName ?? null, manufacturerName: dev.manufacturerName ?? null, serialNumber: dev.serialNumber ?? null };
   }
 
   async transmit(apdu: Uint8Array, timeoutMs: number): Promise<Uint8Array> {

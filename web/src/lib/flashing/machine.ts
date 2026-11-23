@@ -43,7 +43,6 @@ export interface DeviceCheck {
   productName: string | null;
   manufacturerName: string | null;
   serialNumber: string | null;
-  landingUrl: string | null;
 }
 
 export interface FlashError {

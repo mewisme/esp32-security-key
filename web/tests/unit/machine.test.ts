@@ -39,7 +39,7 @@ describe("flashReducer", () => {
       { type: "WRITTEN" },
       { type: "FLASH_VERIFIED" },
       { type: "REBOOTED" },
-      { type: "DEVICE_DETECTED", info: { productName: "MultiKeys Security Key", manufacturerName: null, serialNumber: null, landingUrl: null } },
+      { type: "DEVICE_DETECTED", info: { productName: "MultiKeys Security Key", manufacturerName: null, serialNumber: null } },
     ]);
     expect(s.phase).toBe("completed");
     expect(s.milestones).toEqual({ downloaded: true, integrityVerified: true, written: true, flashVerified: true, deviceDetected: true });
