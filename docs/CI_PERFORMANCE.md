@@ -115,6 +115,7 @@ Playwright setup in the `web` job (seconds). The browser cache existed from `250
 | 45139907508 (`f195cb6`) | hit | 6 | 32 | 39 | 0 | 54 | 47 |
 | 45140803455 (`e7fc777`) | hit | 6 | 13 | 19 | 0 | 56 | 47 |
 | 45142358170 (`64f1f70`, cache removed) | none | n/a | 53 (`install --with-deps chromium`: apt about 46, browser downloads about 6.5) | 53 | n/a | 53 | 47 |
+| 45148030043 (`dc5d2b0`) | none | n/a | 317 (`install --with-deps chromium`: apt fetched 26.3 MB in 4 min 46 s at 92 kB/s) | 317 | n/a | 55 | 52 |
 
 Artifact and cache steps in `release.yml` (seconds per step; ranges are over the three firmware legs of one run; the build jobs are listed
 linux / pam / windows):
@@ -161,15 +162,19 @@ What the numbers say:
   The container pull is the biggest cost left and was not addressed.
 - A change that touches only `web/**` or docs now costs 8 s in `ci` (run 45138973264) instead of 207 s. `release` has no path filter (a tag
   push must always build) and still runs on every push to `main`.
-- Playwright: the browser cache did not pay for itself and was removed (table above). Setup took 18, 21, 39 and 19 s on the four hits and 32, 21 and
-  53 s for the plain install (baseline, the cold run, the run after the removal); the spread of the plain install (21-53 s) is larger than any
-  saving. The log of the 53 s run shows why: the apt dependencies took about 46 s (fetching 32 MB alone took 13 s, at 2.5 MB/s) and the three
-  browser downloads about 6.5 s (Chrome 199 MiB 3.5 s, FFmpeg 0.4 s, headless shell 2.6 s). The cache can only save the second part, and restoring
+- Playwright: the browser cache did not pay for itself and was removed (table above). Setup took 18, 21, 39 and 19 s on the four hits and 32, 21,
+  53 and 317 s for the plain install (baseline, the cold run, the run after the removal, a later run); the spread of the plain install (21-317 s) is
+  larger than any saving. The logs show why. In the 53 s run the apt dependencies took about 46 s (fetching 32 MB alone took 13 s, at 2.5 MB/s) and
+  the three browser downloads about 6.5 s (Chrome 199 MiB 3.5 s, FFmpeg 0.4 s, headless shell 2.6 s). In the 317 s run (the docs commit `dc5d2b0`) apt
+  fetched 26.3 MB in 4 min 46 s (92 kB/s); the browser download is not what varies. The cache can only save the browser download, and restoring
   its 292 MB entry took 1-6 s. The rule fixed in the plan was to keep the cache only if the warm setup is at least 10 s faster than the cold 32 s:
   that holds against the baseline in three of four hits (14, 11 and 13 s faster; the fourth was 7 s slower), is a 3-4 s saving against the cold
   run measured alongside, and the measured mechanism caps it at about 6.5 s. The `web` job runs plain `playwright install --with-deps chromium` again.
-- The `web` workflow is not faster than its baseline (88 s; 98-148 s in the runs above). Its e2e step grew with the suite: 12 tests in 18 s at the
-  baseline, 39 in 40-45 s (cold and warm), 41 in 47 s, 47 in 53-56 s.
+  An untested idea for the apt cost, which the cache never addressed: Playwright's `channel: "chrome"` would use a Google Chrome that GitHub's
+  Ubuntu runner images list among their preinstalled browsers (not checked here), so neither the browser download nor `install-deps` would run; it
+  changes the browser under test from Playwright's pinned Chromium to whatever Chrome the image carries, so it is not done here.
+- The `web` workflow is not faster than its baseline (88 s; 98-148 s in the runs above, 411 s in the slow run of the table above). Its e2e step grew
+  with the suite: 12 tests in 18 s at the baseline, 39 in 40-45 s (cold and warm), 41 in 47 s, 47 in 53-56 s, 52 in 55 s.
 - Cache storage when this was measured (24 entries): each ccache entry 14-16 MB, one per push and leg (7 per push); Rust 54-212 MB per job; the pnpm
   store 192 MB; the Playwright browsers 292 MB (that cache was removed afterwards, see above). The repository limit is 10 GB with least-recently-used eviction.
 
