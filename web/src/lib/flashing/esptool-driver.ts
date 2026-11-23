@@ -43,8 +43,23 @@ export class EsptoolDriver implements FlashDriver {
       features: await chip.getChipFeatures(this.loader),
       mac,
       flashSize: (await this.loader.detectFlashSize()) ?? null,
+      flashType: await this.readFlashType(chip.CHIP_NAME),
       secureDownloadMode: this.loader.secureDownloadMode,
     };
+  }
+
+  /**
+   * ESP32-S3 only: EFUSE_RD_REPEAT_DATA3_REG (0x6000703C) bit 9 is FLASH_TYPE (1 = eight data lines, i.e. octal flash;
+   * esptool targets/esp32s3.py flash_type()). Read-only. Null when the register cannot be read or the chip is another one.
+   */
+  private async readFlashType(chipName: string): Promise<ChipInfo["flashType"]> {
+    if (chipName !== "ESP32-S3") return null;
+    try {
+      const word = await this.esp.readReg(0x6000703c);
+      return (word & (1 << 9)) !== 0 ? "octal" : "quad";
+    } catch {
+      return null;
+    }
   }
 
   readFlash(offset: number, length: number): Promise<Uint8Array> {

@@ -36,6 +36,13 @@
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) * 1.4);
   --radius-2xl: calc(var(--radius) * 1.8);
+  --color-invert-foreground: var(--invert-foreground);
+  --color-invert: var(--invert);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info-foreground: var(--info-foreground);
+  --color-info: var(--info);
+  --color-success-foreground: var(--success-foreground);
+  --color-destructive-foreground: var(--destructive-foreground);
 }
 
 :root {
@@ -60,6 +67,13 @@
   --input: oklch(0.922 0 0);
   --ring: oklch(0.596 0.145 163.225);
   --radius: 0.625rem;
+  --destructive-foreground: var(--color-red-800);
+  --success-foreground: var(--color-emerald-900);
+  --info: var(--color-violet-500);
+  --info-foreground: var(--color-violet-900);
+  --warning-foreground: var(--color-yellow-900);
+  --invert: var(--color-zinc-900);
+  --invert-foreground: var(--color-zinc-50);
 }
 
 .dark {
@@ -83,6 +97,13 @@
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.696 0.17 162.48);
+  --destructive-foreground: var(--color-red-600);
+  --success-foreground: var(--color-emerald-600);
+  --info: var(--color-violet-500);
+  --info-foreground: var(--color-violet-600);
+  --warning-foreground: var(--color-yellow-600);
+  --invert: var(--color-zinc-700);
+  --invert-foreground: var(--color-zinc-50);
 }
 
 @layer base {
@@ -100,16 +121,6 @@
   h3 {
     @apply font-heading tracking-tight;
   }
-}
-
-/* Hero backdrop: emerald glow plus a faint grid. */
-.hero-backdrop {
-  background-image:
-    radial-gradient(60% 50% at 50% 0%, color-mix(in oklch, var(--primary) 22%, transparent) 0%, transparent 70%),
-    linear-gradient(to right, color-mix(in oklch, var(--foreground) 6%, transparent) 1px, transparent 1px),
-    linear-gradient(to bottom, color-mix(in oklch, var(--foreground) 6%, transparent) 1px, transparent 1px);
-  background-size: auto, 32px 32px, 32px 32px;
-  mask-image: linear-gradient(to bottom, black 55%, transparent);
 }
 
 /* The only animation on the site: a wizard step entering. */

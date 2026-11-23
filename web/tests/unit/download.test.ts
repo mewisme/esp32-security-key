@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { FirmwareError } from "@/lib/errors/firmware-error";
 import { downloadBuild, verifyPackage } from "@/lib/firmware/download";
-import { makeFirmware } from "../fixtures/firmware";
+import { makeFirmware, makeLegacyFirmware } from "../fixtures/firmware";
 
 async function code(p: Promise<unknown>) {
   try {
@@ -22,6 +22,29 @@ describe("download + integrity", () => {
       ["partition-table", 0x8000, f.images.table.length],
       ["app", 0x20000, f.images.app.length],
     ]);
+  });
+
+  it("verifies every profile's package against its own entry", async () => {
+    const f = await makeFirmware();
+    expect(f.builds).toHaveLength(3);
+    for (const b of f.builds) {
+      const imgs = await verifyPackage(f.zips.get(b.package.name)!, b);
+      expect(imgs).toHaveLength(3);
+    }
+  });
+
+  it("verifies a legacy (schema 1) package: firmware.json is compared with the published entry, not the normalised build", async () => {
+    const f = await makeLegacyFirmware();
+    expect(f.build.legacy).toBe(true);
+    expect(f.build.entry).not.toHaveProperty("profile_id");
+    expect(await verifyPackage(f.zip, f.build)).toHaveLength(3);
+  });
+
+  it("a firmware.json that differs from the published entry -> manifest-invalid", async () => {
+    const f = await makeFirmware();
+    const build = structuredClone(f.build);
+    build.entry.title = "Something else";
+    expect(await code(verifyPackage(f.zip, build))).toBe("manifest-invalid");
   });
 
   it("one flipped byte -> checksum-mismatch", async () => {

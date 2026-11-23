@@ -21,4 +21,14 @@ export default tseslint.config(
     files: ["src/components/ui/**/*.tsx", "src/main.tsx"],
     rules: { "react-refresh/only-export-components": "off" },
   },
+  {
+    // ReUI components are installed as shipped and never edited (their style and behaviour belong to the registry).
+    // Upstream code predates these React lint rules: it exports variants next to components and reads refs in useMemo.
+    files: ["src/components/reui/**/*.tsx"],
+    rules: {
+      "react-refresh/only-export-components": "off",
+      "react-hooks/refs": "off",
+      "react-hooks/exhaustive-deps": "off",
+    },
+  },
 );

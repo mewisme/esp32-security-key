@@ -7,6 +7,8 @@ import { makeFirmware, PARTITIONS } from "../fixtures/firmware";
 const { build } = await makeFirmware();
 const app = (version: string, project = "multikey-fido"): AppDescriptor => ({ version, project_name: project, time: "", date: "", idf_ver: "" });
 const T = (status: TableResult["status"]): TableResult => ({ status, detail: status });
+const decide = (input: { table: TableResult; app: AppDescriptor | null; untestedHardware?: boolean }) =>
+  decideInstallMode({ build, untestedHardware: false, ...input });
 
 const protectedRanges = PARTITIONS.filter((p) => ["nvs", "phy_init", "part0"].includes(p.name));
 const touchesProtected = (w: { offset: number; length: number }) =>
@@ -14,44 +16,44 @@ const touchesProtected = (w: { offset: number; length: number }) =>
 
 describe("decideInstallMode", () => {
   it("blank -> first-install", () => {
-    const d = decideInstallMode({ table: T("blank"), app: null, build });
+    const d = decide({ table: T("blank"), app: null });
     expect(d.mode).toBe("first-install");
     expect(d.acks).toEqual(["dev-firmware"]);
     expect(d.writes.map((w) => w.offset)).toEqual([0, 0x8000, 0x20000]);
   });
 
   it("match + fido 0.2.0 -> update", () => {
-    expect(decideInstallMode({ table: T("match"), app: app("0.2.0"), build }).mode).toBe("update");
+    expect(decide({ table: T("match"), app: app("0.2.0") }).mode).toBe("update");
   });
 
   it("match + 0.1.0-dev -> update-unverified with its ack", () => {
-    const d = decideInstallMode({ table: T("match"), app: app("0.1.0-dev"), build });
+    const d = decide({ table: T("match"), app: app("0.1.0-dev") });
     expect(d.mode).toBe("update-unverified");
     expect(d.acks).toContain("update-unverified");
   });
 
   it("match + newer 0.3.0 (downgrade) -> update-unverified", () => {
-    expect(decideInstallMode({ table: T("match"), app: app("0.3.0"), build }).mode).toBe("update-unverified");
+    expect(decide({ table: T("match"), app: app("0.3.0") }).mode).toBe("update-unverified");
   });
 
   it("match + non-semver version -> update-unverified", () => {
-    expect(decideInstallMode({ table: T("match"), app: app("1.89"), build }).mode).toBe("update-unverified");
+    expect(decide({ table: T("match"), app: app("1.89") }).mode).toBe("update-unverified");
   });
 
   it("match + openpgp -> switch-image", () => {
-    const d = decideInstallMode({ table: T("match"), app: app("0.2.0", "multikey-openpgp"), build });
+    const d = decide({ table: T("match"), app: app("0.2.0", "multikey-openpgp") });
     expect(d.mode).toBe("switch-image");
     expect(d.acks).toContain("switch-image");
   });
 
   it("match + no app -> replace-compatible-layout", () => {
-    const d = decideInstallMode({ table: T("match"), app: null, build });
+    const d = decide({ table: T("match"), app: null });
     expect(d.mode).toBe("replace-compatible-layout");
     expect(d.acks).toContain("replace-layout");
   });
 
   it("mismatch + foreign app -> repurpose: fill nvs, fill part0, bootloader, table, app", () => {
-    const d = decideInstallMode({ table: T("mismatch"), app: app("1.0", "esp-demo"), build });
+    const d = decide({ table: T("mismatch"), app: app("1.0", "esp-demo") });
     expect(d.mode).toBe("repurpose");
     expect(d.acks).toContain("repurpose-typed");
     expect(d.writes.map((w) => `${w.kind}:${w.role}@${w.offset}+${w.length}`)).toEqual([
@@ -64,11 +66,11 @@ describe("decideInstallMode", () => {
   });
 
   it("garbage + no app -> repurpose", () => {
-    expect(decideInstallMode({ table: T("garbage"), app: null, build }).mode).toBe("repurpose");
+    expect(decide({ table: T("garbage"), app: null }).mode).toBe("repurpose");
   });
 
   it("mismatch + MultiKeys app -> blocked storage-incompatible", () => {
-    const d = decideInstallMode({ table: T("mismatch"), app: app("0.2.0"), build });
+    const d = decide({ table: T("mismatch"), app: app("0.2.0") });
     expect(d).toMatchObject({ mode: "blocked", allowed: false, reason: "storage-incompatible", writes: [] });
   });
 
@@ -81,9 +83,33 @@ describe("decideInstallMode", () => {
       ["match", null],
       ["mismatch", app("0.2.0")],
     ] as const) {
-      const d = decideInstallMode({ table: T(table), app: a, build });
+      const d = decide({ table: T(table), app: a });
       expect(d.mode).not.toBe("repurpose");
       expect(d.writes.filter(touchesProtected)).toEqual([]);
     }
+  });
+});
+
+describe("decideInstallMode on hardware that is not verified", () => {
+  const CASES: [string, TableResult, AppDescriptor | null][] = [
+    ["first-install", T("blank"), null],
+    ["update", T("match"), app("0.2.0")],
+    ["update-unverified", T("match"), app("0.1.0-dev")],
+    ["switch-image", T("match"), app("0.2.0", "multikey-openpgp")],
+    ["replace-compatible-layout", T("match"), null],
+    ["repurpose", T("mismatch"), app("1.0", "esp-demo")],
+  ];
+
+  it.each(CASES)("%s additionally needs untested-hardware", (mode, table, a) => {
+    const plain = decide({ table, app: a });
+    const untested = decide({ table, app: a, untestedHardware: true });
+    expect(untested.mode).toBe(mode);
+    expect(untested.acks).toEqual([...plain.acks, "untested-hardware"]);
+    expect(untested.writes).toEqual(plain.writes);
+  });
+
+  it("does not add an acknowledgement to a blocked install", () => {
+    const d = decide({ table: T("mismatch"), app: app("0.2.0"), untestedHardware: true });
+    expect(d).toMatchObject({ mode: "blocked", allowed: false, acks: [] });
   });
 });

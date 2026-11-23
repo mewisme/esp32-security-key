@@ -1,36 +1,56 @@
 import { useEffect } from "react";
 import { useLocation } from "react-router";
+import { GroupRail } from "@/components/help/GroupRail";
+import { groupSlug } from "@/components/help/group-slug";
+import { Page } from "@/components/layout/Page";
+import { Frame, FrameDescription, FrameHeader, FramePanel, FrameTitle } from "@/components/reui/frame";
 import { ERROR_GROUPS, ERRORS, type ErrorCode } from "@/lib/errors/catalog";
 
 export function HelpPage() {
   const { hash } = useLocation();
   useEffect(() => {
-    if (hash) document.getElementById(hash.slice(1))?.scrollIntoView();
+    if (hash) document.getElementById(decodeURIComponent(hash.slice(1)))?.scrollIntoView();
   }, [hash]);
   const codes = Object.keys(ERRORS) as ErrorCode[];
   return (
-    <div className="mx-auto max-w-3xl space-y-10 px-4 py-10">
-      <h1 className="text-3xl font-semibold">Help</h1>
-      {ERROR_GROUPS.map((g) => (
-        <section key={g} aria-labelledby={`g-${g}`} className="space-y-6">
-          <h2 id={`g-${g}`} className="text-xl font-semibold">
-            {g}
-          </h2>
-          {codes
-            .filter((c) => ERRORS[c].group === g)
-            .map((c) => (
-              <article key={c} id={c} className="scroll-mt-20 space-y-2 rounded-lg border p-4 target:border-primary">
-                <h3 className="font-medium">{ERRORS[c].title}</h3>
-                <p className="text-muted-foreground">{ERRORS[c].what}</p>
-                <ol className="list-decimal space-y-1 pl-5">
-                  {ERRORS[c].next.map((n) => (
-                    <li key={n}>{n}</li>
+    <Page width="wide">
+      <header className="flex flex-col gap-2">
+        <h1 className="text-3xl font-semibold">Help</h1>
+        <p className="text-muted-foreground">What each message means and what to do next.</p>
+      </header>
+      <div className="flex min-w-0 flex-col gap-6 lg:grid lg:grid-cols-[14rem_1fr] lg:gap-8">
+        <GroupRail groups={ERROR_GROUPS} />
+        <div className="flex min-w-0 flex-col gap-8">
+          {ERROR_GROUPS.map((g) => (
+            <section key={g} id={groupSlug(g)} aria-labelledby={`${groupSlug(g)}-h`} className="scroll-mt-20">
+              <Frame spacing="default">
+                <FrameHeader>
+                  <h2 id={`${groupSlug(g)}-h`} className="text-lg font-semibold">
+                    {g}
+                  </h2>
+                </FrameHeader>
+                {codes
+                  .filter((c) => ERRORS[c].group === g)
+                  .map((c) => (
+                    <FramePanel key={c} id={c} className="scroll-mt-20 target:ring-2 target:ring-primary">
+                      <div className="flex flex-col gap-3">
+                        <div className="flex flex-col gap-1">
+                          <FrameTitle>{ERRORS[c].title}</FrameTitle>
+                          <FrameDescription>{ERRORS[c].what}</FrameDescription>
+                        </div>
+                        <ol className="flex list-decimal flex-col gap-1 pl-5 text-sm">
+                          {ERRORS[c].next.map((n) => (
+                            <li key={n}>{n}</li>
+                          ))}
+                        </ol>
+                      </div>
+                    </FramePanel>
                   ))}
-                </ol>
-              </article>
-            ))}
-        </section>
-      ))}
-    </div>
+              </Frame>
+            </section>
+          ))}
+        </div>
+      </div>
+    </Page>
   );
 }

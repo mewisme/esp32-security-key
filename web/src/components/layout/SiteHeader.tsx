@@ -1,5 +1,6 @@
 import { KeyRound, Menu } from "lucide-react";
 import { Link, NavLink } from "react-router";
+import { GitHubIcon } from "@/components/common/GitHubIcon";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { REPO_URL } from "@/lib/status";
@@ -13,51 +14,46 @@ const LINKS = [
   { to: "/releases", label: "Releases" },
 ];
 
+const ITEM =
+  "rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground aria-[current=page]:bg-muted aria-[current=page]:text-foreground dark:hover:bg-muted/50 dark:aria-[current=page]:bg-muted/50";
+
 function NavItems({ vertical }: { vertical?: boolean }) {
   return (
     <>
       {LINKS.map((l) => (
-        <NavLink
-          key={l.to}
-          to={l.to}
-          className={({ isActive }) =>
-            cn(
-              "rounded-md px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground",
-              isActive ? "font-medium text-foreground" : "text-muted-foreground",
-              vertical && "text-base",
-            )
-          }
-        >
+        <NavLink key={l.to} to={l.to} className={cn(ITEM, vertical && "text-base")}>
           {l.label}
         </NavLink>
       ))}
-      <a
-        href={REPO_URL}
-        target="_blank"
-        rel="noreferrer"
-        className={cn("rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground", vertical && "text-base")}
-      >
-        GitHub
-      </a>
+      {vertical && (
+        <a href={REPO_URL} target="_blank" rel="noopener noreferrer" className={cn(ITEM, "text-base")}>
+          GitHub
+        </a>
+      )}
     </>
   );
 }
 
 export function SiteHeader() {
   return (
-    <header className="sticky top-0 z-40 border-b bg-background/85 backdrop-blur">
-      <div className="mx-auto flex h-14 max-w-6xl items-center gap-2 px-4">
+    <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur">
+      <div className="mx-auto flex h-14 w-full max-w-5xl items-center gap-2 px-4 sm:px-6">
         <Link to="/" className="mr-auto flex items-center gap-2 font-heading text-lg font-semibold">
           <KeyRound className="size-5 text-primary" aria-hidden />
           MultiKeys
         </Link>
-        <nav aria-label="Main" className="hidden items-center md:flex">
+        <nav aria-label="Main" className="hidden items-center gap-1 md:flex">
           <NavItems />
         </nav>
+        <Button asChild variant="ghost" size="icon" className="hidden md:inline-flex">
+          <a href={REPO_URL} target="_blank" rel="noopener noreferrer" aria-label="GitHub repository">
+            <GitHubIcon />
+          </a>
+        </Button>
         <ThemeToggle />
         <Sheet>
           <SheetTrigger asChild>
-            <Button variant="ghost" size="icon" className="md:hidden" aria-label="Open menu">
+            <Button type="button" variant="ghost" size="icon" className="md:hidden" aria-label="Open menu">
               <Menu aria-hidden />
             </Button>
           </SheetTrigger>
@@ -65,7 +61,7 @@ export function SiteHeader() {
             <SheetHeader>
               <SheetTitle>MultiKeys</SheetTitle>
             </SheetHeader>
-            <nav aria-label="Main" className="flex flex-col px-2">
+            <nav aria-label="Mobile" className="flex flex-col gap-1 px-2">
               <NavItems vertical />
             </nav>
           </SheetContent>

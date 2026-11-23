@@ -5,6 +5,7 @@
 //  4. matching layout, no / non-MultiKeys app      -> replace-compatible-layout
 //  5. foreign layout, no MultiKeys app             -> repurpose (clears nvs + part0 first, typed confirmation)
 //  6. foreign layout with a MultiKeys app          -> blocked (storage-incompatible)
+//  7. any board whose support is not hardware-verified needs the untested-hardware acknowledgement
 // Outside repurpose no write ever touches a protected partition. A table that cannot be read never gets here: the
 // caller fails with `unsafe-layout`.
 import { type FlashPolicy, policy as defaultPolicy } from "../firmware/policy";
@@ -22,7 +23,7 @@ export type InstallMode =
   | "repurpose"
   | "blocked";
 
-export type AckId = "dev-firmware" | "update-unverified" | "switch-image" | "replace-layout" | "repurpose-typed";
+export type AckId = "dev-firmware" | "update-unverified" | "switch-image" | "replace-layout" | "repurpose-typed" | "untested-hardware";
 
 export interface Write {
   offset: number;
@@ -43,17 +44,20 @@ export function decideInstallMode(input: {
   table: TableResult;
   app: AppDescriptor | null;
   build: Build;
+  /** True when the board's support level is anything but hardware-verified (see compatibility/profiles.ts). */
+  untestedHardware: boolean;
   policy?: FlashPolicy;
 }): InstallDecision {
   const { table, app, build } = input;
   const p = input.policy ?? defaultPolicy;
+  const acks = (...needed: AckId[]): AckId[] => (input.untestedHardware ? [...needed, "untested-hardware"] : needed);
   const images: Write[] = [...build.images]
     .sort((a, b) => a.offset - b.offset)
     .map((i) => ({ offset: i.offset, length: i.size, kind: "image", role: i.role }));
   const runsMultiKeys = !!app && app.project_name.startsWith("multikey-");
 
   if (table.status === "blank") {
-    return { mode: "first-install", allowed: true, acks: ["dev-firmware"], writes: images, reason: table.detail };
+    return { mode: "first-install", allowed: true, acks: acks("dev-firmware"), writes: images, reason: table.detail };
   }
   if (table.status === "match") {
     if (app && app.project_name === build.project_name) {
@@ -63,7 +67,7 @@ export function decideInstallMode(input: {
         return {
           mode: "update",
           allowed: true,
-          acks: ["dev-firmware"],
+          acks: acks("dev-firmware"),
           writes: images,
           reason: `installed ${app.version} is within the declared data-compatible range ${build.update.data_preserving_from}..${build.version}`,
         };
@@ -71,7 +75,7 @@ export function decideInstallMode(input: {
       return {
         mode: "update-unverified",
         allowed: true,
-        acks: ["dev-firmware", "update-unverified"],
+        acks: acks("dev-firmware", "update-unverified"),
         writes: images,
         reason: `installed version ${app.version || "(unknown)"} is outside the declared data-compatible range ${build.update.data_preserving_from}..${build.version}`,
       };
@@ -80,7 +84,7 @@ export function decideInstallMode(input: {
       return {
         mode: "switch-image",
         allowed: true,
-        acks: ["dev-firmware", "switch-image"],
+        acks: acks("dev-firmware", "switch-image"),
         writes: images,
         reason: `the board runs ${app!.project_name}, this firmware is ${build.project_name}`,
       };
@@ -88,7 +92,7 @@ export function decideInstallMode(input: {
     return {
       mode: "replace-compatible-layout",
       allowed: true,
-      acks: ["dev-firmware", "replace-layout"],
+      acks: acks("dev-firmware", "replace-layout"),
       writes: images,
       reason: app ? `the board runs ${app.project_name}` : "no recognisable app on the board",
     };
@@ -103,7 +107,7 @@ export function decideInstallMode(input: {
   return {
     mode: "repurpose",
     allowed: true,
-    acks: ["dev-firmware", "repurpose-typed"],
+    acks: acks("dev-firmware", "repurpose-typed"),
     // Fills first: if interrupted, the foreign table is still in place and the next run is detected as repurpose again.
     writes: [...fills, ...images],
     reason: table.detail,

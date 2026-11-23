@@ -1,6 +1,7 @@
 // The installer's state machine. Pure: the hook in hooks/useInstaller.ts performs the side effects and feeds events.
 // Invariants: `completed` is only reachable after FLASH_VERIFIED; nothing cancels a write in progress; confirmation
 // needs every acknowledgement the install decision requires.
+import type { Support } from "../compatibility/profiles";
 import type { ErrorCode } from "../errors/catalog";
 import type { ChipInfo, PortInfo } from "./driver";
 import type { AckId, InstallDecision } from "./install-mode";
@@ -54,9 +55,12 @@ export interface FlashError {
 export interface FlashState {
   phase: Phase;
   milestones: Milestones;
-  boardId: string | null;
   tag: string | null;
+  image: "fido" | "openpgp" | null;
+  /** Set once the connected board has been matched to a hardware profile (COMPATIBLE). */
   buildId: string | null;
+  profileId: string | null;
+  support: Support | null;
   port: PortInfo | null;
   chip: ChipInfo | null;
   decision: InstallDecision | null;
@@ -70,12 +74,13 @@ export type FlashEvent =
   | { type: "START" }
   | { type: "BROWSER_OK" }
   | { type: "BROWSER_UNSUPPORTED"; code: ErrorCode }
-  | { type: "HARDWARE_CONFIRMED"; boardId: string }
-  | { type: "FIRMWARE_SELECTED"; tag: string; buildId: string }
+  | { type: "HARDWARE_CONFIRMED" }
+  | { type: "FIRMWARE_SELECTED"; tag: string; image: "fido" | "openpgp" }
+  | { type: "BACK" }
   | { type: "PORT_GRANTED"; info: PortInfo }
   | { type: "CONNECTED" }
   | { type: "CHIP_DETECTED"; chip: ChipInfo }
-  | { type: "COMPATIBLE" }
+  | { type: "COMPATIBLE"; buildId: string; profileId: string; support: Support }
   | { type: "MANIFEST_READY" }
   | { type: "DOWNLOAD_PROGRESS"; received: number; total: number }
   | { type: "DOWNLOADED" }
@@ -104,9 +109,11 @@ const NO_MILESTONES: Milestones = {
 export const initialState: FlashState = {
   phase: "idle",
   milestones: NO_MILESTONES,
-  boardId: null,
   tag: null,
+  image: null,
   buildId: null,
+  profileId: null,
+  support: null,
   port: null,
   chip: null,
   decision: null,
@@ -122,12 +129,15 @@ const UNINTERRUPTIBLE: Phase[] = ["flashing", "verifying-flash"];
 
 const at = (p: Phase) => PHASES.indexOf(p);
 
-/** Clears everything that belongs to one attempt at talking to a board. */
+/** Clears everything that belongs to one attempt at talking to a board (the chosen release stays). */
 function freshAttempt(s: FlashState, phase: Phase): FlashState {
   return {
     ...s,
     phase,
     milestones: NO_MILESTONES,
+    buildId: null,
+    profileId: null,
+    support: null,
     port: null,
     chip: null,
     decision: null,
@@ -159,17 +169,23 @@ export function flashReducer(s: FlashState, e: FlashEvent): FlashState {
       if (e.type === "BROWSER_UNSUPPORTED") return { ...s, phase: "failed", error: { code: e.code, message: e.code, phase: s.phase } };
       return s;
     case "hardware-guidance":
-      return e.type === "HARDWARE_CONFIRMED" ? { ...s, phase: "firmware-selection", boardId: e.boardId } : s;
+      return e.type === "HARDWARE_CONFIRMED" ? { ...s, phase: "firmware-selection" } : s;
     case "firmware-selection":
-      return e.type === "FIRMWARE_SELECTED" ? { ...s, phase: "requesting-permission", tag: e.tag, buildId: e.buildId } : s;
+      if (e.type === "BACK") return { ...s, phase: "hardware-guidance" };
+      return e.type === "FIRMWARE_SELECTED"
+        ? { ...s, phase: "requesting-permission", tag: e.tag, image: e.image, buildId: null, profileId: null, support: null }
+        : s;
     case "requesting-permission":
+      if (e.type === "BACK") return { ...s, phase: "firmware-selection" };
       return e.type === "PORT_GRANTED" ? { ...s, phase: "connecting", port: e.info } : s;
     case "connecting":
       return e.type === "CONNECTED" ? { ...s, phase: "detecting-chip" } : s;
     case "detecting-chip":
       return e.type === "CHIP_DETECTED" ? { ...s, phase: "validating-compatibility", chip: e.chip } : s;
     case "validating-compatibility":
-      return e.type === "COMPATIBLE" ? { ...s, phase: "fetching-metadata" } : s;
+      return e.type === "COMPATIBLE"
+        ? { ...s, phase: "fetching-metadata", buildId: e.buildId, profileId: e.profileId, support: e.support }
+        : s;
     case "fetching-metadata":
       return e.type === "MANIFEST_READY" ? { ...s, phase: "downloading" } : s;
     case "downloading":

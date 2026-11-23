@@ -1,17 +1,16 @@
 import { useEffect, useRef } from "react";
-import { HardwareCheckStep } from "@/components/device/HardwareCheckStep";
-import { ConnectStep } from "@/components/device/ConnectStep";
-import { FirmwareStep } from "@/components/firmware/FirmwareStep";
-import { ConfirmStep } from "@/components/flasher/ConfirmStep";
 import { ErrorPanel } from "@/components/flasher/ErrorPanel";
-import { FirmwareCheckStep } from "@/components/flasher/FirmwareCheckStep";
-import { FlashStep } from "@/components/flasher/FlashStep";
-import { ReconnectStep } from "@/components/flasher/ReconnectStep";
-import { HardwareStep } from "@/components/onboarding/HardwareStep";
-import { Stepper } from "@/components/onboarding/Stepper";
-import { WelcomeStep } from "@/components/onboarding/WelcomeStep";
+import { ConnectVerifyStage } from "@/components/installer/ConnectVerifyStage";
+import { FinishStage } from "@/components/installer/FinishStage";
+import { FirmwareStage } from "@/components/installer/FirmwareStage";
+import { GetStartedStage } from "@/components/installer/GetStartedStage";
+import { InstallStage } from "@/components/installer/InstallStage";
+import { InstallStepper } from "@/components/installer/InstallStepper";
+import { ReviewStage } from "@/components/installer/ReviewStage";
+import { StageCard } from "@/components/installer/StageCard";
+import { Page } from "@/components/layout/Page";
 import { Button } from "@/components/ui/button";
-import { isUartBridge, useInstaller } from "@/hooks/useInstaller";
+import { useInstaller } from "@/hooks/useInstaller";
 import { STEPS, stepIndex } from "@/lib/wizard-steps";
 
 export function InstallPage() {
@@ -21,71 +20,62 @@ export function InstallPage() {
   const step = stepIndex(phase, state.error?.phase);
   const heading = useRef<HTMLHeadingElement>(null);
 
+  // Move focus to the stage heading whenever the stage (or the failed state) changes.
   useEffect(() => {
     heading.current?.focus();
   }, [step, phase === "failed"]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  let title: string = STEPS[step] ?? "";
-  let body: React.ReactNode = null;
+  let stage: React.ReactNode;
   if (phase === "failed" && state.error) {
-    title = "Something went wrong";
-    body = (
-      <ErrorPanel
-        code={state.error.code}
-        message={state.error.message}
-        log={inst.log}
-        milestones={state.milestones}
-        onRetry={actions.retry}
-        onRestart={() => void actions.reset()}
-      />
+    stage = (
+      <StageCard title={STEPS[step] ?? "Install"} headingRef={heading}>
+        <ErrorPanel
+          code={state.error.code}
+          message={state.error.message}
+          log={inst.log}
+          milestones={state.milestones}
+          onRetry={actions.retry}
+          onRestart={() => void actions.reset()}
+        />
+      </StageCard>
     );
   } else if (phase === "cancelled") {
-    title = "Installation cancelled";
-    body = (
-      <div className="space-y-4">
-        <p>Nothing was written to the board.</p>
-        <Button onClick={() => void actions.reset()}>Start over</Button>
-      </div>
-    );
-  } else if (phase === "idle") {
-    body = <WelcomeStep onStart={actions.start} />;
-  } else if (phase === "checking-browser" || phase === "hardware-guidance") {
-    body = <HardwareStep onConfirm={actions.confirmHardware} />;
-  } else if (phase === "firmware-selection") {
-    body = <FirmwareStep catalog={inst.catalog} defaultRelease={inst.defaultRelease} onReload={inst.loadCatalog} onSelect={actions.selectFirmware} />;
-  } else if (phase === "requesting-permission") {
-    body = <ConnectStep onChoose={actions.choosePort} />;
-  } else if (phase === "connecting" || phase === "detecting-chip" || phase === "validating-compatibility") {
-    body = <HardwareCheckStep phase={phase} chip={state.chip} />;
-  } else if (phase === "fetching-metadata" || phase === "downloading" || phase === "verifying-integrity" || phase === "checking-flash-safety") {
-    body = <FirmwareCheckStep state={state} />;
-  } else if (phase === "awaiting-confirmation" && state.decision && inst.selection) {
-    body = (
-      <ConfirmStep
-        decision={state.decision}
-        chip={state.chip}
-        selection={inst.selection}
-        uartPort={isUartBridge(state.port)}
-        onConfirm={(acks) => void actions.confirm(acks)}
-        onCancel={() => void actions.cancel()}
+    stage = (
+      <StageCard
+        title="Installation cancelled"
+        description="Nothing was written to the board."
+        headingRef={heading}
+        primary={
+          <Button type="button" onClick={() => void actions.reset()}>
+            Start over
+          </Button>
+        }
       />
     );
-  } else if (phase === "flashing" || phase === "verifying-flash") {
-    body = <FlashStep state={state} />;
-  } else if (phase === "rebooting" || phase === "awaiting-reenumeration" || phase === "completed") {
-    title = phase === "completed" ? "Installation finished" : title;
-    body = <ReconnectStep state={state} onCheck={actions.checkKey} onSkip={actions.skipCheck} />;
+  } else if (step === 0) {
+    stage = <GetStartedStage inst={inst} headingRef={heading} />;
+  } else if (step === 1) {
+    stage = <FirmwareStage inst={inst} headingRef={heading} />;
+  } else if (step === 2) {
+    stage = <ConnectVerifyStage inst={inst} headingRef={heading} />;
+  } else if (step === 3) {
+    stage = <ReviewStage inst={inst} headingRef={heading} />;
+  } else if (step === 4) {
+    stage = <InstallStage inst={inst} headingRef={heading} />;
+  } else {
+    stage = <FinishStage inst={inst} headingRef={heading} />;
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-8 px-4 py-10">
-      <Stepper current={step} />
-      <section key={`${step}-${phase === "failed"}`} className="step-enter space-y-6" aria-labelledby="step-heading">
-        <h1 id="step-heading" ref={heading} tabIndex={-1} className="text-2xl font-semibold outline-none sm:text-3xl">
-          {title}
-        </h1>
-        {body}
+    <Page width="flow">
+      <header className="flex flex-col gap-2">
+        <h1 className="text-2xl font-semibold sm:text-3xl">Install MultiKeys</h1>
+        <p className="text-muted-foreground">Put the MultiKeys FIDO2 firmware on an ESP32-S3 board, straight from your browser.</p>
+      </header>
+      <InstallStepper stage={step} />
+      <section key={`${step}-${phase === "failed"}`} className="step-enter" aria-labelledby="step-heading">
+        {stage}
       </section>
-    </div>
+    </Page>
   );
 }

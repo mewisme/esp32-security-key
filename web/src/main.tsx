@@ -2,6 +2,7 @@ import { lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Route, Routes } from "react-router";
 import { Layout } from "@/components/layout/Layout";
+import { Page } from "@/components/layout/Page";
 import { applyTheme, storedTheme } from "@/lib/theme";
 import { FirstUsePage } from "@/pages/FirstUse";
 import { HelpPage } from "@/pages/Help";
@@ -24,7 +25,15 @@ createRoot(document.getElementById("root")!).render(
           <Route
             path="install"
             element={
-              <Suspense fallback={<div className="mx-auto max-w-4xl px-4 py-10 text-muted-foreground">Loading the installer…</div>}>
+              <Suspense
+                fallback={
+                  <Page width="flow">
+                    <p className="text-muted-foreground" role="status">
+                      Loading the installer…
+                    </p>
+                  </Page>
+                }
+              >
                 <InstallPage />
               </Suspense>
             }

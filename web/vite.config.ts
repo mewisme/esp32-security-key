@@ -11,7 +11,7 @@ const here = import.meta.dirname;
 /**
  * Dev only: serve a locally packaged firmware directory (tools/package_firmware.py output with
  * `manifest --tag local`) as release "local", so the installer can be tried against a board before a release exists.
- *   MULTIKEYS_LOCAL_FIRMWARE=../build-pkgtest pnpm dev
+ *   MULTIKEYS_LOCAL_FIRMWARE=../build-localfw pnpm dev
  */
 function localFirmwarePlugin(): Plugin {
   return {
@@ -61,13 +61,17 @@ export default defineConfig(({ mode }) => ({
               replacement: resolve(here, "tests/e2e/fake-create-driver.ts"),
             },
             {
-              find: "@/lib/device/create-usb-checker",
-              replacement: resolve(here, "tests/e2e/fake-create-usb-checker.ts"),
+              find: "@/lib/device/create-key-connector",
+              replacement: resolve(here, "tests/e2e/fake-create-key-connector.ts"),
             },
           ]
         : []),
       { find: "@", replacement: resolve(here, "src") },
     ],
+  },
+  build: {
+    // public/_headers sets `font-src 'self'`, which blocks a font inlined as a data: URI (Vite inlines files under 4 KiB).
+    assetsInlineLimit: (file) => (file.endsWith(".woff2") ? false : undefined),
   },
   server: {
     fs: { allow: [here, resolve(here, "../tools/flash_policy.json")] },

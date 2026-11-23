@@ -1,84 +1,82 @@
-import { ArrowRight, Cable, Download, KeyRound, MousePointerClick, ShieldCheck, Usb } from "lucide-react";
+import { Cable, Download, Fingerprint, GitBranch, Hash, KeyRound, MousePointerClick, ShieldCheck, TriangleAlert } from "lucide-react";
 import { Link } from "react-router";
-import { ExperimentalNotice } from "@/components/common/ExperimentalNotice";
-import { InstallerStatusBanner } from "@/components/common/InstallerStatusBanner";
-import { BoardDiagram } from "@/components/hardware/BoardDiagram";
-import { Badge } from "@/components/ui/badge";
+import { HardwareTable } from "@/components/home/HardwareTable";
+import { LatestRelease } from "@/components/home/LatestRelease";
+import { Page } from "@/components/layout/Page";
+import { Alert, AlertDescription, AlertTitle } from "@/components/reui/alert";
+import { Badge } from "@/components/reui/badge";
+import { IconTile } from "@/components/reui/icon-tile";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { useCatalog } from "@/hooks/useCatalog";
-import { BOARDS, LEVEL_LABEL } from "@/lib/compatibility/boards";
-import { defaultRelease } from "@/lib/firmware/catalog";
-import { ERRORS, type ErrorCode } from "@/lib/errors/catalog";
+import { DOCS_URL, REPO_URL } from "@/lib/status";
 
-const STEPS = [
-  { icon: Usb, title: "Get a board", text: "An ESP32-S3 board with 16 MB flash (marked N16R8) and a USB data cable." },
-  { icon: MousePointerClick, title: "Open the installer", text: "In desktop Chrome or Edge. Nothing to download or set up." },
-  { icon: Cable, title: "Connect in download mode", text: "Hold the BOOT button while plugging the board in, then pick it in the browser." },
-  { icon: Download, title: "Install", text: "The firmware is checked, then written. Your board's stored keys area is never erased silently." },
-  { icon: KeyRound, title: "Use it", text: "Replug it: it is now a security key. Press BOOT when a website asks you to touch it." },
+const HOW: { icon: typeof Cable; title: string; text: string }[] = [
+  { icon: Cable, title: "Connect", text: "Plug an ESP32-S3 board into your computer's USB port in download mode." },
+  { icon: Download, title: "Install", text: "The installer checks the board and the firmware, shows what it will write, then writes it." },
+  { icon: MousePointerClick, title: "Press BOOT to sign in", text: "Replug it: it is now a security key. Press BOOT when a website asks you to touch it." },
 ];
 
-const COMMON_ERRORS: ErrorCode[] = ["browser-unsupported", "no-device-selected", "not-download-mode", "power-only-cable", "wrong-connector", "wrong-flash-size"];
+const FEATURES: { icon: typeof Cable; title: string; text: string }[] = [
+  { icon: KeyRound, title: "Passkeys and FIDO2", text: "Works with WebAuthn sign-in on sites and apps that accept security keys." },
+  { icon: Fingerprint, title: "BOOT-button presence", text: "Every sign-in needs a physical press of the BOOT button." },
+  { icon: Hash, title: "PIN", text: "Protect stored credentials with a FIDO PIN set from your browser or OS." },
+  { icon: GitBranch, title: "Open source and auditable", text: "Firmware, host tools and this site are published under the AGPL." },
+];
 
-function ReleaseTeaser() {
-  const catalog = useCatalog();
-  if (catalog.status === "loading") return <Skeleton className="h-16 w-full" />;
-  const latest = catalog.status === "ready" ? defaultRelease(catalog.catalog) : null;
-  if (!latest) {
-    return <p className="text-muted-foreground">No firmware release published yet. Until then, use the developer method in the README.</p>;
-  }
-  const b = latest.manifest.builds[0];
+const DOCS: { label: string; href: string }[] = [
+  { label: "Documentation", href: DOCS_URL },
+  { label: "Hardware", href: `${REPO_URL}/blob/main/docs/HARDWARE.md` },
+  { label: "Security", href: `${REPO_URL}/blob/main/docs/SECURITY.md` },
+  { label: "Releases process", href: `${REPO_URL}/blob/main/docs/RELEASES.md` },
+];
+
+function Section({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
   return (
-    <div className="flex flex-wrap items-center gap-3">
-      <span className="font-heading text-lg font-semibold">{latest.name}</span>
-      {latest.prerelease && <Badge variant="secondary">Pre-release</Badge>}
-      {b && <span className="text-muted-foreground">{b.title}</span>}
-      <Button asChild variant="link">
-        <Link to="/releases">All releases</Link>
-      </Button>
-    </div>
+    <section aria-labelledby={id} className="flex flex-col gap-4">
+      <h2 id={id} className="text-2xl font-semibold">
+        {title}
+      </h2>
+      {children}
+    </section>
   );
 }
 
 export function HomePage() {
   return (
-    <>
-      <section className="relative overflow-hidden border-b">
-        <div className="hero-backdrop pointer-events-none absolute inset-0" aria-hidden />
-        <div className="relative mx-auto flex max-w-4xl flex-col items-center gap-6 px-4 py-20 text-center">
-          <Badge variant="outline" className="gap-1">
-            <ShieldCheck className="size-3.5 text-primary" aria-hidden /> Open source · FIDO2 / passkeys
-          </Badge>
-          <h1 className="text-4xl font-bold sm:text-5xl">Turn an ESP32-S3 board into a security key</h1>
-          <p className="max-w-2xl text-lg text-muted-foreground">
-            MultiKeys installs from your browser in a few minutes. No programming tools, no command line.
-          </p>
-          <div className="flex flex-wrap justify-center gap-3">
-            <Button asChild size="lg" className="h-11 px-5 text-base">
-              <Link to="/install">
-                Install MultiKeys <ArrowRight aria-hidden />
-              </Link>
-            </Button>
-            <Button asChild size="lg" variant="outline" className="h-11 px-5 text-base">
-              <Link to="/first-use">Already installed? First use →</Link>
-            </Button>
-          </div>
-          <ExperimentalNotice className="max-w-2xl text-left" />
-          <InstallerStatusBanner className="max-w-2xl text-left" />
+    <Page width="wide">
+      <section className="flex flex-col items-start gap-4" aria-labelledby="hero">
+        <Badge variant="outline">Experimental · open source</Badge>
+        <h1 id="hero" className="max-w-3xl text-4xl font-bold sm:text-5xl">
+          Turn an ESP32-S3 into a FIDO2 security key
+        </h1>
+        <p className="max-w-2xl text-lg text-muted-foreground">Install MultiKeys from your browser in a few minutes, no command line needed.</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button asChild size="lg">
+            <Link to="/install">Install</Link>
+          </Button>
+          <Button asChild size="lg" variant="outline">
+            <Link to="/first-use">First use</Link>
+          </Button>
+          <Button asChild size="lg" variant="link">
+            <a href={REPO_URL} target="_blank" rel="noopener noreferrer">
+              Source on GitHub
+            </a>
+          </Button>
         </div>
+        <p className="flex items-center gap-2 text-sm text-muted-foreground">
+          <ShieldCheck className="size-4" aria-hidden /> Hardware verified on ESP32-S3 N16R8
+        </p>
       </section>
 
-      <section className="mx-auto max-w-6xl px-4 py-16" aria-labelledby="how">
-        <h2 id="how" className="mb-8 text-2xl font-semibold">How it works</h2>
-        <ol className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-          {STEPS.map((s, i) => (
-            <li key={s.title}>
-              <Card className="h-full">
+      <Section id="how" title="How it works">
+        <ol className="grid gap-4 sm:grid-cols-3">
+          {HOW.map((s, i) => (
+            <li key={s.title} className="flex">
+              <Card className="w-full">
                 <CardHeader>
-                  <s.icon className="size-6 text-primary" aria-hidden />
+                  <IconTile variant="soft">
+                    <s.icon aria-hidden />
+                  </IconTile>
                   <CardTitle>
                     {i + 1}. {s.title}
                   </CardTitle>
@@ -88,62 +86,58 @@ export function HomePage() {
             </li>
           ))}
         </ol>
-      </section>
+      </Section>
 
-      <section id="compatibility" className="border-y bg-muted/30" aria-labelledby="compat">
-        <div className="mx-auto grid max-w-6xl gap-10 px-4 py-16 lg:grid-cols-2">
-          <div>
-            <h2 id="compat" className="mb-4 text-2xl font-semibold">Hardware</h2>
-            <ul className="mb-6 list-disc space-y-1 pl-5 text-muted-foreground">
-              <li>ESP32-S3 chip with 16 MB flash (module marked N16R8 or N16R2)</li>
-              <li>A USB connector wired to the chip itself, usually labelled USB or OTG</li>
-              <li>A BOOT button (GPIO0): it becomes the key's touch button</li>
-              <li>A USB cable that carries data, not only power</li>
-              <li>Desktop Chrome or Edge on Windows, macOS, Linux or ChromeOS</li>
-            </ul>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Board</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {BOARDS.filter((b) => b.id !== "unknown").map((b) => (
-                  <TableRow key={b.id}>
-                    <TableCell className="whitespace-normal">{b.label}</TableCell>
-                    <TableCell>
-                      <Badge variant={b.level === "unsupported" ? "outline" : b.level === "verified" ? "default" : "secondary"}>
-                        {LEVEL_LABEL[b.level]}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-          <BoardDiagram />
-        </div>
-      </section>
+      <Section id="features" title="Features">
+        <ul className="grid gap-4 sm:grid-cols-2">
+          {FEATURES.map((f) => (
+            <li key={f.title} className="flex">
+              <Card className="w-full">
+                <CardHeader>
+                  <IconTile variant="soft">
+                    <f.icon aria-hidden />
+                  </IconTile>
+                  <CardTitle>{f.title}</CardTitle>
+                  <CardDescription>{f.text}</CardDescription>
+                </CardHeader>
+              </Card>
+            </li>
+          ))}
+        </ul>
+      </Section>
 
-      <section className="mx-auto grid max-w-6xl gap-10 px-4 py-16 lg:grid-cols-2">
-        <div aria-labelledby="releases">
-          <h2 id="releases" className="mb-4 text-2xl font-semibold">Latest firmware</h2>
-          <ReleaseTeaser />
+      <Section id="hardware" title="Supported hardware">
+        <HardwareTable />
+        <p className="text-sm text-muted-foreground">
+          Details and how to read your module's marking:{" "}
+          <a className="underline underline-offset-4" href={`${REPO_URL}/blob/main/docs/HARDWARE.md`} target="_blank" rel="noopener noreferrer">
+            docs/HARDWARE.md
+          </a>
+          .
+        </p>
+      </Section>
+
+      <Alert variant="warning">
+        <TriangleAlert aria-hidden />
+        <AlertTitle>Development firmware</AlertTitle>
+        <AlertDescription>Development firmware: not FIDO-certified, no secure element, flash encryption off. Don't use it as your only key.</AlertDescription>
+      </Alert>
+
+      <Section id="release" title="Latest release">
+        <LatestRelease />
+      </Section>
+
+      <Section id="docs" title="Documentation">
+        <div className="flex flex-wrap gap-2">
+          {DOCS.map((d) => (
+            <Button key={d.label} asChild variant="outline">
+              <a href={d.href} target="_blank" rel="noopener noreferrer">
+                {d.label}
+              </a>
+            </Button>
+          ))}
         </div>
-        <div aria-labelledby="help">
-          <h2 id="help" className="mb-4 text-2xl font-semibold">Common problems</h2>
-          <ul className="space-y-2">
-            {COMMON_ERRORS.map((c) => (
-              <li key={c}>
-                <Link className="underline-offset-4 transition-colors hover:underline" to={`/help#${c}`}>
-                  {ERRORS[c].title}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </section>
-    </>
+      </Section>
+    </Page>
   );
 }

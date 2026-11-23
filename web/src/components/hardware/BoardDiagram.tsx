@@ -1,5 +1,8 @@
+const DEFAULT_CAPTION =
+  "Connector labels differ between boards. The right one is wired to the chip's own USB (GPIO19/20) and is usually labelled USB or OTG.";
+
 /** Top view of a typical ESP32-S3 N16R8 devkit: where the module marking, the two USB-C connectors and BOOT/RST are. */
-export function BoardDiagram({ className }: { className?: string }) {
+export function BoardDiagram({ className, caption = DEFAULT_CAPTION }: { className?: string; caption?: string }) {
   return (
     <figure className={className}>
       <svg viewBox="0 0 560 300" role="img" aria-labelledby="board-title board-desc" className="h-auto w-full text-foreground">
@@ -34,8 +37,8 @@ export function BoardDiagram({ className }: { className?: string }) {
         <rect x="290" y="252" width="36" height="26" rx="6" fill="var(--muted)" stroke="currentColor" strokeOpacity="0.6" />
         {/* callouts */}
         <line x1="360" y1="108" x2="430" y2="108" stroke="currentColor" strokeOpacity="0.5" />
-        <text x="436" y="104" fontSize="13" fill="currentColor">Module marking:</text>
-        <text x="436" y="121" fontSize="13" fill="currentColor">N16 = 16 MB flash</text>
+        <text x="436" y="104" fontSize="13" fill="currentColor">N4 / N8 / N16</text>
+        <text x="436" y="121" fontSize="13" fill="currentColor">= flash size in MB</text>
         <line x1="254" y1="278" x2="254" y2="292" stroke="var(--primary)" />
         <line x1="254" y1="292" x2="120" y2="292" stroke="var(--primary)" />
         <text x="10" y="270" fontSize="13" fontWeight="600" fill="var(--primary)">USB / OTG</text>
@@ -47,9 +50,7 @@ export function BoardDiagram({ className }: { className?: string }) {
         <text x="10" y="207" fontSize="13" fill="currentColor">BOOT = the</text>
         <text x="10" y="224" fontSize="13" fill="currentColor">touch button</text>
       </svg>
-      <figcaption className="mt-2 text-sm text-muted-foreground">
-        Connector labels differ between boards. The right one is wired to the chip's own USB (GPIO19/20) and is usually labelled USB or OTG.
-      </figcaption>
+      <figcaption className="mt-2 text-sm text-muted-foreground">{caption}</figcaption>
     </figure>
   );
 }

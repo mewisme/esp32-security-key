@@ -1,37 +1,26 @@
-import { KeyRound } from "lucide-react";
-import { useState } from "react";
 import { ExperimentalNotice } from "@/components/common/ExperimentalNotice";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
-import { createUsbChecker } from "@/lib/device/create-usb-checker";
-import type { DeviceCheck } from "@/lib/flashing/machine";
-import { policy } from "@/lib/firmware/policy";
+import { KeyCheck } from "@/components/first-use/KeyCheck";
+import { RenameKey } from "@/components/first-use/RenameKey";
+import { Page } from "@/components/layout/Page";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { REPO_URL } from "@/lib/status";
 
-const SECTIONS: { id: string; title: string; body: React.ReactNode }[] = [
-  {
-    id: "after-install",
-    title: "Right after installing",
-    body: (
-      <>
-        <p>
-          The serial (COM) port you used for installing disappears. That is normal: the board now presents itself as a security key (USB
-          names: “MultiKeys Security Key”) instead of an installer port. To install again later, use download mode (hold BOOT while
-          plugging in).
-        </p>
-      </>
-    ),
-  },
-  {
-    id: "touch",
-    title: "The BOOT button is the touch button",
-    body: (
-      <p>
-        When a website or your browser asks you to touch your security key, press the BOOT button once. There is no status light on
-        this firmware, so watch the browser's prompt instead.
-      </p>
-    ),
-  },
+function Step({ n, title, description, children }: { n: number; title: string; description?: React.ReactNode; children?: React.ReactNode }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>
+          {n}. {title}
+        </CardTitle>
+        {description && <CardDescription>{description}</CardDescription>}
+      </CardHeader>
+      {children && <CardContent>{children}</CardContent>}
+    </Card>
+  );
+}
+
+const MORE: { id: string; title: string; body: React.ReactNode }[] = [
   {
     id: "register",
     title: "Registering vs. signing in",
@@ -46,33 +35,19 @@ const SECTIONS: { id: string; title: string; body: React.ReactNode }[] = [
     id: "pin",
     title: "Why a site may ask for a PIN",
     body: (
-      <>
+      <div className="flex flex-col gap-2">
         <p>
           Pressing BOOT proves someone is present. Some sites also want proof that it is <em>you</em>, which this key does with a PIN.
-          The first time a site needs it, your browser offers to set one.
+          Once a PIN is set, it can only be removed by resetting the key, which deletes every stored credential.
         </p>
         <p>
-          Once a PIN is set, it can only be removed by resetting the key, which deletes every stored credential. Read{" "}
-          <a className="underline underline-offset-4" href={`${REPO_URL}/blob/main/docs/FIDO_UV.md`} target="_blank" rel="noreferrer">
+          Read{" "}
+          <a className="underline underline-offset-4" href={`${REPO_URL}/blob/main/docs/FIDO_UV.md`} target="_blank" rel="noopener noreferrer">
             how the PIN works
           </a>{" "}
           before setting one.
         </p>
-      </>
-    ),
-  },
-  {
-    id: "check",
-    title: "Checking the key without changing anything",
-    body: (
-      <p>
-        Use the button below, or the{" "}
-        <a className="underline underline-offset-4" href={`${REPO_URL}/releases`} target="_blank" rel="noreferrer">
-          host tools
-        </a>
-        : <code className="font-mono">multikey device info</code> or <code className="font-mono">multikey fido info</code> (on
-        Windows from an Administrator terminal). Both only read information.
-      </p>
+      </div>
     ),
   },
   {
@@ -87,48 +62,58 @@ const SECTIONS: { id: string; title: string; body: React.ReactNode }[] = [
   },
 ];
 
-function KeyCheck() {
-  const [result, setResult] = useState<DeviceCheck | null | "failed">(null);
-  const checker = createUsbChecker();
-  if (!checker.supported()) return <p className="text-sm text-muted-foreground">This browser can't check USB devices; use Chrome or Edge.</p>;
-  const [vid, pid] = policy.native_usb.app;
-  return (
-    <div className="space-y-3">
-      <Button
-        onClick={() =>
-          checker
-            .check(vid, pid)
-            .then(setResult)
-            .catch(() => setResult("failed"))
-        }
-      >
-        <KeyRound aria-hidden /> Check my key
-      </Button>
-      {result === "failed" && <p className="text-sm">No key was selected or found. Plug it in without holding BOOT and try again.</p>}
-      {result && result !== "failed" && (
-        <Alert>
-          <AlertTitle>Found: {result.productName ?? "unnamed USB device"}</AlertTitle>
-          <AlertDescription>Landing page: {result.landingUrl ?? "not checked"}</AlertDescription>
-        </Alert>
-      )}
-    </div>
-  );
-}
-
 export function FirstUsePage() {
   return (
-    <div className="mx-auto max-w-3xl space-y-8 px-4 py-10">
-      <h1 className="text-3xl font-semibold">First use</h1>
+    <Page width="flow">
+      <header className="flex flex-col gap-2">
+        <h1 className="text-3xl font-semibold">First use</h1>
+        <p className="text-muted-foreground">Five short steps after the installer has finished.</p>
+      </header>
       <ExperimentalNotice />
-      {SECTIONS.map((s) => (
-        <section key={s.id} id={s.id} className="space-y-2" aria-labelledby={`${s.id}-h`}>
-          <h2 id={`${s.id}-h`} className="text-xl font-semibold">
-            {s.title}
-          </h2>
-          <div className="space-y-2 text-muted-foreground">{s.body}</div>
-          {s.id === "check" && <KeyCheck />}
-        </section>
-      ))}
-    </div>
+      <Step
+        n={1}
+        title="Reconnect"
+        description="The serial (COM) port you used for installing disappears. That is normal: the board now presents itself as a security key. Unplug it and plug it into the native USB connector (usually labelled USB or OTG)."
+      />
+      <Step
+        n={2}
+        title="The BOOT button is user presence"
+        description="When a website or your browser asks you to touch your security key, press the BOOT button once. There is no status light on this firmware, so watch the browser's prompt instead."
+      />
+      <Step n={3} title="Set a FIDO PIN" description="Your operating system or browser sets the PIN, not this site.">
+        <ul className="flex list-disc flex-col gap-1 pl-5 text-sm">
+          <li>
+            <strong>Windows:</strong> Settings → Accounts → Sign-in options → Security key → Manage.
+          </li>
+          <li>
+            <strong>macOS:</strong> in Chrome or Edge, open Settings → Privacy and security → Security → Manage security keys.
+          </li>
+          <li>
+            <strong>Linux:</strong> in Chrome or Edge, open Settings → Privacy and security → Security → Manage security keys.
+          </li>
+        </ul>
+      </Step>
+      <Step n={4} title="Check your key" description="Reads the key's USB name and landing page. Nothing is changed.">
+        <KeyCheck />
+      </Step>
+      <Step n={5} title="Rename your key" description="Choose the name your computer shows for the key. You will press BOOT on the key to confirm.">
+        <RenameKey />
+      </Step>
+      <Card>
+        <CardHeader>
+          <CardTitle>More about your key</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Accordion type="multiple">
+            {MORE.map((m) => (
+              <AccordionItem key={m.id} value={m.id}>
+                <AccordionTrigger>{m.title}</AccordionTrigger>
+                <AccordionContent className="text-muted-foreground">{m.body}</AccordionContent>
+              </AccordionItem>
+            ))}
+          </Accordion>
+        </CardContent>
+      </Card>
+    </Page>
   );
 }

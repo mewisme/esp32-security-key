@@ -3,15 +3,16 @@
 The site at https://multikeys.mewis.me: a beginner installer that flashes MultiKeys firmware from desktop Chrome/Edge over
 Web Serial, plus first-use, help and release pages.
 
-Stack: React 19 + Vite 8 + TypeScript 6 + Tailwind CSS 4 + shadcn/ui (Radix), `esptool-js` 0.7.1 for the serial protocol,
-hosted on Cloudflare Workers with static assets via `@cloudflare/vite-plugin`.
+Stack: React 19 + Vite 8 + TypeScript 6 + Tailwind CSS 4 + shadcn/ui (Radix) with [ReUI](https://reui.io) components
+(`src/components/reui/`, installed as shipped), `esptool-js` 0.7.1 for the serial protocol, hosted on Cloudflare Workers with
+static assets via `@cloudflare/vite-plugin`.
 
 ## Commands
 
 ```sh
 pnpm install
 pnpm dev                                         # http://localhost:5173 (Vite + local Worker)
-MULTIKEYS_LOCAL_FIRMWARE=../build-pkgtest pnpm dev   # serve a locally packaged firmware as release "local"
+MULTIKEYS_LOCAL_FIRMWARE=../build-localfw pnpm dev  # serve a locally packaged firmware as release "local" (see below)
 pnpm typecheck && pnpm lint && pnpm test        # tsc, eslint, vitest (pure logic + components)
 pnpm test:e2e                                    # Playwright against `vite build --mode e2e` + preview
 pnpm build && pnpm preview                       # production build, served by the local Worker runtime
@@ -21,15 +22,20 @@ pnpm run deploy                                  # production Worker (multikeys-
 
 `pnpm deploy` is a pnpm builtin; always use `pnpm run deploy`.
 
-Local firmware for `MULTIKEYS_LOCAL_FIRMWARE`: build without `--release`, then
+Local firmware for `MULTIKEYS_LOCAL_FIRMWARE`: build one image per flash size (without `--release`), package each and write a
+manifest (schema 2, all three release profiles):
 
 ```sh
-python tools/package_firmware.py package --build-dir build-fido-dev --sdkconfig sdkconfig.fido-dev.generated \
-  --app fido --board esp32s3-n16r8-boot-button --version "$(python tools/package_firmware.py version)-dev" \
-  --commit "$(git rev-parse HEAD)" --out build-pkgtest --source-date-epoch 0
-python tools/package_firmware.py manifest --entries 'build-pkgtest/*.entry.json' \
-  --version "$(python tools/package_firmware.py version)-dev" --tag local --commit "$(git rev-parse HEAD)" \
-  --out build-pkgtest/firmware-manifest.json
+V="$(python tools/package_firmware.py version)-dev"
+for hw in esp32s3-4mb esp32s3-8mb esp32s3-16mb; do
+  python tools/build.py dev --app fido --hw $hw --board esp32s3-boot-button --clean
+  tag="$(python -c "import sys; sys.path.insert(0, 'tools'); import flash_dev as f; print(f.build_tag('fido', 'dev', '$hw'))")"
+  python tools/package_firmware.py package --build-dir "build-$tag" --sdkconfig "sdkconfig.$tag.generated" --app fido \
+    --hw $hw --version "$V" --commit "$(git rev-parse HEAD)" --out build-localfw --source-date-epoch 0
+done
+python tools/package_firmware.py manifest --entries 'build-localfw/*.entry.json' --version "$V" --tag local \
+  --commit "$(git rev-parse HEAD)" --out build-localfw/firmware-manifest.json --require-release-profiles
+MULTIKEYS_LOCAL_FIRMWARE=../build-localfw pnpm dev
 ```
 
 Tag `local` is accepted only by the dev server (`import.meta.env.DEV`); production builds reject it.
@@ -39,7 +45,7 @@ Tag `local` is accepted only by the dev server (`import.meta.env.DEV`); producti
 | Route | Behaviour |
 |---|---|
 | `GET /api/releases` | releases from GitHub's `releases.atom` feed (drafts never appear; the REST API is avoided because unauthenticated calls from Workers' shared IPs are rate-limited) whose `firmware-manifest.json` exists (HEAD check, newest 10); cached 5 min |
-| `GET /api/firmware/:tag/:asset` | proxies `releases/download/:tag/:asset`; `tag` must be `vX.Y.Z[-pre]`, `asset` must be `firmware-manifest.json`, `SHA256SUMS` or `multikey-firmware-v<tag version>-esp32s3-n16r8-<fido|openpgp>-dev.zip`; max 16 MiB; cached immutable |
+| `GET /api/firmware/:tag/:asset` | proxies `releases/download/:tag/:asset`; `tag` must be `vX.Y.Z[-pre]`, `asset` must be `firmware-manifest.json`, `SHA256SUMS` or `multikey-firmware-v<tag version>-esp32s3-<4mb\|8mb\|16mb>-<fido\|openpgp>-dev.zip` (`n16r8` instead of the size only for the v0.2.0 assets published before the profiles); max 16 MiB; cached immutable |
 | other `/api/*` | 404 (`405` for non-GET) |
 
 GitHub release downloads have no CORS headers, hence the proxy. The Worker holds no secrets or tokens and builds upstream
@@ -48,12 +54,15 @@ fallback; `public/_headers` sets CSP (`connect-src 'self'`), `Permissions-Policy
 
 ## Known limitations
 
-- Hardware coverage: one update on one board (`docs/hw-reports/2026-11-23-web-installer.md`). esptool-js only offers an RTS
-  `hard_reset` after writing, which left the native-USB board in download mode (as with the developer script, which uses
-  `--after watchdog_reset`); the reconnect step therefore tells the user to replug. No watchdog-reset workaround is
+- Hardware coverage: one update on one board, 16 MB (`docs/hw-reports/2026-11-23-web-installer.md`); 4 and 8 MB builds were
+  never run on a board, and renaming from the browser was never run against a real key (simulated key only). esptool-js only
+  offers an RTS `hard_reset` after writing, which left the native-USB board in download mode (as with the developer script, which
+  uses `--after watchdog_reset`); the finish stage therefore tells the user to replug. No watchdog-reset workaround is
   implemented without a further hardware test.
-- The WebUSB key check may not be able to open the device on Windows (HID/CCID drivers hold the interfaces); it then reports
-  the landing page as "not checked". `python tools/check_usb_descriptors.py --live` is the check of record.
+- The WebUSB identity read may not be able to open the device on Windows (HID/CCID drivers hold the interfaces); it then
+  reports the landing page as "not checked". `python tools/check_usb_descriptors.py --live` is the check of record. Renaming uses
+  the vendor-class interface instead; if the browser cannot claim it the page says so and shows the `multikey device rename`
+  command (`name-transport-unavailable`). Linux/macOS are unverified (Linux may need a udev rule for 303A:4002).
 
 ## Trust model
 
@@ -68,12 +77,31 @@ fallback; `public/_headers` sets CSP (`connect-src 'self'`), `Permissions-Policy
 
 ## Architecture
 
-- `src/lib/flashing/machine.ts`: pure reducer for the wizard phases; `completed` needs a verified flash.
-- `src/hooks/useInstaller.ts`: performs side effects (driver, download, decisions) and dispatches events.
-- `src/lib/flashing/driver.ts`: `FlashDriver` interface; `esptool-driver.ts` implements it with esptool-js.
-- E2E: `vite build --mode e2e` aliases `@/lib/flashing/create-driver` and `@/lib/device/create-usb-checker` to
-  `tests/e2e/fake-*.ts` (a simulated board driven by `localStorage["multikeys-e2e-scenario"]`). Production builds never
-  contain the fakes; check with `rg -l "multikeys-e2e-scenario" dist/client` (no output).
+- `src/lib/flashing/machine.ts`: pure reducer for the six installer stages' phases; `completed` needs a verified flash.
+- `src/hooks/useInstaller.ts`: performs side effects (driver, download, decisions) and dispatches events; the choices made
+  before connecting (release, device name) live in `config`, persisted per tab in `sessionStorage`
+  (`src/lib/installer-config.ts`: release tag, image, requested name; never a PIN).
+- `src/lib/flashing/driver.ts`: `FlashDriver` interface; `esptool-driver.ts` implements it with esptool-js and also reads the
+  flash type (quad/octal) from eFuse `EFUSE_RD_REPEAT_DATA3_REG` bit 9 on the ESP32-S3.
+- `src/lib/compatibility/profiles.ts`: `selectProfile(chip, builds, image)` picks the build by exact flash size and says how well
+  that board is known to work (`hardware-verified`, `expected-compatible`, `build-verified`); `matrix.ts` is the table on the home
+  page (same rows as `docs/HARDWARE.md`). The hardware profiles themselves are in `tools/flash_policy.json`
+  (`src/lib/firmware/policy.ts`), shared with the Python tools.
+- `src/lib/firmware/manifest.ts` validates `firmware-manifest.json`: schema 2 (`profile_id` per build) and, through an explicit
+  mapping, the published v0.2.0 schema 1 (`legacy: true`, treated as the 16 MB profile; its asset name still says `n16r8`).
+- Personalization (`src/lib/device/`): `mkauth.ts` builds and parses the MKAUTH APDUs (byte-exact port of
+  `host/multikey-proto`), `webccid.ts` speaks CCID over the vendor-class (0xFF) WebUSB interface, `key-connector.ts` is the
+  `KeyConnector`/`KeyConnection` seam (identity, transmit, wait for re-enumeration), `personalize.ts` applies a requested name and
+  verifies it, `hooks/useKeyName.ts` tracks the outcome for the UI. Flow: after the verified flash the person presses **Check my
+  key**, picks the key in the browser's USB chooser, and the page reads the current name; if it differs it sends SET (or CLEAR for
+  "reset to the default name") with the re-enumerate flag, asks for the BOOT button (15 s) and, if the key has a management PIN,
+  for the PIN (never stored), waits for the key to reappear and reads the name and the USB product string back. "Applied and
+  verified" is shown only when both match. Failures show the same change as a `multikey device rename ...` command.
+- E2E: `vite build --mode e2e` aliases `@/lib/flashing/create-driver` and `@/lib/device/create-key-connector` to
+  `tests/e2e/fake-create-driver.ts` and `tests/e2e/fake-create-key-connector.ts` (a simulated board and an in-memory MKAUTH key
+  driven by `localStorage["multikeys-e2e-scenario"]`; scenario fields in `tests/e2e/scenario.ts`: chip, flash size/type,
+  PSRAM features, installed firmware, which release is published, key name/PIN/button/re-enumeration). Production builds never
+  contain the fakes; check with `rg -l "multikeys-e2e-scenario|FakeDriver|FakeKeyConnector" dist/client` (no output).
 
 ## Staging and the custom domain
 
@@ -84,6 +112,8 @@ fallback; `public/_headers` sets CSP (`connect-src 'self'`), `Permissions-Policy
    `"routes": [{ "pattern": "multikeys.mewis.me", "custom_domain": true }]` (the `mewis.me` zone must be on the same
    Cloudflare account), then `pnpm run deploy`.
 
-CI (`.github/workflows/web.yml`) runs typecheck, lint, unit and e2e tests on every push; deploys only from a manual
-`workflow_dispatch` with `deploy: staging|production`, using the `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` secrets
-of the `cloudflare-<target>` environment.
+CI (`.github/workflows/web.yml`) runs lint, unit tests, the production build (`tsc -b` then `vite build`, then a grep that the
+bundle holds no test double: `multikeys-e2e-scenario`, `FakeDriver`, `FakeKeyConnector`) and the e2e tests on every push (the
+Playwright browser download is cached by Playwright's version); it deploys only from a manual `workflow_dispatch` with
+`deploy: staging|production`, using the `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` secrets of the `cloudflare-<target>`
+environment.

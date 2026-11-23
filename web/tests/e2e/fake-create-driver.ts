@@ -41,12 +41,14 @@ class FakeDriver implements FlashDriver {
     await sleep(50);
     this.lines.push("fake: connecting");
     if (this.s.connectError) throw new Error("Failed to connect with the device");
+    const chipName = this.s.chip ?? "ESP32-S3";
     return {
-      chipName: this.s.chip ?? "ESP32-S3",
-      description: `${this.s.chip ?? "ESP32-S3"} (QFN56) (revision v0.2)`,
-      features: ["WiFi", "BLE", "Embedded PSRAM 8MB (AP_3v3)"],
+      chipName,
+      description: `${chipName} (QFN56) (revision v0.2)`,
+      features: this.s.features ?? ["Wi-Fi", "BLE", "Embedded PSRAM 8MB (AP_3v3)"],
       mac: "80:b5:4e:c8:22:78",
       flashSize: this.s.flashSize === undefined ? "16MB" : this.s.flashSize,
+      flashType: chipName === "ESP32-S3" ? (this.s.flashType ?? "quad") : null,
       secureDownloadMode: false,
     };
   }
@@ -67,7 +69,7 @@ class FakeDriver implements FlashDriver {
     for (const w of writes) {
       const chunk = Math.max(4096, Math.ceil(total / 20));
       for (let pos = 0; pos < w.data.length; pos += chunk) {
-        await sleep(15);
+        await sleep(this.s.writeDelayMs ?? 15);
         done += Math.min(chunk, w.data.length - pos);
         if (this.s.disconnectAt !== undefined && done / total >= this.s.disconnectAt) {
           for (const l of this.listeners) l();

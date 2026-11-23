@@ -1,6 +1,6 @@
 import { FirmwareError } from "../errors/firmware-error";
 import { validateManifest } from "./manifest";
-import type { Manifest } from "./types";
+import type { Build, Manifest } from "./types";
 import { compareSemver } from "./version";
 
 export interface CatalogRelease {
@@ -59,4 +59,9 @@ export async function fetchCatalog(fetchImpl: typeof fetch = fetch): Promise<Cat
 /** Newest stable release, else newest pre-release. */
 export function defaultRelease(c: Catalog): CatalogRelease | null {
   return c.releases.find((r) => !r.prerelease) ?? c.releases[0] ?? null;
+}
+
+/** Builds as people read them: fido before openpgp, smallest flash first ("4 / 8 / 16 MB"). */
+export function buildsBySize(builds: readonly Build[]): Build[] {
+  return [...builds].sort((a, b) => a.image.localeCompare(b.image) || parseInt(a.flash_size, 10) - parseInt(b.flash_size, 10));
 }

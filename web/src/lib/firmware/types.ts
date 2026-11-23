@@ -1,6 +1,9 @@
-// firmware-manifest.json, as written by tools/package_firmware.py (schema_version 1).
+// firmware-manifest.json as written by tools/package_firmware.py (schema_version 2). Schema-1 manifests (v0.2.0) are
+// normalised into the same shape by validateManifest (see manifest.ts), so everything downstream reads one `Build`.
 
 export type ImageRole = "bootloader" | "partition-table" | "app";
+
+export type Verification = "hardware-verified" | "build-verified";
 
 export interface ManifestImage {
   role: ImageRole;
@@ -29,25 +32,35 @@ export interface Build {
   flash_size: string;
   flash_mode: string;
   flash_freq: string;
+  /** Hardware profile in tools/flash_policy.json (schema 1: derived from the legacy build id). */
+  profile_id: string;
+  flash_interface: "quad";
+  psram_required: boolean;
   security_profile: "development";
   idf_version: string;
   user_presence: { gpio: number; active_low: boolean };
   led: string;
-  usb: { vid: number; pid: number; webusb_landing_url: string };
+  usb: { vid: number; pid: number; webusb_landing_url: string; product_name: string; custom_name: boolean };
   package: { name: string; size: number; sha256: string };
   images: ManifestImage[];
   partitions: ManifestPartition[];
   layout_id: string;
+  partition_schema: string;
   protected_partitions: string[];
   repurpose_fill: string[];
   update: { data_preserving_from: string };
   install_modes: string[];
-  verification: string;
+  verified_hardware: string[];
+  verification: Verification;
+  /** True for a schema-1 manifest entry: its fields above were derived, not published. */
+  legacy: boolean;
+  /** The exact JSON entry as published (package included); firmware.json inside the zip must equal it minus `package`. */
+  entry: Record<string, unknown>;
 }
 
 export interface Manifest {
   schema: "multikeys-firmware-manifest";
-  schema_version: 1;
+  schema_version: 1 | 2;
   version: string;
   tag: string;
   source_commit: string;

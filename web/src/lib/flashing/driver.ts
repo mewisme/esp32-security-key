@@ -12,6 +12,8 @@ export interface ChipInfo {
   features: string[];
   mac: string | null;
   flashSize: string | null;
+  /** Quad-SPI or octal flash, read from eFuse on the ESP32-S3; null when it cannot be told. */
+  flashType: "quad" | "octal" | null;
   secureDownloadMode: boolean;
 }
 

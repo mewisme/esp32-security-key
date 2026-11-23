@@ -5,6 +5,13 @@ describe("parseFirmwareRoute", () => {
   it("allows the release assets", () => {
     expect(parseFirmwareRoute("/api/firmware/v0.2.0/firmware-manifest.json")).toEqual({ tag: "v0.2.0", asset: "firmware-manifest.json" });
     expect(parseFirmwareRoute("/api/firmware/v0.2.0/SHA256SUMS")).not.toBeNull();
+    expect(parseFirmwareRoute("/api/firmware/v0.2.0/multikey-firmware-v0.2.0-esp32s3-16mb-fido-dev.zip")).not.toBeNull();
+    expect(parseFirmwareRoute("/api/firmware/v0.2.0/multikey-firmware-v0.2.0-esp32s3-8mb-fido-dev.zip")).not.toBeNull();
+    expect(parseFirmwareRoute("/api/firmware/v0.2.0/multikey-firmware-v0.2.0-esp32s3-4mb-fido-dev.zip")).not.toBeNull();
+    expect(parseFirmwareRoute("/api/firmware/v0.3.0-rc.1/multikey-firmware-v0.3.0-rc.1-esp32s3-4mb-fido-dev.zip")).not.toBeNull();
+  });
+
+  it("keeps the published n16r8 asset names of v0.2.0 downloadable", () => {
     expect(parseFirmwareRoute("/api/firmware/v0.2.0/multikey-firmware-v0.2.0-esp32s3-n16r8-fido-dev.zip")).not.toBeNull();
     expect(parseFirmwareRoute("/api/firmware/v0.3.0-rc.1/multikey-firmware-v0.3.0-rc.1-esp32s3-n16r8-fido-dev.zip")).not.toBeNull();
   });
@@ -14,7 +21,12 @@ describe("parseFirmwareRoute", () => {
       "/api/firmware/v0.2.0/..%2Fetc",
       "/api/firmware/v0.2.0/../x",
       "/api/firmware/../v0.2.0/SHA256SUMS",
+      "/api/firmware/v0.2.0/multikey-firmware-v0.3.0-esp32s3-16mb-fido-dev.zip",
       "/api/firmware/v0.2.0/multikey-firmware-v0.3.0-esp32s3-n16r8-fido-dev.zip",
+      "/api/firmware/v0.2.0/multikey-firmware-v0.2.0-esp32s3-2mb-fido-dev.zip",
+      "/api/firmware/v0.2.0/multikey-firmware-v0.2.0-esp32s3-32mb-fido-dev.zip",
+      "/api/firmware/v0.2.0/multikey-firmware-v0.2.0-esp32s3-16MB-fido-dev.zip",
+      "/api/firmware/v0.2.0/multikey-firmware-v0.2.0-esp32s3-16mb-fido-prod.zip",
       "/api/firmware/v0.2.0/https:%2F%2Fevil.example%2Fx",
       "/api/firmware/v0.2.0/multikey-v0.2.0-windows-x86_64.zip",
       "/api/firmware/local/firmware-manifest.json",

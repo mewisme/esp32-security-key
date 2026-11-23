@@ -5,8 +5,9 @@ export const REPOSITORY = "mewisme/esp32-security-key";
 export const MAX_ASSET_BYTES = 16 * 1024 * 1024;
 
 export const TAG_RE = /^v\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?$/;
+// `n16r8` is accepted only so the v0.2.0 assets (schema 1) stay downloadable; new releases name the flash size.
 export const ASSET_RE =
-  /^(firmware-manifest\.json|SHA256SUMS|multikey-firmware-v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)-esp32s3-n16r8-(fido|openpgp)-dev\.zip)$/;
+  /^(firmware-manifest\.json|SHA256SUMS|multikey-firmware-v(?<version>\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)-esp32s3-(?<hw>n16r8|4mb|8mb|16mb)-(?<image>fido|openpgp)-dev\.zip)$/;
 
 export type FirmwareRoute = { tag: string; asset: string };
 
@@ -14,7 +15,7 @@ export type FirmwareRoute = { tag: string; asset: string };
 export function isAllowedAsset(tag: string, asset: string): boolean {
   const m = ASSET_RE.exec(asset);
   if (!m) return false;
-  const version = m[2];
+  const version = m.groups?.version;
   return version === undefined || tag === "local" || version === tag.slice(1);
 }
 

@@ -81,7 +81,8 @@ export async function verifyPackage(zip: Uint8Array, build: Build): Promise<Down
   } catch {
     throw new FirmwareError("manifest-invalid", "firmware.json is not JSON");
   }
-  const { package: _pkg, ...entry } = build;
+  // firmware.json is the entry exactly as published (schema 1 or 2), not the normalised `build`.
+  const { package: _pkg, ...entry } = build.entry;
   void _pkg;
   if (canonical(fw) !== canonical(entry)) throw new FirmwareError("manifest-invalid", "firmware.json differs from the manifest");
   return images.sort((a, b) => a.offset - b.offset);

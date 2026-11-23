@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { InstallDecision } from "@/lib/flashing/install-mode";
 import { type FlashEvent, type FlashState, flashReducer, initialState } from "@/lib/flashing/machine";
 
-const chip = { chipName: "ESP32-S3", description: "ESP32-S3", features: [], mac: null, flashSize: "16MB", secureDownloadMode: false };
+const chip = { chipName: "ESP32-S3", description: "ESP32-S3", features: [], mac: null, flashSize: "16MB", flashType: "quad" as const, secureDownloadMode: false };
 const decision = (acks: InstallDecision["acks"] = ["dev-firmware"]): InstallDecision => ({
   mode: "update-unverified",
   allowed: true,
@@ -13,15 +13,17 @@ const decision = (acks: InstallDecision["acks"] = ["dev-firmware"]): InstallDeci
 
 const run = (events: FlashEvent[], from: FlashState = initialState) => events.reduce(flashReducer, from);
 
+const COMPATIBLE: FlashEvent = { type: "COMPATIBLE", buildId: "esp32s3-16mb-fido-dev", profileId: "esp32s3-16mb", support: "hardware-verified" };
+
 const TO_CONFIRM: FlashEvent[] = [
   { type: "START" },
   { type: "BROWSER_OK" },
-  { type: "HARDWARE_CONFIRMED", boardId: "esp32s3-n16r8-devkit" },
-  { type: "FIRMWARE_SELECTED", tag: "v0.2.0", buildId: "b" },
+  { type: "HARDWARE_CONFIRMED" },
+  { type: "FIRMWARE_SELECTED", tag: "v0.2.0", image: "fido" },
   { type: "PORT_GRANTED", info: {} },
   { type: "CONNECTED" },
   { type: "CHIP_DETECTED", chip },
-  { type: "COMPATIBLE" },
+  COMPATIBLE,
   { type: "MANIFEST_READY" },
   { type: "DOWNLOADED" },
   { type: "INTEGRITY_OK" },
@@ -41,6 +43,18 @@ describe("flashReducer", () => {
     ]);
     expect(s.phase).toBe("completed");
     expect(s.milestones).toEqual({ downloaded: true, integrityVerified: true, written: true, flashVerified: true, deviceDetected: true });
+  });
+
+  it("FIRMWARE_SELECTED stores the release and image but no build: the build follows the board", () => {
+    const s = run(TO_CONFIRM.slice(0, 4));
+    expect(s.phase).toBe("requesting-permission");
+    expect([s.tag, s.image, s.buildId, s.profileId, s.support]).toEqual(["v0.2.0", "fido", null, null, null]);
+  });
+
+  it("COMPATIBLE stores the build, profile and support level", () => {
+    const s = run(TO_CONFIRM.slice(0, 8));
+    expect(s.phase).toBe("fetching-metadata");
+    expect([s.buildId, s.profileId, s.support]).toEqual(["esp32s3-16mb-fido-dev", "esp32s3-16mb", "hardware-verified"]);
   });
 
   it("ignores CANCEL while flashing and verifying", () => {
@@ -81,15 +95,37 @@ describe("flashReducer", () => {
     expect(s.error?.code).toBe("storage-incompatible");
   });
 
-  it("RETRY after a connection failure returns to device selection and clears the attempt", () => {
-    const failed = run([...TO_CONFIRM.slice(0, 6), { type: "FAIL", code: "not-download-mode", message: "" }]);
+  it("RETRY after a connection failure returns to device selection, keeps the release and clears the attempt", () => {
+    const failed = run([...TO_CONFIRM.slice(0, 8), { type: "FAIL", code: "wrong-flash-size", message: "" }]);
     const s = run([{ type: "RETRY" }], failed);
     expect(s.phase).toBe("requesting-permission");
     expect(s.chip).toBeNull();
+    expect([s.buildId, s.profileId, s.support]).toEqual([null, null, null]);
     expect(s.tag).toBe("v0.2.0");
+    expect(s.image).toBe("fido");
   });
 
   it("ignores events that do not belong to the phase", () => {
     expect(run([{ type: "WRITTEN" }])).toBe(initialState);
+  });
+});
+
+describe("BACK", () => {
+  it("goes from firmware selection to the first stage and from device selection to firmware selection", () => {
+    const atFirmware = run(TO_CONFIRM.slice(0, 3));
+    expect(atFirmware.phase).toBe("firmware-selection");
+    const first = run([{ type: "BACK" }], atFirmware);
+    expect(first.phase).toBe("hardware-guidance");
+    const again = run([{ type: "HARDWARE_CONFIRMED" }, { type: "FIRMWARE_SELECTED", tag: "v0.2.0", image: "fido" }, { type: "BACK" }], first);
+    expect(again.phase).toBe("firmware-selection");
+  });
+
+  it("is ignored once the board is being talked to, and everywhere else", () => {
+    for (const events of [TO_CONFIRM.slice(0, 5), TO_CONFIRM.slice(0, 8), TO_CONFIRM, [], TO_CONFIRM.slice(0, 2)]) {
+      const before = run(events);
+      expect(run([{ type: "BACK" }], before)).toBe(before);
+    }
+    const flashing = run([...TO_CONFIRM, { type: "CONFIRMED", acks: ["dev-firmware", "update-unverified"] }]);
+    expect(run([{ type: "BACK" }], flashing).phase).toBe("flashing");
   });
 });

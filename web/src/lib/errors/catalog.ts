@@ -1,3 +1,5 @@
+import { supportedFlashSizes } from "../firmware/policy";
+
 // Every error the installer can show, in plain language. `retry: false` means retrying cannot help without changing
 // something first. Integrity and storage-safety errors never offer a way to continue anyway.
 
@@ -25,9 +27,19 @@ export type ErrorCode =
   | "flash-verify-failed"
   | "reboot-failed"
   | "no-reenumeration"
-  | "firmware-version-unknown";
+  | "firmware-version-unknown"
+  | "unsupported-flash-mode"
+  | "unknown-flash-size"
+  | "profile-not-in-release"
+  | "name-rename-disabled"
+  | "name-button-timeout"
+  | "name-pin-wrong"
+  | "name-pin-blocked"
+  | "name-transport-unavailable"
+  | "name-not-verified"
+  | "name-failed";
 
-export type ErrorGroup = "Browser" | "Connecting" | "Board" | "Firmware" | "Flashing" | "After install";
+export type ErrorGroup = "Browser" | "Connecting" | "Board" | "Firmware" | "Flashing" | "After install" | "Personalization";
 
 export interface ErrorInfo {
   group: ErrorGroup;
@@ -41,6 +53,12 @@ export interface ErrorInfo {
 export const NO_BYPASS: readonly ErrorCode[] = ["checksum-mismatch", "manifest-invalid", "unsafe-layout", "storage-incompatible"];
 
 const DOWNLOAD_MODE = "Put the board in download mode: unplug it, hold the BOOT button, plug it back in while holding BOOT, then let go.";
+
+/** "4, 8 or 16 MB", from the hardware profiles of tools/flash_policy.json. */
+const FLASH_SIZES = (() => {
+  const sizes = supportedFlashSizes().map((s) => s.replace("MB", ""));
+  return `${sizes.slice(0, -1).join(", ")} or ${sizes.at(-1)} MB`;
+})();
 
 export const ERRORS: Record<ErrorCode, ErrorInfo> = {
   "browser-unsupported": {
@@ -118,14 +136,35 @@ export const ERRORS: Record<ErrorCode, ErrorInfo> = {
     group: "Board",
     title: "This board has a different chip",
     what: "MultiKeys only runs on the ESP32-S3. The connected board reports another chip.",
-    next: ["Use an ESP32-S3 board with 16 MB flash (for example one marked N16R8)."],
+    next: [`Use an ESP32-S3 board with ${FLASH_SIZES} of quad flash (for example one marked N16R8).`],
     retry: false,
   },
   "wrong-flash-size": {
     group: "Board",
-    title: "This board doesn't have 16 MB of flash",
-    what: "The firmware and its storage layout need 16 MB of flash memory. This board reports a different size.",
-    next: ["Use an ESP32-S3 board with 16 MB flash; the module marking usually contains N16 (for example N16R8)."],
+    title: "This board's flash size isn't supported",
+    what: `MultiKeys needs ${FLASH_SIZES} of flash. This board reports a different size.`,
+    next: [`Use an ESP32-S3 board with ${FLASH_SIZES} of flash; the module marking usually contains N4, N8 or N16 (for example N16R8).`],
+    retry: false,
+  },
+  "unsupported-flash-mode": {
+    group: "Board",
+    title: "This board uses octal flash",
+    what: "Your board uses octal flash. MultiKeys only supports ESP32-S3 boards with quad-SPI flash; nothing was written.",
+    next: ["Use an ESP32-S3 board with a quad-flash module. ESP32-S3-WROOM-2 modules (for example N16R8V) use octal flash."],
+    retry: false,
+  },
+  "unknown-flash-size": {
+    group: "Board",
+    title: "The flash size couldn't be read",
+    what: "The flash size couldn't be read, so no firmware can be chosen safely. Reconnect in download mode and try again; nothing was written.",
+    next: [DOWNLOAD_MODE, "Then press Try again and choose the device again."],
+    retry: true,
+  },
+  "profile-not-in-release": {
+    group: "Board",
+    title: "No firmware for this board in the chosen release",
+    what: "This release has no firmware for your board's flash size. Choose a newer release.",
+    next: ["Go back and choose another release, or check the Releases page for the flash sizes each release covers."],
     retry: false,
   },
   "secure-download-mode": {
@@ -219,6 +258,61 @@ export const ERRORS: Record<ErrorCode, ErrorInfo> = {
     next: ["Only continue if you can afford to lose the keys stored on this board."],
     retry: false,
   },
+  "name-rename-disabled": {
+    group: "Personalization",
+    title: "This firmware can't be renamed",
+    what: "This firmware was built without renaming support.",
+    next: ["Keep the default name, or install a MultiKeys build that supports renaming."],
+    retry: false,
+  },
+  "name-button-timeout": {
+    group: "Personalization",
+    title: "The BOOT button wasn't pressed in time",
+    what: "The BOOT button wasn't pressed within 15 seconds; the name was not changed.",
+    next: ["Try again, and press the BOOT button on your key as soon as the page asks you to."],
+    retry: true,
+  },
+  "name-pin-wrong": {
+    group: "Personalization",
+    title: "Wrong management PIN",
+    what: "Wrong management PIN; the name was not changed.",
+    next: ["Enter the management PIN again. Too many wrong attempts block the PIN."],
+    retry: true,
+  },
+  "name-pin-blocked": {
+    group: "Personalization",
+    title: "The management PIN is blocked",
+    what: "The management PIN is blocked; renaming is impossible without re-provisioning.",
+    next: ["Keep using the current name. A FIDO reset doesn't clear a blocked management PIN; docs/PROVISIONING.md explains re-provisioning a development unit."],
+    retry: false,
+  },
+  "name-transport-unavailable": {
+    group: "Personalization",
+    title: "This browser can't reach the key's management interface",
+    what: "This browser can't talk to the key's management interface.",
+    next: [
+      "Use desktop Chrome or Edge, with the key plugged into the USB/OTG connector.",
+      "Or rename it from the command line with the host tools: multikey device rename \"My Key\" --reenumerate",
+    ],
+    retry: true,
+  },
+  "name-not-verified": {
+    group: "Personalization",
+    title: "The new name wasn't confirmed",
+    what: "The key accepted the name but didn't come back after restarting its USB connection.",
+    next: ["Unplug the key, plug it in again, and check the name on the First use page."],
+    retry: true,
+  },
+  "name-failed": {
+    group: "Personalization",
+    title: "The key refused the name",
+    what: "The key refused the name; its answer is shown as a status code.",
+    next: [
+      "Use 1–31 plain ASCII characters (letters, digits, spaces, punctuation) without a space at the start or end.",
+      "If it keeps failing, rename it from the command line: multikey device rename \"My Key\" --reenumerate",
+    ],
+    retry: true,
+  },
 };
 
-export const ERROR_GROUPS: ErrorGroup[] = ["Browser", "Connecting", "Board", "Firmware", "Flashing", "After install"];
+export const ERROR_GROUPS: ErrorGroup[] = ["Browser", "Connecting", "Board", "Firmware", "Flashing", "After install", "Personalization"];
