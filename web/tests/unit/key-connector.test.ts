@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { WebUsbKeyConnector } from "@/lib/device/key-connector";
+import { SessionBusyError, WebUsbKeyConnector } from "@/lib/device/key-connector";
 import { NoAnswerError } from "@/lib/device/webccid";
 
 function dev(serial: string, extra: Record<string, unknown> = {}) {
@@ -135,5 +135,203 @@ describe("WebUsbKeyConnector", () => {
       expect([...(await c.transmit(Uint8Array.from([1]), 1000))]).toEqual([0x90, 0x00]);
       expect(fresh.events).toEqual(["claim 3"]);
     });
+  });
+});
+
+// A model of the USB stack that behaves like the browser where it matters for sessions: a pending transfer fails when
+// the interface is released, a claim while another claim is open fails, and two reads at once are counted.
+describe("one session at a time", () => {
+  const BUTTON_WAIT = Uint8Array.from("7f120000000000010000030012080101010a6769746875622e636f6d".match(/../g)!.map((h) => Number.parseInt(h, 16)));
+  const atr = Uint8Array.from([0x80, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0x3b]);
+  const answer = (seq: number, data: number[]) => Uint8Array.from([0x80, data.length, 0, 0, 0, 0, seq, 0, 0, 0, ...data]);
+
+  function usbKey() {
+    const log: string[] = [];
+    let claimed = false;
+    let reading = 0;
+    let maxReading = 0;
+    let seq = 0;
+    const waiting: ((e: Error) => void)[] = [];
+    const queue: Uint8Array[] = [];
+    let wake: (() => void) | null = null;
+    const d = {
+      serialNumber: "s1",
+      productName: "K",
+      manufacturerName: "M",
+      opened: false,
+      configuration: null as unknown,
+      open: vi.fn(async () => {
+        d.opened = true;
+      }),
+      selectConfiguration: vi.fn(async () => {
+        d.configuration = { interfaces: [{ interfaceNumber: 3, alternate: { interfaceClass: 0xff, endpoints: [{ endpointNumber: 1, direction: "in", type: "bulk" }, { endpointNumber: 2, direction: "out", type: "bulk" }] } }] };
+      }),
+      claimInterface: vi.fn(async () => {
+        if (claimed) throw new DOMException("The interface is already claimed.", "InvalidStateError");
+        claimed = true;
+        log.push("claim");
+      }),
+      releaseInterface: vi.fn(async () => {
+        log.push("release");
+        claimed = false;
+        for (const fail of waiting.splice(0)) fail(new Error("The transfer was cancelled."));
+        await new Promise((r) => setTimeout(r, 5));
+      }),
+      close: vi.fn(async () => {
+        log.push("close");
+        d.opened = false;
+      }),
+      transferOut: vi.fn(async (_ep: number, data: BufferSource) => {
+        const b = new Uint8Array(data as Uint8Array);
+        if (b[0] === 0x62) queue.push(atr);
+        else if (b[0] === 0x6f) queue.push(answer(b[6]!, [0x90, 0x00]));
+        seq = b[6]!;
+        wake?.();
+        return { status: "ok", bytesWritten: b.length };
+      }),
+      transferIn: vi.fn(async () => {
+        reading += 1;
+        maxReading = Math.max(maxReading, reading);
+        try {
+          while (!queue.length) {
+            await new Promise<void>((resolve, reject) => {
+              wake = resolve;
+              waiting.push(reject);
+            });
+          }
+          const r = queue.shift()!;
+          return { status: "ok", data: new DataView(r.buffer, r.byteOffset, r.byteLength) };
+        } finally {
+          reading -= 1;
+        }
+      }),
+    };
+    return { d, log, push: (m: Uint8Array) => { queue.push(m); wake?.(); }, maxReading: () => maxReading, claimed: () => claimed, lastSeq: () => seq };
+  }
+
+  const connect = async (k: ReturnType<typeof usbKey>) => {
+    fakeUsb(k.d as never);
+    return new WebUsbKeyConnector().connect(1, 2);
+  };
+  const settle = () => new Promise((r) => setTimeout(r, 30));
+
+  it("a command asked for right after the watcher was told to stop waits for it to release, then runs on its own claim", async () => {
+    const k = usbKey();
+    const c = await connect(k);
+    const ctl = new AbortController();
+    const watching = c.watchEvents(() => {}, ctl.signal);
+    await settle();
+    ctl.abort();
+    const reply = c.transmit(Uint8Array.from([1]), 1000); // no await in between: the watcher is still cleaning up
+    await watching;
+    expect([...(await reply)]).toEqual([0x90, 0x00]);
+    expect(k.maxReading()).toBe(1);
+    expect(k.log.filter((e) => e === "claim")).toHaveLength(2);
+    expect(k.log.filter((e) => e === "claim" || e === "release")).toEqual(["claim", "release", "claim"]);
+  });
+
+  it("refuses a command while it listens instead of reading at the same time", async () => {
+    const k = usbKey();
+    const c = await connect(k);
+    const ctl = new AbortController();
+    const watching = c.watchEvents(() => {}, ctl.signal);
+    await settle();
+    await expect(c.transmit(Uint8Array.from([1]), 1000)).rejects.toBeInstanceOf(SessionBusyError);
+    await expect(c.watchEvents(() => {}, new AbortController().signal)).rejects.toBeInstanceOf(SessionBusyError);
+    expect(k.maxReading()).toBe(1);
+    ctl.abort();
+    await watching;
+    expect(k.claimed()).toBe(false);
+  });
+
+  it("rapid start, stop, start: every listener ends before the next one claims the interface, and no two reads overlap", async () => {
+    const k = usbKey();
+    const c = await connect(k);
+    const events: string[] = [];
+    const run = (name: string) => {
+      const ctl = new AbortController();
+      const p = c.watchEvents((e) => events.push(`${name}:${e.op}`), ctl.signal);
+      return { ctl, p };
+    };
+    const a = run("a");
+    await settle();
+    a.ctl.abort();
+    const b = run("b"); // asked for while a is still releasing
+    await settle();
+    k.push(BUTTON_WAIT); // b is the one listening now
+    await settle();
+    b.ctl.abort();
+    const cc = run("c");
+    await settle();
+    cc.ctl.abort();
+    await Promise.all([a.p, b.p, cc.p]);
+    expect(k.maxReading()).toBe(1);
+    expect(k.log.filter((e) => e === "claim")).toHaveLength(3);
+    expect(k.log.filter((e) => e === "release")).toHaveLength(3);
+    // claim/release strictly alternate: a new claim never starts before the previous release.
+    k.log.filter((e) => e === "claim" || e === "release").forEach((e, i) => expect(e).toBe(i % 2 === 0 ? "claim" : "release"));
+    expect(events).toEqual(["b:user-presence"]);
+  });
+
+  it("close() while listening ends the listener, releases the interface and closes the device", async () => {
+    const k = usbKey();
+    const c = await connect(k);
+    const watching = c.watchEvents(() => {}, new AbortController().signal);
+    await settle();
+    await c.close();
+    await watching;
+    expect(k.claimed()).toBe(false);
+    expect(k.log.at(-1)).toBe("close");
+    expect(k.d.opened).toBe(false);
+  });
+
+  it("close() ends a command that is still waiting for its answer, without waiting for the timeout", async () => {
+    const k = usbKey();
+    k.d.transferOut.mockImplementation(async (_ep: number, data: BufferSource) => {
+      const b = new Uint8Array(data as Uint8Array);
+      if (b[0] === 0x62) k.push(atr); // power-on is answered, the command itself never is
+      return { status: "ok", bytesWritten: b.length };
+    });
+    const c = await connect(k);
+    const pending = c.transmit(Uint8Array.from([1]), 60_000);
+    const failed = expect(pending).rejects.toBeDefined();
+    await settle();
+    await c.close();
+    await failed;
+    expect(k.claimed()).toBe(false);
+  });
+
+  it("reconnecting: a new connection to the same key claims only after the old one released", async () => {
+    const k = usbKey();
+    const first = await connect(k);
+    const watching = first.watchEvents(() => {}, new AbortController().signal);
+    await settle();
+    const second = await connect(k);
+    await first.close();
+    await watching;
+    expect([...(await second.transmit(Uint8Array.from([1]), 1000))]).toEqual([0x90, 0x00]);
+    expect(k.maxReading()).toBe(1);
+  });
+
+  it("a command that never gets an answer does not block the next one, which starts on a fresh claim", async () => {
+    vi.useFakeTimers();
+    const k = usbKey();
+    let first = true;
+    k.d.transferOut.mockImplementation(async (_ep: number, data: BufferSource) => {
+      const b = new Uint8Array(data as Uint8Array);
+      if (b[0] === 0x62) k.push(atr);
+      else if (b[0] === 0x6f && !first) k.push(answer(b[6]!, [0x90, 0x00]));
+      else first = false;
+      return { status: "ok", bytesWritten: b.length };
+    });
+    const c = await connect(k);
+    const one = c.transmit(Uint8Array.from([1]), 1000);
+    const lost = expect(one).rejects.toBeInstanceOf(NoAnswerError);
+    const two = c.transmit(Uint8Array.from([2]), 1000);
+    await vi.advanceTimersByTimeAsync(1010); // the timeout, then the 5 ms the interface takes to be released
+    await lost;
+    await vi.advanceTimersByTimeAsync(200);
+    expect([...(await two)]).toEqual([0x90, 0x00]);
+    expect(k.maxReading()).toBe(1);
   });
 });

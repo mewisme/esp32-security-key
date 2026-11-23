@@ -57,8 +57,10 @@ export function useKeyDevice(): KeyDevice {
     if (!c) return;
     setBuild({ status: "reading" });
     try {
-      setBuild({ status: "ok", info: await readBuildInfo(c) });
+      const info = await readBuildInfo(c);
+      if (conn.current === c) setBuild({ status: "ok", info });
     } catch (e) {
+      if (conn.current !== c) return;
       setBuild(e instanceof BuildInfoUnsupportedError ? { status: "outdated" } : { status: "failed", detail: e instanceof Error ? e.message : String(e) });
     }
   }, []);
@@ -73,7 +75,12 @@ export function useKeyDevice(): KeyDevice {
       setConnect({ status: "not-chosen" });
       return;
     }
+    // A previous connection stops listening and releases the interface before this one is used.
+    abort.current?.abort();
+    abort.current = null;
+    const previous = conn.current;
     conn.current = c;
+    await previous?.close().catch(() => {});
     setFeed([]);
     setWatch("idle");
     setConnect({ status: "connected", identity: await c.identity().catch(() => null) });
@@ -88,17 +95,25 @@ export function useKeyDevice(): KeyDevice {
 
   const startWatching = useCallback(() => {
     const c = conn.current;
-    if (!c || abort.current) return;
+    // A watch that was stopped may still be releasing the interface: the new one waits for that inside the connection.
+    if (!c || (abort.current && !abort.current.signal.aborted)) return;
     const ctl = new AbortController();
     abort.current = ctl;
     setWatch("watching");
+    // Only the current watch may change the state: an older one that finishes later must not undo a newer start.
+    const current = () => abort.current === ctl && conn.current === c;
     c.watchEvents(
-      (event, backlog) =>
-        setFeed((f) => [...f, { id: nextId.current++, event, backlog, receivedAt: Date.now() }].slice(-FEED_LIMIT)),
+      (event, backlog) => {
+        if (current()) setFeed((f) => [...f, { id: nextId.current++, event, backlog, receivedAt: Date.now() }].slice(-FEED_LIMIT));
+      },
       ctl.signal,
     )
-      .then(() => setWatch("idle"))
-      .catch(() => setWatch("stopped"))
+      .then(() => {
+        if (current()) setWatch("idle");
+      })
+      .catch(() => {
+        if (current()) setWatch("stopped");
+      })
       .finally(() => {
         if (abort.current === ctl) abort.current = null;
       });
