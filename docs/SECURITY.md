@@ -51,6 +51,9 @@ README makes the same distinction for chips without OTP secrets.
 | Supply chain | Submodules pinned by SHA; mbedTLS/tinycbor/libcvc are fetched by tag/branch at configure time (not hash-pinned). |
 | Weak RNG | The SDK RNG (hardware RNG based) is used everywhere; entropy quality with Wi-Fi/BT off was not assessed. |
 | Debug/UART output | Dev builds log at INFO; prod at WARN. UART logging is not disabled in prod. |
+| Device renaming | The name is a label. Changing it needs a BOOT press and, once MKAUTH is enrolled, the MKAUTH PIN; an unenrolled key has no PIN, so a press is the only check and malware that can reach the key can rename it after a press (spoofing a different label to a human, nothing more: keys, credentials, VID/PID and AAGUID cannot change through it, and the CLI/host find the key by the manufacturer string, which a rename does not change). `MULTIKEY_USB_CUSTOM_NAME_ENABLED=n` removes the feature. |
+| FIDO UV policy | The UV flag is set only after a verified PIN token. With a PIN set, `docs/FIDO_UV.md` lists upstream gaps found by the emulation tests: getAssertion ignores alwaysUv; a locked key returns a signature that does not verify instead of an error (cause not analysed; no key exposure was observed, none was looked for beyond the failed verification); toggling alwaysUv off leaves makeCredUvNotRqd cleared. Not patched. |
+| Authenticator identity | AAGUID is a development value (`docs/USB_IDENTITY.md`). The per-device attestation certificate makes `direct` attestation device-identifying (upstream design); RPs that ask for `none` get nothing. |
 
 ## Rules enforced in the repository
 

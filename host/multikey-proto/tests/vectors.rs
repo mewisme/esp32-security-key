@@ -233,3 +233,95 @@ fn status_words() {
     );
     assert_eq!(split_response(&[0x90]), Err(ProtoError::NoStatusWord));
 }
+
+#[test]
+fn device_name_validation() {
+    use multikey_proto::{validate_device_name, NameError, NAME_MAX};
+    assert_eq!(validate_device_name("Mew's Security Key"), Ok(()));
+    assert_eq!(validate_device_name("A"), Ok(()));
+    assert_eq!(validate_device_name(&"x".repeat(NAME_MAX)), Ok(()));
+    assert_eq!(validate_device_name(""), Err(NameError::Empty));
+    assert_eq!(
+        validate_device_name(&"x".repeat(NAME_MAX + 1)),
+        Err(NameError::TooLong(NAME_MAX + 1))
+    );
+    // Valid UTF-8 but not representable by the firmware's ASCII-only USB strings.
+    assert_eq!(
+        validate_device_name("Kh\u{f3}a"),
+        Err(NameError::NotPrintableAscii('\u{f3}'))
+    );
+    assert_eq!(
+        validate_device_name("key \u{1F511}"),
+        Err(NameError::NotPrintableAscii('\u{1F511}'))
+    );
+    assert_eq!(
+        validate_device_name("tab\there"),
+        Err(NameError::NotPrintableAscii('\t'))
+    );
+    assert_eq!(
+        validate_device_name("nul\0"),
+        Err(NameError::NotPrintableAscii('\0'))
+    );
+    assert_eq!(validate_device_name(" lead"), Err(NameError::EdgeSpace));
+    assert_eq!(validate_device_name("trail "), Err(NameError::EdgeSpace));
+    assert_eq!(validate_device_name("in side"), Ok(()));
+}
+
+#[test]
+fn device_name_apdus() {
+    use multikey_proto::{
+        device_name_clear_apdu, device_name_get_apdu, device_name_reenumerate_apdu,
+        device_name_set_apdu,
+    };
+    assert_eq!(device_name_get_apdu(), [0x80, 0x06, 0x00, 0x00, 0x00]);
+    // Unenrolled: empty PIN field.
+    assert_eq!(
+        device_name_set_apdu(&[], "Key", false).unwrap(),
+        [0x80, 0x06, 0x01, 0x00, 0x04, 0x00, b'K', b'e', b'y', 0x00]
+    );
+    // Enrolled: pin_len | pin | name, P2 bit0 asks for re-enumeration.
+    assert_eq!(
+        device_name_set_apdu(b"123456", "Key", true).unwrap(),
+        [
+            0x80, 0x06, 0x01, 0x01, 0x0A, 0x06, b'1', b'2', b'3', b'4', b'5', b'6', b'K', b'e',
+            b'y', 0x00
+        ]
+    );
+    assert_eq!(
+        device_name_clear_apdu(&[], false).unwrap(),
+        [0x80, 0x06, 0x02, 0x00, 0x01, 0x00, 0x00]
+    );
+    assert_eq!(
+        device_name_reenumerate_apdu(b"123456").unwrap(),
+        [0x80, 0x06, 0x03, 0x00, 0x07, 0x06, b'1', b'2', b'3', b'4', b'5', b'6']
+    );
+    // A PIN that is neither empty nor 6..=63 bytes never reaches the wire; neither does a bad name.
+    assert!(matches!(
+        device_name_set_apdu(b"123", "Key", false),
+        Err(ProtoError::PinLength(3))
+    ));
+    assert!(matches!(
+        device_name_set_apdu(&[], "Kh\u{f3}a", false),
+        Err(ProtoError::Name(_))
+    ));
+    // Longest legal command still fits one short APDU.
+    let longest = device_name_set_apdu(&[b'p'; 63], &"n".repeat(31), true).unwrap();
+    assert_eq!(longest[4] as usize, 1 + 63 + 31);
+    assert_eq!(longest.len(), 5 + 1 + 63 + 31 + 1);
+}
+
+#[test]
+fn device_name_response_parsing() {
+    use multikey_proto::parse_device_name;
+    let n = parse_device_name(&[0x07, b'A', b'B']).unwrap();
+    assert!(n.custom && n.reenumeration_pending && n.rename_supported);
+    assert_eq!(n.name, "AB");
+    let n = parse_device_name(&[0x04, b'x']).unwrap();
+    assert!(!n.custom && !n.reenumeration_pending && n.rename_supported);
+    // Empty name, reserved flag bits, oversize and non-UTF-8 are all malformed.
+    assert!(parse_device_name(&[0x04]).is_err());
+    assert!(parse_device_name(&[0x08, b'x']).is_err());
+    assert!(parse_device_name(&[[0x04].as_slice(), &[b'x'; 32]].concat()).is_err());
+    assert!(parse_device_name(&[0x04, 0xFF, 0xFE]).is_err());
+    assert!(parse_device_name(&[]).is_err());
+}

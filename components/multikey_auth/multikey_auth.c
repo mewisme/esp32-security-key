@@ -15,6 +15,11 @@
 #include "fido.h"
 #include "random.h"
 #include "crypto_utils.h"
+#include "usb.h"
+#include "tusb.h"
+
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 #include "mbedtls/constant_time.h"
 #include "mbedtls/ecdsa.h"
@@ -333,16 +338,166 @@ static int cmd_revoke(void) {
     return SW_OK();
 }
 
+/*
+ * INS 06 DEVICE_NAME, P1 selects the operation. P2 is 00, or 01 on SET/CLEAR to also detach/attach USB once the
+ * response has been sent (the same as a following REENUM, without a second button press):
+ *   00 GET     no data. Response: flags | name. flags bit0 = a user name is stored (else the Kconfig default),
+ *              bit1 = the name differs from the one the host currently sees (re-enumeration pending),
+ *              bit2 = renaming is compiled in. name = what the next enumeration will report. No authorization.
+ *   01 SET     data: pin_len | pin | name (printable ASCII, 1..31, no leading/trailing space).
+ *   02 CLEAR   data: pin_len | pin. Restores the Kconfig default name.
+ *   03 REENUM  data: pin_len | pin. Detaches from USB for about a second so the host reads the strings again.
+ *              The response is only the status word.
+ * SET, CLEAR and REENUM need a button press; once MKAUTH is enrolled they also need its PIN (pin_len must be 0
+ * while it is not enrolled). The name lives in its own file: keys, credentials, PINs, VID/PID and the AAGUID are
+ * never touched, and it survives MKAUTH revoke and FIDO reset.
+ */
+#define MKA_NAME_GET 0x00
+#define MKA_NAME_SET 0x01
+#define MKA_NAME_CLEAR 0x02
+#define MKA_NAME_REENUM 0x03
+#define MKA_NAME_P2_REENUM 0x01 /* P2 bit0 on SET/CLEAR: detach/attach once the response has been sent */
+
+static int cmd_device_name_get(void) {
+    char name[MULTIKEY_NAME_MAX + 1];
+    bool custom = false;
+    size_t n = multikey_usb_name_effective(name, &custom);
+    uint8_t flags = 0;
+#ifdef CONFIG_MULTIKEY_USB_CUSTOM_NAME_ENABLED
+    flags |= 0x04;
+#endif
+    if (custom) {
+        flags |= 0x01;
+    }
+    if (strcmp(name, multikey_usb_name_active()) != 0) {
+        flags |= 0x02;
+    }
+    res_APDU[0] = flags;
+    memcpy(res_APDU + 1, name, n);
+    res_APDU_size = (uint16_t)(1 + n);
+    apdu.ne = res_APDU_size;
+    return SW_OK();
+}
+
+/* Verifies the optional PIN prefix and the button. rest and rest_len describe the data after the PIN. */
+static int mka_manage_auth(const uint8_t **rest, size_t *rest_len) {
+    if (apdu.nc < 1) {
+        return SW_WRONG_LENGTH();
+    }
+    size_t pin_len = apdu.data[0];
+    if (1 + pin_len > apdu.nc) {
+        return SW_WRONG_LENGTH();
+    }
+    *rest = apdu.data + 1 + pin_len;
+    *rest_len = apdu.nc - 1 - pin_len;
+    const mka_record_t *rec = mka_load();
+    if (rec == NULL) {
+        if (pin_len != 0) {
+            return SW_INCORRECT_PARAMS(); /* 6A80: an unenrolled device has no PIN to verify */
+        }
+    }
+    else {
+        bool ok = false;
+        int sw = mka_verify_pin(rec, apdu.data + 1, pin_len, &ok);
+        if (!ok) {
+            return sw;
+        }
+    }
+    if (mka_wait_button() != 0) {
+        return SW_WARNING_NOINFO();
+    }
+    return PICOKEYS_OK;
+}
+
+static int mka_name_store(const uint8_t *name, size_t len) {
+    file_t *ef = file_new(MULTIKEY_EF_DEVICE_NAME);
+    if (ef == NULL || file_put_data(ef, CONST_BYTE_ARRAY(name, (uint16_t)len)) != PICOKEYS_OK) {
+        return PICOKEYS_EXEC_ERROR;
+    }
+    flash_commit();
+    return PICOKEYS_OK;
+}
+
+static void mka_reenum_task(void *arg) {
+    (void)arg;
+    vTaskDelay(pdMS_TO_TICKS(300)); /* let the response leave the endpoint first */
+    tud_disconnect();
+    vTaskDelay(pdMS_TO_TICKS(1200));
+    tud_connect();
+    multikey_usb_name_applied(); /* the host now reads the strings that GET reports as the effective name */
+    vTaskDelete(NULL);
+}
+
+static int cmd_device_name(void) {
+    uint8_t p1 = P1(apdu);
+    if (p1 == MKA_NAME_GET) {
+        return cmd_device_name_get();
+    }
+#ifndef CONFIG_MULTIKEY_USB_CUSTOM_NAME_ENABLED
+    return SW_CONDITIONS_NOT_SATISFIED();
+#else
+    if (p1 != MKA_NAME_SET && p1 != MKA_NAME_CLEAR && p1 != MKA_NAME_REENUM) {
+        return SW_INCORRECT_P1P2();
+    }
+    /* Malformed names are rejected before a PIN attempt is spent. */
+    if (p1 == MKA_NAME_SET) {
+        if (apdu.nc < 1 || 1u + apdu.data[0] > apdu.nc) {
+            return SW_WRONG_LENGTH();
+        }
+        if (!multikey_name_valid(apdu.data + 1 + apdu.data[0], apdu.nc - 1u - apdu.data[0])) {
+            return SW_INCORRECT_PARAMS(); /* 6A80: invalid name (SW_WRONG_DATA is 6700 in this SDK) */
+        }
+    }
+    const uint8_t *rest = NULL;
+    size_t rest_len = 0;
+    int sw = mka_manage_auth(&rest, &rest_len);
+    if (sw != PICOKEYS_OK) {
+        return sw;
+    }
+    int rc = PICOKEYS_OK;
+    if (p1 == MKA_NAME_SET) {
+        rc = mka_name_store(rest, rest_len);
+    }
+    else if (p1 == MKA_NAME_CLEAR) {
+        file_t *ef = file_search(MULTIKEY_EF_DEVICE_NAME);
+        if (ef != NULL && file_has_data(ef)) {
+            rc = file_delete(ef);
+            if (rc == PICOKEYS_OK) {
+                flash_commit();
+            }
+        }
+    }
+    else if (rest_len != 0) {
+        return SW_WRONG_LENGTH();
+    }
+    if (rc != PICOKEYS_OK) {
+        return set_res_sw(0x6F, 0x00);
+    }
+    multikey_usb_strings_refresh();
+    if (p1 == MKA_NAME_REENUM || (P2(apdu) & MKA_NAME_P2_REENUM)) {
+        if (xTaskCreate(mka_reenum_task, "mka_reenum", 2048, NULL, 5, NULL) != pdPASS) {
+            return set_res_sw(0x6F, 0x00);
+        }
+    }
+    if (p1 == MKA_NAME_REENUM) {
+        return SW_OK();
+    }
+    return cmd_device_name_get();
+#endif
+}
+
 #define INS_GET_INFO 0x01
 #define INS_ENROLL 0x02
 #define INS_CHALLENGE 0x03
 #define INS_REVOKE 0x04
+#define INS_DEVICE_NAME 0x06
 
 static const cmd_t mka_cmds[] = {
     { INS_GET_INFO, cmd_get_info },
     { INS_ENROLL, cmd_enroll },
     { INS_CHALLENGE, cmd_challenge },
     { INS_REVOKE, cmd_revoke },
+    { INS_DEVICE_NAME, cmd_device_name },
     { 0x00, 0x0 }
 };
 
@@ -350,7 +505,12 @@ static int mka_process_apdu(void) {
     if (CLA(apdu) != 0x80) {
         return SW_CLA_NOT_SUPPORTED();
     }
-    if (P1(apdu) != 0x00 || P2(apdu) != 0x00) {
+    if (INS(apdu) == INS_DEVICE_NAME) {
+        if (P2(apdu) > MKA_NAME_P2_REENUM) {
+            return SW_INCORRECT_P1P2();
+        }
+    }
+    else if (P1(apdu) != 0x00 || P2(apdu) != 0x00) {
         return SW_INCORRECT_P1P2();
     }
     for (const cmd_t *cmd = mka_cmds; cmd->ins != 0x00; cmd++) {

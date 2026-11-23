@@ -41,6 +41,20 @@ jobs:
             echo "build must fail when MULTIKEY_BUTTON_GPIO/LED_GPIO are unset"; exit 1
           fi
 
+  fido-emulation:
+    # Hardware-free FIDO2 user-verification policy tests against pico-fido's native emulation build.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Patches apply cleanly
+        run: git config --global --add safe.directory '*' && python3 tools/apply_patches.py
+      - name: Tools
+        run: sudo apt-get update && sudo apt-get install -y rsync cmake ninja-build libssl-dev
+      - name: UV policy tests (emulation)
+        run: bash tools/run_emulation_tests.sh
+
   host:
     strategy:
       fail-fast: false
@@ -52,7 +66,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
-      - name: Linux: PC/SC headers
+      - name: 'Linux: PC/SC headers'
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libpcsclite-dev
       - run: cargo fmt --check

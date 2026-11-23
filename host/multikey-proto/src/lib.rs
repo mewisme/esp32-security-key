@@ -12,6 +12,13 @@ pub const INS_GET_INFO: u8 = 0x01;
 pub const INS_ENROLL: u8 = 0x02;
 pub const INS_CHALLENGE: u8 = 0x03;
 pub const INS_REVOKE: u8 = 0x04;
+pub const INS_DEVICE_NAME: u8 = 0x06;
+/// Longest device name in bytes (one esp_tinyusb string descriptor).
+pub const NAME_MAX: usize = 31;
+pub const NAME_GET: u8 = 0x00;
+pub const NAME_SET: u8 = 0x01;
+pub const NAME_CLEAR: u8 = 0x02;
+pub const NAME_REENUM: u8 = 0x03;
 pub const PROTOCOL_VERSION: u8 = 0x01;
 pub const POLICY_UP_REQUIRED: u8 = 0x01;
 pub const PIN_MIN: usize = 6;
@@ -100,6 +107,8 @@ pub enum ProtoError {
     BadVersion(u8),
     #[error("invalid state byte {0:#04x}")]
     BadState(u8),
+    #[error("invalid device name: {0}")]
+    Name(#[from] NameError),
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -176,6 +185,120 @@ pub fn revoke_apdu(pin: &[u8]) -> Result<Vec<u8>, ProtoError> {
     let mut v = vec![CLA, INS_REVOKE, 0, 0, pin.len() as u8];
     v.extend_from_slice(pin);
     Ok(v)
+}
+
+/// Why a device name was rejected. The firmware applies the same rules (`multikey_name_valid`).
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum NameError {
+    #[error("name is empty")]
+    Empty,
+    #[error("name is {0} bytes, the limit is {NAME_MAX}")]
+    TooLong(usize),
+    #[error("{0:?} cannot be used: the USB stack of this firmware only represents printable ASCII (0x20..0x7E)")]
+    NotPrintableAscii(char),
+    #[error("name must not start or end with a space")]
+    EdgeSpace,
+}
+
+/// Checks `name` against the firmware rules: 1..=31 printable ASCII characters (esp_tinyusb converts string
+/// descriptors byte for byte, so anything else would be corrupted on the wire), no leading/trailing space.
+/// `name` is already valid UTF-8 (`&str`); non-ASCII text is refused rather than transcoded.
+pub fn validate_device_name(name: &str) -> Result<(), NameError> {
+    if name.is_empty() {
+        return Err(NameError::Empty);
+    }
+    if name.len() > NAME_MAX {
+        return Err(NameError::TooLong(name.len()));
+    }
+    if let Some(c) = name.chars().find(|c| !(' '..='~').contains(c)) {
+        return Err(NameError::NotPrintableAscii(c));
+    }
+    if name.starts_with(' ') || name.ends_with(' ') {
+        return Err(NameError::EdgeSpace);
+    }
+    Ok(())
+}
+
+/// PIN field of a management command: empty while the device is not enrolled, otherwise a valid PIN.
+fn manage_pin(pin: &[u8]) -> Result<(), ProtoError> {
+    if pin.is_empty() {
+        Ok(())
+    } else {
+        check_pin(pin)
+    }
+}
+
+fn name_apdu(p1: u8, p2: u8, pin: &[u8], name: &[u8], le: bool) -> Result<Vec<u8>, ProtoError> {
+    manage_pin(pin)?;
+    let mut v = vec![
+        CLA,
+        INS_DEVICE_NAME,
+        p1,
+        p2,
+        (1 + pin.len() + name.len()) as u8,
+        pin.len() as u8,
+    ];
+    v.extend_from_slice(pin);
+    v.extend_from_slice(name);
+    if le {
+        v.push(0x00);
+    }
+    Ok(v)
+}
+
+/// `80 06 00 00 00`: read the device name (no authorization needed).
+pub fn device_name_get_apdu() -> Vec<u8> {
+    vec![CLA, INS_DEVICE_NAME, NAME_GET, 0, 0x00]
+}
+
+/// `80 06 01 P2 Lc pin_len PIN name 00`. `pin` is empty while the device is not enrolled. With
+/// `reenumerate` (P2 = 01) the device also detaches/attaches USB after answering.
+pub fn device_name_set_apdu(
+    pin: &[u8],
+    name: &str,
+    reenumerate: bool,
+) -> Result<Vec<u8>, ProtoError> {
+    validate_device_name(name)?;
+    name_apdu(NAME_SET, u8::from(reenumerate), pin, name.as_bytes(), true)
+}
+
+/// `80 06 02 P2 Lc pin_len PIN 00`: restore the default (Kconfig) name.
+pub fn device_name_clear_apdu(pin: &[u8], reenumerate: bool) -> Result<Vec<u8>, ProtoError> {
+    name_apdu(NAME_CLEAR, u8::from(reenumerate), pin, &[], true)
+}
+
+/// `80 06 03 00 Lc pin_len PIN`: detach from USB briefly so the host re-reads the descriptors.
+pub fn device_name_reenumerate_apdu(pin: &[u8]) -> Result<Vec<u8>, ProtoError> {
+    name_apdu(NAME_REENUM, 0, pin, &[], false)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeviceName {
+    /// A user-chosen name is stored (otherwise `name` is the build-time default).
+    pub custom: bool,
+    /// The stored name differs from the one currently enumerated: unplug/replug or `reenumerate`.
+    pub reenumeration_pending: bool,
+    /// The firmware was built with renaming enabled.
+    pub rename_supported: bool,
+    /// The name the next enumeration will report.
+    pub name: String,
+}
+
+pub fn parse_device_name(data: &[u8]) -> Result<DeviceName, ProtoError> {
+    let bad = || ProtoError::BadLength {
+        what: "device name response",
+        len: data.len(),
+    };
+    if data.len() < 2 || data.len() > 1 + NAME_MAX || data[0] & !0x07 != 0 {
+        return Err(bad());
+    }
+    let name = std::str::from_utf8(&data[1..]).map_err(|_| bad())?;
+    Ok(DeviceName {
+        custom: data[0] & 0x01 != 0,
+        reenumeration_pending: data[0] & 0x02 != 0,
+        rename_supported: data[0] & 0x04 != 0,
+        name: name.to_owned(),
+    })
 }
 
 /// Split a raw card response into (data, status word).

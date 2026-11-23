@@ -80,8 +80,44 @@ enum Cmd {
         #[command(flatten)]
         common: Common,
     },
+    /// Show or change the name the device reports over USB (product string, reader name).
+    Device {
+        #[command(subcommand)]
+        cmd: DeviceCmd,
+    },
 }
 
+#[derive(Subcommand)]
+enum DeviceCmd {
+    /// Show the device name and whether a rename is waiting for USB re-enumeration.
+    Show {
+        #[command(flatten)]
+        common: Common,
+    },
+    /// Store a new device name (button press; also the MKAUTH PIN once enrolled). 1-31 printable ASCII
+    /// characters. Keys, credentials, PINs, VID/PID and the FIDO AAGUID are not touched.
+    Rename {
+        /// New name, e.g. "Mew's Security Key".
+        name: String,
+        #[command(flatten)]
+        common: Common,
+        /// Detach/attach USB right away so the host reads the new name (the reader reappears).
+        #[arg(long)]
+        reenumerate: bool,
+    },
+    /// Restore the default name from the firmware build (same authorization as rename).
+    ResetName {
+        #[command(flatten)]
+        common: Common,
+        #[arg(long)]
+        reenumerate: bool,
+    },
+    /// Detach/attach USB so the host re-reads the name (button press; PIN once enrolled).
+    Reenumerate {
+        #[command(flatten)]
+        common: Common,
+    },
+}
 type Res = Result<(), CliError>;
 
 enum CliError {
@@ -136,7 +172,8 @@ fn run(cli: Cli) -> Res {
             Ok(())
         }
         Cmd::Status { common } => {
-            let info = open(&common)?.info()?;
+            let mut dev = open(&common)?;
+            let info = dev.info()?;
             println!("protocol version : {}", info.version);
             println!("enrolled         : {}", info.enrolled);
             println!(
@@ -147,6 +184,17 @@ fn run(cli: Cli) -> Res {
             if let Some(pk) = info.pubkey {
                 println!("public key       : {}", hex::encode(pk));
                 println!("fingerprint      : {}", fingerprint(&pk));
+            }
+            match dev.device_name() {
+                Ok(n) => println!(
+                    "device name      : {}{}",
+                    n.name,
+                    if n.custom { " (custom)" } else { " (default)" }
+                ),
+                Err(Error::NameUnsupported) => {
+                    println!("device name      : (firmware without INS 06)")
+                }
+                Err(e) => return Err(e.into()),
             }
             Ok(())
         }
@@ -230,6 +278,80 @@ fn run(cli: Cli) -> Res {
             store.remove(&user);
             store.save(&path).map_err(msg)?;
             println!("revoked {user}");
+            Ok(())
+        }
+        Cmd::Device { cmd } => run_device(cmd),
+    }
+}
+
+/// The MKAUTH PIN is only asked for once the device is enrolled (an unenrolled device has no PIN).
+fn management_pin(dev: &mut Device<PcscTransport>) -> Result<Vec<u8>, CliError> {
+    if dev.info()?.enrolled {
+        read_pin("MKAUTH PIN: ")
+    } else {
+        Ok(Vec::new())
+    }
+}
+
+fn print_name(n: &multikey_proto::DeviceName) {
+    println!(
+        "device name     : {}{}",
+        n.name,
+        if n.custom { " (custom)" } else { " (default)" }
+    );
+    if n.reenumeration_pending {
+        println!("note            : the host still sees the old name; unplug and replug the key, or run `multikey device reenumerate`");
+    }
+}
+
+fn run_device(cmd: DeviceCmd) -> Res {
+    match cmd {
+        DeviceCmd::Show { common } => {
+            let n = open(&common)?.device_name()?;
+            print_name(&n);
+            println!("pending         : {}", n.reenumeration_pending);
+            println!("rename enabled  : {}", n.rename_supported);
+            Ok(())
+        }
+        DeviceCmd::Rename {
+            name,
+            common,
+            reenumerate,
+        } => {
+            // Reject bad names before the device is touched or a PIN is asked for.
+            multikey_proto::validate_device_name(&name).map_err(msg)?;
+            let mut dev = open(&common)?;
+            let pin = management_pin(&mut dev)?;
+            eprintln!("Press the device button to confirm the new name...");
+            let mut n = dev.set_device_name(&pin, &name, reenumerate)?;
+            n.reenumeration_pending &= !reenumerate;
+            print_name(&n);
+            if reenumerate {
+                println!("the device detaches from USB for about a second; the new name is used afterwards");
+            }
+            Ok(())
+        }
+        DeviceCmd::ResetName {
+            common,
+            reenumerate,
+        } => {
+            let mut dev = open(&common)?;
+            let pin = management_pin(&mut dev)?;
+            eprintln!("Press the device button to restore the default name...");
+            let mut n = dev.clear_device_name(&pin, reenumerate)?;
+            n.reenumeration_pending &= !reenumerate;
+            print_name(&n);
+            if reenumerate {
+                println!("the device detaches from USB for about a second; the default name is used afterwards");
+            }
+            Ok(())
+        }
+        DeviceCmd::Reenumerate { common } => {
+            let mut dev = open(&common)?;
+            let pin = management_pin(&mut dev)?;
+            eprintln!("Press the device button to confirm...");
+            dev.reenumerate(&pin)?;
+            println!("the device detaches from USB for about a second");
             Ok(())
         }
     }

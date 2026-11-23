@@ -35,13 +35,25 @@ Build directories: `build-<app>-<profile>[-hardened]/`; generated sdkconfig: `sd
 
 ## Changing upstream code
 
-Never commit inside a submodule. Edit the file in the submodule, then:
+Never commit inside a submodule. Patches are **stacked** (applied in filename order; a later patch may touch lines an
+earlier one changed). To add one, stage the current patched state as the baseline so the diff contains only your change:
 
 ```
-git -C pico-keys-sdk diff -- <path> > patches/pico-keys-sdk/000N-name.patch
-git -C pico-keys-sdk checkout -- .
-python tools/apply_patches.py && python tools/apply_patches.py --check
+python tools/apply_patches.py                      # all existing patches applied
+git -C pico-keys-sdk add -A                        # index = baseline (index only, no commit)
+# ... edit files in the submodule ...
+git -C pico-keys-sdk diff --src-prefix=a/ --dst-prefix=b/ > patches/pico-keys-sdk/000N-name.patch
+git -C pico-keys-sdk reset -q                      # drop the baseline, keep the working tree
+python tools/apply_patches.py --check              # must report every patch "already applied"
 ```
+
+`apply_patches.py` decides how many patches of a stack are applied by reverse-applying them in reverse order on a scratch copy
+of the touched files, then applies the remaining ones in order. To start from a pristine tree use
+`git -C <submodule> checkout -- .` and run `python tools/apply_patches.py` again.
+
+Current stacks: `pico-keys-sdk` 0001 (board/LED/VID-PID/user presence/USB strings), 0002 (no automatic eFuse writes), 0003 (USB
+identity: Kconfig strings, stored device name); `pico-fido` 0001 (enforce user presence), 0002 (project AAGUID, attestation
+subject), 0003 (makeCredUvNotRqd default).
 
 ## Changing the MKAUTH protocol
 
@@ -51,4 +63,5 @@ vectors in `host/multikey-proto/tests/vectors.json`.
 ## Tests
 
 `cd host && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test` (+ `cargo test -p multikey-pam`).
-Firmware has no automated tests; hardware procedures are in TESTING.md.
+`tools/run_emulation_tests.sh` (WSL/Linux) runs the FIDO UV-policy suite against the patched pico-fido emulation build.
+The firmware itself has no on-target unit tests; hardware procedures are in TESTING.md.

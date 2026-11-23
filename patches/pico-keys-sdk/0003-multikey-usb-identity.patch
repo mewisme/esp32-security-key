@@ -1,0 +1,171 @@
+diff --git a/src/main.c b/src/main.c
+index 056ef01..6ddc855 100644
+--- a/src/main.c
++++ b/src/main.c
+@@ -204,20 +204,7 @@ int main(void) {
+ #endif
+ #endif
+ 
+-    tusb_cfg.string_descriptor[3] = pico_serial_str;
+-    if (phy_data.usb_product_present) {
+-        tusb_cfg.string_descriptor[2] = phy_data.usb_product;
+-    }
+-    static char tmps[5][32];
+-    const int max_desc_slots = 8 - 6;
+-    const int itf_desc_count = ITF_TOTAL < max_desc_slots ? ITF_TOTAL : max_desc_slots;
+-    for (int i = 0; i < itf_desc_count; i++) {
+-        strlcpy(tmps[i], tusb_cfg.string_descriptor[2], sizeof(tmps[0]));
+-        strlcat(tmps[i], " ", sizeof(tmps[0]));
+-        strlcat(tmps[i], string_desc_itf[i], sizeof(tmps[0]));
+-        tusb_cfg.string_descriptor[i+6] = tmps[i];
+-    }
+-    tusb_cfg.string_descriptor_count = 6 + itf_desc_count;
++    multikey_usb_strings_init(); /* MultiKey: product/interface strings from Kconfig or the stored device name */
+     tusb_cfg.configuration_descriptor = desc_config;
+ 
+     tinyusb_driver_install(&tusb_cfg);
+diff --git a/src/usb/usb.h b/src/usb/usb.h
+index 6854f0a..f8fb15c 100644
+--- a/src/usb/usb.h
++++ b/src/usb/usb.h
+@@ -77,6 +77,18 @@ enum { ITF_INVALID = 0xFF };
+ 
+ extern uint8_t ITF_TOTAL;
+ 
++#ifdef ESP_PLATFORM
++/* MultiKey device name (USB product string): see usb_descriptors.c. */
++#define MULTIKEY_EF_DEVICE_NAME 0xBC01 /* neighbour of the MKAUTH record 0xBC00; not cleared by authenticatorReset */
++#define MULTIKEY_NAME_MAX 31           /* esp_tinyusb string descriptor buffer */
++extern bool multikey_name_valid(const uint8_t *name, size_t len);
++extern size_t multikey_usb_name_effective(char out[MULTIKEY_NAME_MAX + 1], bool *custom);
++extern const char *multikey_usb_name_active(void);
++extern void multikey_usb_name_applied(void);
++extern void multikey_usb_strings_refresh(void);
++extern void multikey_usb_strings_init(void);
++#endif
++
+ enum {
+     REPORT_ID_KEYBOARD = 0,
+     REPORT_ID_COUNT
+diff --git a/src/usb/usb_descriptors.c b/src/usb/usb_descriptors.c
+index 249d635..d3e2ceb 100644
+--- a/src/usb/usb_descriptors.c
++++ b/src/usb/usb_descriptors.c
+@@ -356,8 +356,8 @@ char *string_desc_itf[5] = {0};
+ char const *string_desc_arr [] = {
+     (const char[]) { 0x09, 0x04 }, // 0: is supported language is English (0x0409)
+ #if defined(ESP_PLATFORM)
+-    "MultiKey (dev)",                    // 1: Manufacturer (not the upstream author's name; override for distribution)
+-    "ESP32-S3 MultiKey",                 // 2: Product
++    CONFIG_MULTIKEY_USB_MANUFACTURER,    // 1: Manufacturer (Kconfig)
++    CONFIG_MULTIKEY_USB_PRODUCT_NAME,    // 2: Product (Kconfig default; replaced at runtime by multikey_usb_strings_refresh())
+ #else
+     "Pol Henarejos",                     // 1: Manufacturer
+     "Pico Key",                       // 2: Product
+@@ -383,6 +383,106 @@ tinyusb_config_t tusb_cfg = {
+     .external_phy = false,
+     .configuration_descriptor = desc_config,
+ };
++
++/*
++ * MultiKey USB identity.
++ *
++ * esp_tinyusb stores the POINTERS of tusb_cfg.string_descriptor and converts them byte for byte to
++ * UTF-16, so the buffers below must stay valid forever, may be rewritten in place, and only ASCII is
++ * representable (and at most 31 characters). The upstream "phy_data.usb_product" override is not
++ * used on ESP builds: the only sources are the Kconfig default and the name stored by the MKAUTH
++ * applet (MULTIKEY_EF_DEVICE_NAME).
++ */
++static char mk_str_product[MULTIKEY_NAME_MAX + 1];
++static char mk_str_itf[3][MULTIKEY_NAME_MAX + 1]; /* string indexes 5..7: esp_tinyusb keeps 8 slots */
++static char mk_active_name[MULTIKEY_NAME_MAX + 1];
++
++bool multikey_name_valid(const uint8_t *name, size_t len) {
++    if (name == NULL || len < 1 || len > MULTIKEY_NAME_MAX) {
++        return false;
++    }
++    for (size_t i = 0; i < len; i++) {
++        if (name[i] < 0x20 || name[i] > 0x7E) {
++            return false;
++        }
++    }
++    return name[0] != ' ' && name[len - 1] != ' ';
++}
++
++size_t multikey_usb_name_effective(char out[MULTIKEY_NAME_MAX + 1], bool *custom) {
++    *custom = false;
++#ifdef CONFIG_MULTIKEY_USB_CUSTOM_NAME_ENABLED
++    file_t *ef = file_search(MULTIKEY_EF_DEVICE_NAME);
++    if (file_has_data(ef) && multikey_name_valid(file_get_data(ef), file_get_size(ef))) {
++        size_t n = file_get_size(ef);
++        memcpy(out, file_get_data(ef), n);
++        out[n] = '\0';
++        *custom = true;
++        return n;
++    }
++#endif
++    strlcpy(out, CONFIG_MULTIKEY_USB_PRODUCT_NAME, MULTIKEY_NAME_MAX + 1);
++    return strlen(out);
++}
++
++const char *multikey_usb_name_active(void) {
++    return mk_active_name;
++}
++
++/* Called when the device is about to re-attach: the host will then read the current strings. */
++void multikey_usb_name_applied(void) {
++    strlcpy(mk_active_name, mk_str_product, sizeof(mk_active_name));
++}
++
++/* "<name> <suffix>", shortening the name (never the suffix) to fit one descriptor. */
++static void mk_itf_string(char *dst, const char *name, const char *suffix) {
++    size_t sl = strlen(suffix);
++    size_t keep = strlen(name);
++    if (keep + 1 + sl > MULTIKEY_NAME_MAX) {
++        keep = MULTIKEY_NAME_MAX - 1 - sl;
++    }
++    while (keep > 0 && name[keep - 1] == ' ') {
++        keep--;
++    }
++    memcpy(dst, name, keep);
++    dst[keep] = ' ';
++    memcpy(dst + keep + 1, suffix, sl + 1);
++}
++
++static void mk_set_itf(uint8_t itf, const char *name, const char *suffix) {
++    uint8_t idx = (uint8_t)(itf + 5);
++    if (itf == ITF_INVALID || idx < 5 || idx > 7) {
++        return; /* no descriptor slot: Windows then uses its generic interface name */
++    }
++    mk_itf_string(mk_str_itf[idx - 5], name, suffix);
++    string_desc_arr[idx] = mk_str_itf[idx - 5];
++}
++
++/* Rebuilds product and interface strings from the Kconfig default / stored name. Safe to call again
++ * after a rename: the next enumeration then reports the new name. */
++void multikey_usb_strings_refresh(void) {
++    char name[MULTIKEY_NAME_MAX + 1];
++    bool custom;
++    multikey_usb_name_effective(name, &custom);
++    strlcpy(mk_str_product, name, sizeof(mk_str_product));
++    string_desc_arr[2] = mk_str_product;
++#ifdef USB_ITF_HID
++    mk_set_itf(ITF_HID, name, "FIDO");
++    mk_set_itf(ITF_KEYBOARD, name, "Keyboard");
++#endif
++#ifdef USB_ITF_CCID
++    mk_set_itf(ITF_CCID, name, "CCID");
++    mk_set_itf(ITF_WCID, name, "WebCCID");
++#endif
++}
++
++void multikey_usb_strings_init(void) {
++    multikey_usb_strings_refresh();
++    strlcpy(mk_active_name, mk_str_product, sizeof(mk_active_name));
++    string_desc_arr[3] = pico_serial_str;
++    tusb_cfg.string_descriptor = string_desc_arr;
++    tusb_cfg.string_descriptor_count = 8; /* esp_tinyusb limit: LANGID, manufacturer, product, serial + 4 */
++}
+ #else
+ static uint16_t _desc_str[32];
+ 

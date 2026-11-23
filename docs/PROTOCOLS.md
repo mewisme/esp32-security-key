@@ -2,7 +2,7 @@
 
 | Protocol | Provided by | Status |
 |---|---|---|
-| CTAPHID, CTAP2, U2F | upstream pico-fido v8.2 (advertised versions to be read from `GetInfo` on hardware) | Build verified. Not hardware verified. No FIDO certification claimed. |
+| CTAPHID, CTAP2, U2F | upstream pico-fido v8.2 + local patches (`patches/pico-fido`): `GetInfo` on hardware: versions `U2F_V2, FIDO_2_0..2_3`, AAGUID `0a63b994-8ba6-5e74-9e5a-0f894cc35c4d` (development value, docs/USB_IDENTITY.md) | Basic flows hardware verified on one board; UV/PIN policy in `docs/FIDO_UV.md`. No FIDO certification claimed. |
 | OpenPGP card 3.x | upstream pico-openpgp v5.0 (separate firmware image, see ADR-0002) | Build status in ROADMAP. Not hardware verified. |
 | SSH `ecdsa-sk` / `ed25519-sk` | FIDO2; ed25519-sk requires EdDSA in `GetInfo` algorithms | Not tested |
 | Git SSH signing | `ssh-keygen -Y sign` with sk key | Not tested |
@@ -13,7 +13,7 @@
 Transport: CCID (PC/SC), ISO 7816-4 APDUs, short APDUs only. Available in the **fido** firmware image.
 Select: `00 A4 04 00 08 F0 4D 4B 41 55 54 48 01` → `9000` with data `"MKAUTH 1"` (ASCII, 8 bytes).
 
-All commands use `CLA=0x80`, `P1=P2=0x00`.
+All commands use `CLA=0x80`. `P1=P2=0x00` except INS `06` (P1 = operation, P2 = `00` or `01`).
 
 | INS | Name | Command data | Response data | Notes |
 |---|---|---|---|---|
@@ -21,6 +21,7 @@ All commands use `CLA=0x80`, `P1=P2=0x00`.
 | `02` | ENROLL | `PIN` (6..63 bytes) | `pubkey(65)` ‖ `device_id(16)` | Only when unenrolled (else `6985`). Sets the PIN, generates a P-256 key, requires a button press. |
 | `03` | CHALLENGE | `host_nonce(32)` | `device_nonce(32)` ‖ `signature(DER ECDSA, ≤72)` | Only when enrolled (else `6985`). Requires a button press. No PIN needed (the signature proves possession; the physical press proves presence). |
 | `04` | REVOKE | `PIN` | none | Requires PIN and a button press. Deletes the key and PIN, state returns to 0. |
+| `06` | DEVICE_NAME | by P1, see below | `flags(1)` ‖ `name` (GET, SET, CLEAR) | Read or change the name the key reports over USB. |
 
 - `pubkey` = uncompressed SEC1 P-256 point (`04 ‖ X ‖ Y`).
 - `device_id` = 16 random bytes generated at enrollment (stored with the key); GET_INFO returns 16 zero bytes while unenrolled.
@@ -32,9 +33,25 @@ All commands use `CLA=0x80`, `P1=P2=0x00`.
 - PIN storage: PBKDF2-HMAC-SHA256, 10000 iterations, 16-byte random salt. The private key is wrapped with the pico-keys device key (`derive_kbase`) so CHALLENGE needs no PIN. On a build without OTP/Secure-Lock the device key is derived from the chip serial hash only, so at-rest protection depends on flash encryption (see SECURITY.md).
 - RNG: the pico-keys SDK RNG (`random_fill_iterator`), the same source upstream uses for FIDO.
 - Status words: `9000` ok · `6300` no button press within `CONFIG_MULTIKEY_UP_TIMEOUT_MS` (default 15000 ms) ·
-  `6700` wrong length · `6983` PIN blocked · `6985` wrong state · `6A86` bad P1/P2 · `6D00` unknown INS · `6E00` unknown CLA · `6F00` internal error.
+  `6700` wrong length · `6983` PIN blocked · `6985` wrong state (INS 06: renaming compiled out) · `6A80` incorrect data
+  (INS 06: invalid name, or a PIN supplied while none exists) · `6A86` bad P1/P2 · `6D00` unknown INS · `6E00` unknown CLA · `6F00` internal error.
 - Verification by the host: check `signature` against the **trusted** public key for the user (trust store), using the
   transcript built from the host's own nonce and the returned device nonce and the trusted `device_id`.
+
+### INS 06 DEVICE_NAME (USB product name)
+
+| P1 | Operation | Command data | Authorization |
+|---|---|---|---|
+| `00` | GET | none | none. Response: `flags(1)` ‖ `name`. flags: bit0 a user name is stored (else the build default), bit1 the stored name differs from the one the host currently sees (re-enumeration pending), bit2 renaming is compiled in. `name` = what the next enumeration reports. |
+| `01` | SET | `pin_len(1)` ‖ `PIN` ‖ `name` | button press; PIN too once enrolled (`pin_len` must be 0 while unenrolled, else `6A80`). Name: 1..31 printable ASCII (0x20..0x7E), no leading/trailing space, else `6A80` (checked **before** a PIN attempt is spent or the button awaited). Response as GET. |
+| `02` | CLEAR | `pin_len(1)` ‖ `PIN` | same as SET. Restores the build-time default name. Response as GET. |
+| `03` | REENUM | `pin_len(1)` ‖ `PIN` | same as SET. Detaches/attaches USB (~1.5 s) after the status word has been sent. Response: none. |
+
+- P2 bit0 = 1 on SET/CLEAR: also re-enumerate afterwards (same as a following REENUM without a second press). P2 > 1 → `6A86`.
+- The name is stored in its own file `0xBC01`: keys, credentials, PINs, VID/PID and the FIDO AAGUID are never touched. It survived
+  reboot and a firmware update on hardware; that it also survives MKAUTH REVOKE and FIDO `authenticatorReset` follows from the code
+  (`cmd_revoke` deletes only `0xBC00`; `fido_reset_should_clear` does not list prefix `0xBC`) and was not run. Details: `docs/USB_IDENTITY.md`.
+- Short APDU, Lc ≤ 1+63+31 = 95. Hosts send Le=0x00 on GET/SET/CLEAR and no Le on REENUM.
 
 ## SSH and Git signing (procedure)
 

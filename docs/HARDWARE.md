@@ -75,3 +75,7 @@ With an LED type selected the build fails while `MULTIKEY_LED_GPIO` is -1. With 
 
 Default VID:PID `0x303A:0x4002` is a **development placeholder only; do not distribute** devices with it. Obtain your own
 VID/PID before distributing (Kconfig `MULTIKEY_USB_VID` / `MULTIKEY_USB_PID`).
+
+Manufacturer `MultiKeys`, default product name `MultiKeys Security Key` (Kconfig `MULTIKEY_USB_MANUFACTURER`,
+`MULTIKEY_USB_PRODUCT_NAME`); the user can rename the device at run time (`multikey device rename`). Every string, the Windows
+behaviour and the limits (ASCII only, 31 characters, no string for the WinUSB interface) are in `docs/USB_IDENTITY.md`.

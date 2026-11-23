@@ -1,0 +1,47 @@
+diff --git a/src/fido/cbor.c b/src/fido/cbor.c
+index 0a0a48c..580aa78 100644
+--- a/src/fido/cbor.c
++++ b/src/fido/cbor.c
+@@ -32,7 +32,22 @@ const bool _btrue = true, _bfalse = false;
+ 
+ int cbor_get_assertion(const uint8_t *data, size_t len, bool next);
+ 
++#ifdef CONFIG_MULTIKEY_AAGUID
++/* MultiKey: project development AAGUID from Kconfig (32 hex digits, validated at configure time). The
++ * string literal is indexed in a constant initializer, which GCC folds at compile time. */
++#define MK_HEXV(c) ((uint8_t)(((c) >= 'a') ? ((c) - 'a' + 10) : (((c) >= 'A') ? ((c) - 'A' + 10) : ((c) - '0'))))
++#define MK_HEXB(s, i) ((uint8_t)((MK_HEXV((s)[2 * (i)]) << 4) | MK_HEXV((s)[2 * (i) + 1])))
++#define MK_AAGUID CONFIG_MULTIKEY_AAGUID
++_Static_assert(sizeof(MK_AAGUID) == 33, "CONFIG_MULTIKEY_AAGUID must be 32 hex digits");
++const uint8_t aaguid[16] = {
++    MK_HEXB(MK_AAGUID, 0), MK_HEXB(MK_AAGUID, 1), MK_HEXB(MK_AAGUID, 2), MK_HEXB(MK_AAGUID, 3),
++    MK_HEXB(MK_AAGUID, 4), MK_HEXB(MK_AAGUID, 5), MK_HEXB(MK_AAGUID, 6), MK_HEXB(MK_AAGUID, 7),
++    MK_HEXB(MK_AAGUID, 8), MK_HEXB(MK_AAGUID, 9), MK_HEXB(MK_AAGUID, 10), MK_HEXB(MK_AAGUID, 11),
++    MK_HEXB(MK_AAGUID, 12), MK_HEXB(MK_AAGUID, 13), MK_HEXB(MK_AAGUID, 14), MK_HEXB(MK_AAGUID, 15)
++};
++#else
+ const uint8_t aaguid[16] = { 0x89, 0xFB, 0x94, 0xB7, 0x06, 0xC9, 0x36, 0x73, 0x9B, 0x7E, 0x30, 0x52, 0x6D, 0x96, 0x81, 0x45 }; // First 16 bytes of SHA256("Pico FIDO2")
++#endif
+ 
+ static const uint8_t *volatile cbor_data = NULL;
+ static volatile size_t cbor_len = 0;
+diff --git a/src/fido/fido.c b/src/fido/fido.c
+index 93120fd..b22ac4e 100644
+--- a/src/fido/fido.c
++++ b/src/fido/fido.c
+@@ -206,8 +206,15 @@ static int x509_create_cert(mbedtls_ecdsa_context *ecdsa, uint8_t *buffer, size_
+     mbedtls_x509write_crt_init(&ctx);
+     mbedtls_x509write_crt_set_version(&ctx, MBEDTLS_X509_CRT_VERSION_3);
+     mbedtls_x509write_crt_set_validity(&ctx, "20220901000000", "20720831235959");
++#ifdef CONFIG_MULTIKEY_AAGUID
++    /* MultiKey: attestation certificates of NEW devices carry this project's development identity, not
++     * the upstream author's. A certificate that already exists in flash is never replaced. */
++    mbedtls_x509write_crt_set_issuer_name(&ctx, "O=MultiKeys development,CN=MultiKeys Dev Attestation");
++    mbedtls_x509write_crt_set_subject_name(&ctx, "O=MultiKeys development,CN=MultiKeys Dev Attestation");
++#else
+     mbedtls_x509write_crt_set_issuer_name(&ctx, "C=ES,O=Pico HSM,CN=Pico FIDO");
+     mbedtls_x509write_crt_set_subject_name(&ctx, "C=ES,O=Pico HSM,CN=Pico FIDO");
++#endif
+     uint8_t serial[16];
+     random_fill_buffer(BYTE_ARRAY(serial, sizeof(serial)));
+     mbedtls_x509write_crt_set_serial_raw(&ctx, serial, sizeof(serial));

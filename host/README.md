@@ -29,7 +29,12 @@ device_id_hex = "…"     # 32 hex chars
 Duplicate users, bad hex lengths, a missing `04` prefix and unknown fields are rejected.
 
 ## CLI
-`multikey readers | status | enroll --user U [--yes] | auth --user U | list | revoke --user U`
+`multikey readers | status | enroll --user U [--yes] | auth --user U | list | revoke --user U | device show |
+device rename NAME [--reenumerate] | device reset-name [--reenumerate] | device reenumerate`
 (`--reader`, `--trust-store` where applicable). The PIN is read without echo.
+
+`device rename` stores a USB device name (1-31 printable ASCII characters; non-ASCII is refused, the firmware's USB stack cannot
+represent it) after a button press, plus the MKAUTH PIN once the key is enrolled. The key's keys, credentials, VID/PID and
+AAGUID are not touched. The name appears at the next USB enumeration (`--reenumerate` forces it). See `docs/USB_IDENTITY.md`.
 
 Exit codes: 0 ok · 1 failure · 2 usage · 3 no device / PC/SC unavailable · 4 user-presence timeout.

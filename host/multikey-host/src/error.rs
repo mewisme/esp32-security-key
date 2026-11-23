@@ -37,4 +37,12 @@ pub enum Error {
     Timeout(std::time::Duration),
     #[error("random number generation failed")]
     Random,
+    #[error("this firmware does not implement device naming (INS 06); update the firmware")]
+    NameUnsupported,
+    #[error(
+        "renaming is disabled in this firmware build (CONFIG_MULTIKEY_USB_CUSTOM_NAME_ENABLED=n)"
+    )]
+    RenameDisabled,
+    #[error("the device rejected the name or the PIN field (wrong data)")]
+    NameRejected,
 }

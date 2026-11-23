@@ -89,6 +89,47 @@ menu "MultiKey board and USB identity"
         range 0x0001 0xFFFF
         default 0x4002
 
+    config MULTIKEY_USB_MANUFACTURER
+        string "USB manufacturer string"
+        default "MultiKeys"
+        help
+            iManufacturer of the USB device. 1..31 printable ASCII characters (the ESP-IDF TinyUSB
+            layer converts string descriptors byte-for-byte, so non-ASCII text is not supported).
+            Windows and pcsc-lite prefix the smart-card reader name with this string and the host
+            tool `multikey` finds the device by "multikey" in the reader name, so keep it containing
+            "MultiKey" unless you always pass --reader.
+
+    config MULTIKEY_USB_PRODUCT_NAME
+        string "USB product name (default device name)"
+        default "MultiKeys Security Key"
+        help
+            iProduct and the base of the interface strings. 1..31 printable ASCII characters.
+            Used until the user renames the device (MULTIKEY_USB_CUSTOM_NAME_ENABLED), and again
+            after `multikey device reset-name`.
+
+    config MULTIKEY_USB_CUSTOM_NAME_ENABLED
+        bool "Allow the user to rename the device (stored name overrides the product name)"
+        default y
+        help
+            When enabled, the MKAUTH applet accepts a device name (INS 06; user presence and, once
+            enrolled, the MKAUTH PIN required) which is persisted in flash and used for the USB
+            product and interface strings at the next enumeration. The name never touches keys,
+            credentials, PINs, VID/PID or the AAGUID. When disabled, the name is fixed at build
+            time and INS 06 is rejected.
+
+    config MULTIKEY_AAGUID
+        string "FIDO AAGUID (32 hex digits) (DEVELOPMENT VALUE)"
+        default "0a63b9948ba65e749e5a0f894cc35c4d"
+        help
+            The authenticator model identifier reported in authenticatorGetInfo and in every
+            attestation. The default is a UUIDv5 derived from this project's repository URL and is
+            for development only: it is not registered with the FIDO Alliance Metadata Service and
+            makes no certification claim. A distributed product must generate and own its own AAGUID.
+            It deliberately differs from upstream Pico FIDO's AAGUID so the two firmwares are not
+            confused. Changing it does not affect existing credentials (it is not part of any key
+            derivation) but relying parties that pinned the old value at registration will see a
+            different one for new registrations.
+
     config MULTIKEY_ALLOW_UNSET_PINS_FOR_CI
         bool "Allow unset pins (CI compile checks ONLY, firmware is not usable)"
         default n
@@ -109,5 +150,27 @@ menu "MultiKey irreversible hardware operations"
             boards. When OFF, stored secrets are wrapped with a key derived from the chip serial only
             (obfuscation, not protection) and the board relies on flash encryption instead
             (docs/SECURITY.md). Enable only for a deliberately provisioned production unit.
+
+endmenu
+
+menu "MultiKey FIDO user verification defaults"
+
+    config MULTIKEY_FIDO_MAKECRED_UV_NOT_REQUIRED
+        bool "Advertise makeCredUvNotRqd on devices whose options were never set (touch-only creation)"
+        default y
+        help
+            CTAP 2.1: when a PIN is set, a relying party that does not require user verification may
+            still create a NON-discoverable credential with a button press alone, provided the
+            authenticator advertises makeCredUvNotRqd. Upstream sets this only after an
+            authenticatorReset, so a fresh device never advertised it. This option initialises the
+            flag once, on first boot with no stored options (and after a reset). It never sets the UV
+            flag, never touches an existing PIN and can be toggled later with authenticatorConfig
+            (needs the PIN). Discoverable credentials and any request that asks for UV still need the PIN.
+
+            LIMIT (upstream design, docs/FIDO_UV.md): while a FIDO PIN is set the device key is wrapped
+            with the PIN and the firmware reports alwaysUv=true until the PIN was entered in the current
+            session, so browsers ask for the PIN anyway. Touch-only use therefore needs a PIN-less key;
+            this flag rarely changes what a browser does, it keeps GetInfo in line with the CTAP 2.1
+            behaviour the firmware implements (non-discoverable creation needs no UV).
 
 endmenu

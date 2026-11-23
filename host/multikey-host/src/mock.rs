@@ -6,6 +6,8 @@ use multikey_proto::testkey;
 use multikey_proto::{self as proto, StatusWord};
 use std::sync::{Arc, Mutex};
 
+/// Build-time default product name (CONFIG_MULTIKEY_USB_PRODUCT_NAME).
+pub const DEFAULT_NAME: &str = "MultiKeys Security Key";
 pub struct MockDevice {
     pub enrolled: bool,
     pub pin: Vec<u8>,
@@ -21,6 +23,11 @@ pub struct MockDevice {
     /// Host nonces seen in CHALLENGE commands.
     pub challenges: Vec<Vec<u8>>,
     counter: u8,
+    /// Name stored by INS 06 (`None` = build-time default).
+    pub stored_name: Option<String>,
+    /// Name the host currently sees (changes on re-enumeration only).
+    pub active_name: String,
+    pub reenumerations: u32,
 }
 
 impl MockDevice {
@@ -39,6 +46,9 @@ impl MockDevice {
             truncate_challenge: false,
             challenges: Vec::new(),
             counter: 0,
+            stored_name: None,
+            active_name: DEFAULT_NAME.to_owned(),
+            reenumerations: 0,
         }
     }
 
@@ -48,6 +58,87 @@ impl MockDevice {
             pin: b"123456".to_vec(),
             ..Self::blank()
         }
+    }
+
+    fn name_response(&self) -> Vec<u8> {
+        let effective = self.stored_name.as_deref().unwrap_or(DEFAULT_NAME);
+        let mut flags = 0x04;
+        if self.stored_name.is_some() {
+            flags |= 0x01;
+        }
+        if effective != self.active_name {
+            flags |= 0x02;
+        }
+        let mut v = vec![flags];
+        v.extend_from_slice(effective.as_bytes());
+        Self::sw(0x9000, v)
+    }
+
+    /// Mirrors `cmd_device_name` in components/multikey_auth/multikey_auth.c.
+    fn handle_name(&mut self, p1: u8, p2: u8, data: &[u8]) -> Vec<u8> {
+        if p1 == proto::NAME_GET {
+            return self.name_response();
+        }
+        if !matches!(p1, proto::NAME_SET | proto::NAME_CLEAR | proto::NAME_REENUM) {
+            return Self::sw(0x6A86, vec![]);
+        }
+        if data.is_empty() || 1 + data[0] as usize > data.len() {
+            return Self::sw(0x6700, vec![]);
+        }
+        let pin_len = data[0] as usize;
+        let pin = &data[1..1 + pin_len];
+        let rest = &data[1 + pin_len..];
+        let name = if p1 == proto::NAME_SET {
+            match std::str::from_utf8(rest) {
+                Ok(n) if proto::validate_device_name(n).is_ok() => Some(n.to_owned()),
+                _ => return Self::sw(0x6A80, vec![]),
+            }
+        } else {
+            None
+        };
+        if self.enrolled {
+            if self.retries == 0 {
+                return Self::sw(0x6983, vec![]);
+            }
+            if !(6..=63).contains(&pin_len) {
+                return Self::sw(0x6700, vec![]);
+            }
+            if pin != self.pin.as_slice() {
+                self.retries -= 1;
+                return Self::sw(0x63C0 | u16::from(self.retries), vec![]);
+            }
+            self.retries = 8;
+        } else if pin_len != 0 {
+            return Self::sw(0x6A80, vec![]);
+        }
+        if !self.button {
+            return Self::sw(0x6300, vec![]);
+        }
+        match p1 {
+            proto::NAME_SET | proto::NAME_CLEAR => {
+                self.stored_name = name;
+                let resp = self.name_response();
+                if p2 & 1 != 0 {
+                    self.reenumerate();
+                }
+                resp
+            }
+            _ => {
+                if !rest.is_empty() {
+                    return Self::sw(0x6700, vec![]);
+                }
+                self.reenumerate();
+                Self::sw(0x9000, vec![])
+            }
+        }
+    }
+
+    fn reenumerate(&mut self) {
+        self.active_name = self
+            .stored_name
+            .clone()
+            .unwrap_or_else(|| DEFAULT_NAME.to_owned());
+        self.reenumerations += 1;
     }
 
     fn sw(sw: u16, mut data: Vec<u8>) -> Vec<u8> {
@@ -145,6 +236,7 @@ impl MockDevice {
                 self.retries = 8;
                 Self::sw(0x9000, vec![])
             }
+            proto::INS_DEVICE_NAME => self.handle_name(apdu[2], apdu[3], data),
             _ => Self::sw(StatusWord::UnknownIns.into(), vec![]),
         }
     }

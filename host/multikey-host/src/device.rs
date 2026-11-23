@@ -2,7 +2,7 @@ use crate::error::{Error, Result};
 use crate::transport::{PcscTransport, Transport};
 use crate::trust::KeyEntry;
 use multikey_proto::{
-    self as proto, Enrollment, Info, StatusWord, DEVICE_ID_LEN, NONCE_LEN, PUBKEY_LEN,
+    self as proto, DeviceName, Enrollment, Info, StatusWord, DEVICE_ID_LEN, NONCE_LEN, PUBKEY_LEN,
     SELECT_RESPONSE,
 };
 use std::time::{Duration, Instant};
@@ -84,6 +84,50 @@ impl<T: Transport> Device<T> {
     pub fn revoke(&mut self, pin: &[u8]) -> Result<()> {
         let apdu = proto::revoke_apdu(pin)?;
         self.command(&apdu, Error::NotEnrolled).map(|_| ())
+    }
+
+    /// Name commands: 6985 means renaming is compiled out, 6D00 means the firmware predates INS 06.
+    fn name_command(&mut self, apdu: &[u8]) -> Result<Vec<u8>> {
+        self.command(apdu, Error::RenameDisabled)
+            .map_err(|e| match e {
+                Error::Status(0x6D00) => Error::NameUnsupported,
+                Error::Status(0x6A80) => Error::NameRejected,
+                other => other,
+            })
+    }
+
+    /// Read the device name. No authorization needed.
+    pub fn device_name(&mut self) -> Result<DeviceName> {
+        let data = self.name_command(&proto::device_name_get_apdu())?;
+        Ok(proto::parse_device_name(&data)?)
+    }
+
+    /// Store a user-chosen device name (button press, plus the MKAUTH PIN once enrolled; pass an empty
+    /// `pin` while not enrolled). The new name is used from the next USB enumeration; with `reenumerate`
+    /// the device detaches/attaches USB right after answering (the reader then reappears).
+    pub fn set_device_name(
+        &mut self,
+        pin: &[u8],
+        name: &str,
+        reenumerate: bool,
+    ) -> Result<DeviceName> {
+        let apdu = proto::device_name_set_apdu(pin, name, reenumerate)?;
+        let data = self.name_command(&apdu)?;
+        Ok(proto::parse_device_name(&data)?)
+    }
+
+    /// Restore the build-time default name (same authorization as `set_device_name`).
+    pub fn clear_device_name(&mut self, pin: &[u8], reenumerate: bool) -> Result<DeviceName> {
+        let apdu = proto::device_name_clear_apdu(pin, reenumerate)?;
+        let data = self.name_command(&apdu)?;
+        Ok(proto::parse_device_name(&data)?)
+    }
+
+    /// Ask the device to detach from USB for about a second so the host re-reads its descriptors. The
+    /// reader disappears and reappears; the connection must be reopened afterwards.
+    pub fn reenumerate(&mut self, pin: &[u8]) -> Result<()> {
+        let apdu = proto::device_name_reenumerate_apdu(pin)?;
+        self.name_command(&apdu).map(|_| ())
     }
 
     /// Challenge-response authentication against `trusted`.
@@ -331,5 +375,116 @@ mod tests {
     fn trusted_key_from_entry() {
         let e = KeyEntry::new("alice", &testkey::public_key(), &testkey::TEST_DEVICE_ID);
         assert_eq!(TrustedKey::from_entry(&e).unwrap(), trusted());
+    }
+
+    #[test]
+    fn rename_unenrolled_needs_button_only() {
+        let (mut d, s) = dev(MockDevice::blank());
+        let n = d.set_device_name(&[], "Mew's Security Key", false).unwrap();
+        assert!(n.custom && n.reenumeration_pending);
+        assert_eq!(n.name, "Mew's Security Key");
+        assert_eq!(
+            s.with(|m| m.stored_name.clone()).as_deref(),
+            Some("Mew's Security Key")
+        );
+        // The host still sees the old name until re-enumeration.
+        assert_eq!(s.with(|m| m.active_name.clone()), crate::mock::DEFAULT_NAME);
+    }
+
+    #[test]
+    fn rename_without_button_changes_nothing() {
+        let mut m = MockDevice::blank();
+        m.button = false;
+        let (mut d, s) = dev(m);
+        assert!(matches!(
+            d.set_device_name(&[], "Other", false),
+            Err(Error::NoUserPresence)
+        ));
+        assert!(s.with(|m| m.stored_name.is_none()));
+    }
+
+    #[test]
+    fn rename_enrolled_requires_pin() {
+        let (mut d, s) = dev(MockDevice::enrolled());
+        // No PIN: the device refuses and the name is untouched.
+        assert!(d.set_device_name(&[], "NoPin", false).is_err());
+        assert!(s.with(|m| m.stored_name.is_none()));
+        // Wrong PIN burns a try and changes nothing.
+        assert!(matches!(
+            d.set_device_name(b"654321", "BadPin", false),
+            Err(Error::PinRetries(7))
+        ));
+        assert!(s.with(|m| m.stored_name.is_none()));
+        // Right PIN works and restores the counter.
+        d.set_device_name(b"123456", "Good", false).unwrap();
+        assert_eq!(s.with(|m| m.stored_name.clone()).as_deref(), Some("Good"));
+        assert_eq!(s.with(|m| m.retries), 8);
+    }
+
+    #[test]
+    fn rename_does_not_touch_enrollment() {
+        let (mut d, s) = dev(MockDevice::enrolled());
+        let before = d.info().unwrap();
+        d.set_device_name(b"123456", "Renamed", true).unwrap();
+        d.clear_device_name(b"123456", false).unwrap();
+        let after = d.info().unwrap();
+        assert_eq!(before, after);
+        assert!(s.with(|m| m.enrolled));
+    }
+
+    #[test]
+    fn invalid_names_never_reach_the_device() {
+        let (mut d, s) = dev(MockDevice::enrolled());
+        for bad in ["", " x", "x ", "Kh\u{f3}a", "\u{1F511}", &"x".repeat(32)] {
+            assert!(matches!(
+                d.set_device_name(b"123456", bad, false),
+                Err(Error::Proto(_))
+            ));
+        }
+        // No PIN attempt was consumed either.
+        assert_eq!(s.with(|m| m.retries), 8);
+        assert!(s.with(|m| m.stored_name.is_none()));
+    }
+
+    #[test]
+    fn reenumeration_applies_the_stored_name() {
+        let (mut d, s) = dev(MockDevice::blank());
+        d.set_device_name(&[], "Fresh", true).unwrap();
+        let n = d.device_name().unwrap();
+        assert!(!n.reenumeration_pending);
+        assert_eq!(s.with(|m| m.active_name.clone()), "Fresh");
+        assert_eq!(s.with(|m| m.reenumerations), 1);
+        // A standalone re-enumeration is allowed and counted.
+        d.reenumerate(&[]).unwrap();
+        assert_eq!(s.with(|m| m.reenumerations), 2);
+    }
+
+    #[test]
+    fn reset_name_restores_default_and_reading_needs_no_auth() {
+        let mut m = MockDevice::enrolled();
+        m.button = false; // reading must not need the button or the PIN
+        m.stored_name = Some("Custom".into());
+        m.active_name = "Custom".into();
+        let (mut d, s) = dev(m);
+        let n = d.device_name().unwrap();
+        assert!(n.custom && !n.reenumeration_pending);
+        assert_eq!(n.name, "Custom");
+        s.with(|_| ());
+        assert!(matches!(
+            d.clear_device_name(b"123456", false),
+            Err(Error::NoUserPresence)
+        ));
+    }
+
+    #[test]
+    fn reset_name_with_button() {
+        let mut m = MockDevice::blank();
+        m.stored_name = Some("Custom".into());
+        m.active_name = "Custom".into();
+        let (mut d, s) = dev(m);
+        let n = d.clear_device_name(&[], false).unwrap();
+        assert!(!n.custom && n.reenumeration_pending);
+        assert_eq!(n.name, crate::mock::DEFAULT_NAME);
+        assert!(s.with(|m| m.stored_name.is_none()));
     }
 }

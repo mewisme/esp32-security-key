@@ -7,6 +7,9 @@ native USB OTG), plus Rust host tools.
 > basic CTAP2/U2F checks and enforces a real button press (see [docs/hw-reports/](docs/hw-reports/)). Most features are still
 > untested; the host tools otherwise pass unit tests against a mock device. See [docs/ROADMAP.md](docs/ROADMAP.md) for the status
 > matrix. Do not use it to protect real accounts. The ESP32-S3 is not a secure element ([docs/SECURITY.md](docs/SECURITY.md)).
+>
+> Touch-only use, PIN prompts and the PIN trade-off: [docs/FIDO_UV.md](docs/FIDO_UV.md). USB names, renaming
+> (`multikey device rename`) and the development AAGUID: [docs/USB_IDENTITY.md](docs/USB_IDENTITY.md).
 
 ## What it is
 

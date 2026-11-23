@@ -5,7 +5,8 @@ on Windows) and saves the output as UTF-8 to a log file in the repository root.
   .\tools\run_elevated.ps1 tools\ctap_up_test.py
   .\tools\run_elevated.ps1 tools\ctap_smoke.py --skip-eddsa
 
-Windows shows a UAC prompt unless you are already elevated. The elevated window stays open for a few seconds at the end.
+Windows shows a UAC prompt unless you are already elevated. The elevated window shows the output live (so prompts such as 'TOUCH NOW' are visible) and stays open for a few seconds at
+the end; the same output is saved to the log. If a script waits for Enter, type it into that window.
 It only runs the script you name; it does not flash, fuse or reset anything by itself.
 #>
 param(
@@ -19,7 +20,7 @@ if (-not (Test-Path $python)) {
 }
 $logName = ((Split-Path -Leaf $Script) -replace '\.py$', '') + '.log'
 $log = Join-Path $root $logName
-$inner = "Set-Location '$root'; & '$python' -u '$Script' $($ScriptArgs -join ' ') *>&1 | Out-File -Encoding utf8 '$log'; Get-Content '$log'; Start-Sleep -Seconds 8"
+$inner = "Set-Location '$root'; Remove-Item -Force -ErrorAction SilentlyContinue '$log'; & '$python' -u '$Script' $($ScriptArgs -join ' ') *>&1 | ForEach-Object { Write-Host `$_; Add-Content -Encoding UTF8 -Path '$log' -Value `$_ }; Start-Sleep -Seconds 8"
 Start-Process powershell -Verb RunAs -Wait -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', $inner
 Write-Host "--- log: $log"
 Get-Content $log

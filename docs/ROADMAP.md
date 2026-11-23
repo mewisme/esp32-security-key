@@ -5,7 +5,7 @@ Vocabulary: **Implemented** (code exists) · **Build verified** (`idf.py build`/
 ESP32-S3) · **Blocked** · **Not implemented**. Nothing may be marked Hardware verified without a report in `docs/hw-reports/`.
 
 Last updated: 2026-11-23. One ESP32-S3 N16R8 board was tested (Windows 11 host). "Hardware verified" below refers to that board and the
-tests listed in the linked report only.
+tests listed in the linked reports only (`docs/hw-reports/`).
 
 | # | Feature | Status | Notes |
 |---|---|---|---|
@@ -22,10 +22,15 @@ tests listed in the linked report only.
 | 3 | SSH `*-sk`, Git signing | Not tested | no firmware work; scripts written (`tools/ssh_smoke.*`), never run |
 | 4 | OpenPGP + PIV over CCID (separate image) | Build verified | `tools/gpg_smoke.sh` written, never run |
 | 4 | OpenPGP + FIDO in ONE image | **Blocked** | two management applets and two key-wrapping providers; needs a reviewed design (ADR-0002) |
-| 5 | MKAUTH applet (firmware) | Implemented, build verified; SELECT + GET_INFO hardware verified | ENROLL / CHALLENGE / REVOKE never run on hardware; no C-level unit tests |
-| 5 | Rust host: proto / host / CLI | Unit tested (mock device); `readers`/`status` hardware verified | 33 tests with a mock; other commands not run against the device |
+| 5 | MKAUTH applet (firmware) | Implemented, build verified; SELECT, GET_INFO and INS 06 (device name, unenrolled path) hardware verified | ENROLL / CHALLENGE / REVOKE never run on hardware; no C-level unit tests |
+| 5 | Rust host: proto / host / CLI | Unit tested (mock device, 44 tests incl. device-name rules); `readers`/`status`/`device` hardware verified | enroll/auth/revoke not run against the device |
 | 6 | Linux PAM module (`multikey-pam`) | Implemented, unit tested (logic) | 11 tests on Windows; not built or run on Linux; not hardware verified |
 | 6 | Windows: MKAUTH via PC/SC | Partly hardware verified | `multikey readers/status` (SELECT + GET_INFO) work through Windows PC/SC; ENROLL/CHALLENGE/REVOKE not run. FIDO via browser/Windows Hello not tested (see WINDOWS.md) |
+| 2 | FIDO2 touch-only / UV policy (PIN-less key): discouraged/plain requests UP-only, UV never fabricated, `uv=true` refused, required fails, timeout, cancel, stale press | Hardware verified (one board; PIN-less state only) | `docs/hw-reports/2026-11-23-uv-and-identity.md`, `docs/FIDO_UV.md`. Known issue: request on the SAME channel right after a CTAPHID_CANCEL gets a stale empty success (fresh channel correct); not fixed |
+| 2 | FIDO PIN scenarios (UV required with PIN, touch-only with a PIN set, alwaysUv, reset) | Integration tested (emulation, 28 pass + 3 pinned upstream deviations); **not hardware verified** | PIN is persistent and removable only by authenticatorReset, not approved. Finding: with a PIN set, touch-only use stops working until the PIN is entered (upstream key wrapping, `docs/FIDO_UV.md`) |
+| 2 | Project AAGUID (`0a63b994-8ba6-5e74-9e5a-0f894cc35c4d`, development value) and attestation subject for new devices | Hardware verified (GetInfo; non-resident credentials survive the change) | not registered with FIDO MDS, no certification claim; existing attestation certificate on the board unchanged |
+| 5 | Configurable USB identity (manufacturer/product Kconfig) | Hardware verified (Windows 11: bus strings, reader name, HID name); Linux/macOS not tested | `docs/USB_IDENTITY.md`; WinUSB interface has no string (esp_tinyusb limit) |
+| 5 | Device rename (`multikey device rename/reset-name/reenumerate`, MKAUTH INS 06) | Hardware verified for the unenrolled (button-only) path: rename, soft re-enumeration, replug and reflash persistence, restore default, device-side validation. Unit tested (mock) for the PIN path. **PIN-protected rename not hardware verified** | ASCII only, 31 chars; the name is a label, authorization note in SECURITY.md |
 | 6 | Windows Credential Provider | **Not implemented** | needs a VM snapshot to test safely; a faulty provider can lock a machine out |
 | 7 | Hardened profile (Secure Boot v2 + flash encryption + JTAG off) | Build verified (throwaway key) | never fused or booted; partitions.hardened.csv encrypted-partition behaviour of the pico flash driver unverified |
 | 7 | Read-only fuse checker `tools/provision_check.py` | Hardware verified (read-only, one chip) | `espefuse` summary parsed correctly on a real ESP32-S3: classified `development (open)` |

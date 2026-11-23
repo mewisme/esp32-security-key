@@ -2,7 +2,8 @@
 
 Status vocabulary (same as ROADMAP.md): Implemented / Build verified / Unit tested / Integration tested /
 Hardware verified / Blocked / Not implemented. Nothing below is recorded as Hardware verified until a human
-pastes a real report into `docs/hw-reports/`. No hardware has been used for this project so far.
+pastes a real report into `docs/hw-reports/`. Reports so far: `2026-11-23-read-only-probe.md`, `2026-11-23-first-run.md`,
+`2026-11-23-uv-and-identity.md` (one board, Windows 11).
 
 ## Test levels
 
@@ -18,11 +19,22 @@ pastes a real report into `docs/hw-reports/`. No hardware has been used for this
 | OpenPGP card | `tools/gpg_smoke.sh` | gpg 2.2+, pcscd/scdaemon; **openpgp** image (not the fido image) | yes | pending hardware |
 | MKAUTH round trip | `multikey enroll` / `multikey auth` / `multikey revoke` (host CLI) | PC/SC; fido image | yes | pending hardware |
 | eFuse state report | `python tools/provision_check.py -p COMx` (read-only `espefuse summary`) | board in download mode; `tools/requirements.txt` | yes | pending hardware |
+| FIDO UV/PIN policy, no hardware | `tools/run_emulation_tests.sh` (WSL/Linux; CI job `fido-emulation`) | rsync, cmake, ninja, gcc, libssl-dev, python3; builds pico-fido's `ENABLE_EMULATION` binary from a /tmp copy | no | Integration tested (28 pass, 3 pinned upstream deviations) |
+| FIDO UV/UP on the board | `tools\run_elevated.ps1 tools\ctap_uv_test.py [--only info raw nopin timeout cancel stale pin]` | venv; fido image; elevated PowerShell; `--pin` only with an existing PIN | yes | see docs/hw-reports |
+| Credentials survive update/rename | `ctap_survival.py snapshot` ... change ... `verify` (via `run_elevated.ps1`) | same | yes | see docs/hw-reports |
+| USB strings per interface | `python tools/usb_identity.py --expect-product "<name>"` | Windows; built `multikey` CLI optional | yes | see docs/hw-reports |
+| MKAUTH device name, device-side validation | `.venv\Scripts\python tools\mkauth_name_test.py --nobutton` | `pip install pyscard`; PC/SC | yes (no press needed) | see docs/hw-reports |
+| Rename flow incl. re-enumeration and replug | `python tools/name_flow_test.py` | built `multikey` CLI; unenrolled MKAUTH | yes (2 presses, 1 replug) | see docs/hw-reports |
 
 `ctap_smoke.py --reset --yes-wipe-device` runs authenticatorReset (erases all credentials and the PIN). It is
 off by default. The script only deletes credentials it created itself for rpId `multikey.test`.
 `provision_check.py` is read-only: it contains no eFuse write command and its self-test asserts that.
 The scripts' output proves only what they print for the connected device; it is not CTAP2.1 or FIDO conformance.
+
+`tools\run_elevated.ps1` shows the elevated window's output live (so prompts are visible) and also logs it; the scripts that need a
+touch wait for Enter first and print `TOUCH NOW` when the key is actually waiting. `ctap_uv_test.py`, `ctap_survival.py`,
+`ctap_up_test.py`, `mkauth_name_test.py`, `name_flow_test.py` and `usb_identity.py` never set a PIN, never reset the authenticator and
+write nothing but non-resident test credentials for `multikey.test` / `multikey.survival` (and, for the rename tests, the device-name file).
 
 ## Hardware reports (`docs/hw-reports/`)
 

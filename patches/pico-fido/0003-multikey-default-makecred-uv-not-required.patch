@@ -1,0 +1,21 @@
+diff --git a/src/fido/fido.c b/src/fido/fido.c
+index b22ac4e..b28f41c 100644
+--- a/src/fido/fido.c
++++ b/src/fido/fido.c
+@@ -481,6 +481,16 @@ int scan_files_fido(void) {
+     else {
+         printf("FATAL ERROR: Global counter not found in memory!\r\n");
+     }
++#ifdef CONFIG_MULTIKEY_FIDO_MAKECRED_UV_NOT_REQUIRED
++    {
++        /* MultiKey: initialise the options byte exactly once (never stored, or erased by authenticatorReset).
++         * An options byte that exists, even with the flag cleared on purpose, is left alone. */
++        file_t *ef_opts = file_search_by_fid(EF_OPTS, NULL, SPECIFY_EF);
++        if (ef_opts && !file_has_data(ef_opts)) {
++            set_opts(FIDO2_OPT_MCUV_NOTRQD);
++        }
++    }
++#endif
+     ef_pin = file_search_by_fid(EF_PIN, NULL, SPECIFY_EF);
+     ef_pin_admin = file_search_by_fid(EF_PIN_ADMIN, NULL, SPECIFY_EF);
+     ef_authtoken = file_search_by_fid(EF_AUTHTOKEN, NULL, SPECIFY_EF);
