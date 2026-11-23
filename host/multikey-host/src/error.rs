@@ -47,4 +47,6 @@ pub enum Error {
     RenameDisabled,
     #[error("the device rejected the name or the PIN field (wrong data)")]
     NameRejected,
+    #[error("this firmware does not report its build (INS 07); update the firmware")]
+    BuildInfoUnsupported,
 }

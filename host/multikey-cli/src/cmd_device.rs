@@ -5,9 +5,10 @@
 
 use multikey_fido::{Authenticator, FidoInfo, HidAuthenticator, HidDevice, PinStatus};
 use multikey_host::{inventory, DeviceEntry};
-use multikey_proto::DeviceName;
+use multikey_proto::{BuildInfo, DeviceName};
 use serde::Serialize;
 
+use crate::cmd_build::{write_report, BuildReport};
 use crate::cmd_mkauth::{management_pin, status_report, Opener, StatusReport};
 use crate::console::Console;
 use crate::error::{msg, CliError, Res};
@@ -103,6 +104,7 @@ pub struct InfoReport {
     pub entry: DeviceEntry,
     pub mkauth: Section<StatusReport>,
     pub fido: Section<FidoInfo>,
+    pub build: Section<BuildReport>,
 }
 
 pub fn info(c: &mut dyn Console, args: &SelectArgs, json: bool) -> Res {
@@ -111,6 +113,9 @@ pub fn info(c: &mut dyn Console, args: &SelectArgs, json: bool) -> Res {
     let report = InfoReport {
         mkauth: Section::from(mkauth_part(&entry, inv.pcsc_error.as_deref())),
         fido: Section::from(fido_part(&entry, |a| a.info())),
+        build: Section::from(
+            build_part(&entry, inv.pcsc_error.as_deref()).map(|b| BuildReport::from(&b)),
+        ),
         entry,
     };
     emit(c.out(), json, &report, |w| {
@@ -149,6 +154,14 @@ pub fn info(c: &mut dyn Console, args: &SelectArgs, json: bool) -> Res {
                 w,
                 "FIDO             : unavailable: {}",
                 report.fido.error.as_deref().unwrap_or("?")
+            )?,
+        }
+        match &report.build.data {
+            Some(b) => write_report(w, b)?,
+            None => writeln!(
+                w,
+                "firmware         : not reported ({})",
+                report.build.error.as_deref().unwrap_or("?")
             )?,
         }
         if let Some(h) = &report.entry.hid {
@@ -218,31 +231,63 @@ pub fn status(c: &mut dyn Console, args: &SelectArgs, json: bool) -> Res {
     })
 }
 
+/// What the key says it is, over MKAUTH INS 07. The error text is why it could not be read.
+fn build_part(entry: &DeviceEntry, inv_pcsc_error: Option<&str>) -> Result<BuildInfo, String> {
+    let Some(reader) = &entry.reader else {
+        return Err(match inv_pcsc_error {
+            Some(why) => format!("smart-card side unavailable: {why}"),
+            None => "no CCID reader paired with this device".to_string(),
+        });
+    };
+    let args = SelectArgs {
+        reader: Some(reader.clone()),
+        ..Default::default()
+    };
+    let mut dev = Opener::Strict(args).open().map_err(err_text)?;
+    dev.build_info().map_err(|e| err_text(e.into()))
+}
+
 #[derive(Serialize, Debug, PartialEq, Eq)]
 pub struct VersionReport {
     /// Version of this tool.
     pub host_tool: String,
-    /// MKAUTH protocol version byte reported by the applet (not a firmware build id).
+    /// MKAUTH protocol version byte reported by the applet.
     pub mkauth_protocol: Option<u8>,
-    /// authenticatorGetInfo firmwareVersion: the upstream pico-fido core version, not a MultiKeys build id.
+    /// authenticatorGetInfo firmwareVersion: the upstream pico-fido core version, not the MultiKeys version.
     pub ctap_firmware_version: Option<u32>,
     pub ctap_versions: Vec<String>,
     pub usb_vid: Option<u16>,
     pub usb_pid: Option<u16>,
     /// The HID interface string of the FIDO interface (`<device name> FIDO`), not the device product string.
     pub hid_interface: Option<String>,
+    /// The MultiKeys firmware build, as the key reports it (MKAUTH INS 07).
+    pub firmware: Option<BuildReport>,
+    /// Why `firmware` is empty (a firmware that predates INS 07, or no smart-card side).
+    pub firmware_error: Option<String>,
     pub note: &'static str,
 }
 
 pub const VERSION_NOTE: &str =
-    "The firmware does not report a MultiKeys build identifier; only the protocol versions above exist.";
+    "`firmware` is what the key itself reports (MKAUTH INS 07); ctap_firmware_version is only the upstream pico-fido core version.";
+pub const VERSION_NOTE_NO_BUILD: &str =
+    "This key did not report its build: firmware from before the BUILD_INFO command (INS 07) cannot, so update it. ctap_firmware_version is only the upstream pico-fido core version.";
 
 pub fn build_version(
     host: &str,
     mkauth: Option<u8>,
     fido: Option<&FidoInfo>,
     hid: Option<&HidDevice>,
+    firmware: Result<&BuildInfo, String>,
 ) -> VersionReport {
+    let (firmware, firmware_error) = match firmware {
+        Ok(b) => (Some(BuildReport::from(b)), None),
+        Err(e) => (None, Some(e)),
+    };
+    let note = if firmware.is_some() {
+        VERSION_NOTE
+    } else {
+        VERSION_NOTE_NO_BUILD
+    };
     VersionReport {
         host_tool: host.to_string(),
         mkauth_protocol: mkauth,
@@ -251,7 +296,9 @@ pub fn build_version(
         usb_vid: hid.map(|h| h.vid),
         usb_pid: hid.map(|h| h.pid),
         hid_interface: hid.map(|h| h.product.clone()),
-        note: VERSION_NOTE,
+        firmware,
+        firmware_error,
+        note,
     }
 }
 
@@ -262,11 +309,13 @@ pub fn version(c: &mut dyn Console, args: &SelectArgs, json: bool) -> Res {
         .ok()
         .map(|m| m.protocol_version);
     let fido = fido_part(&entry, |a| a.info()).ok();
+    let build = build_part(&entry, inv.pcsc_error.as_deref());
     let r = build_version(
         env!("CARGO_PKG_VERSION"),
         mk,
         fido.as_ref(),
         entry.hid.as_ref(),
+        build.as_ref().map_err(Clone::clone),
     );
     emit(c.out(), json, &r, |w| {
         writeln!(w, "multikey tool    : {}", r.host_tool)?;
@@ -274,10 +323,18 @@ pub fn version(c: &mut dyn Console, args: &SelectArgs, json: bool) -> Res {
             Some(v) => writeln!(w, "MKAUTH protocol  : {v}")?,
             None => writeln!(w, "MKAUTH protocol  : unavailable")?,
         }
+        match (&r.firmware, &r.firmware_error) {
+            (Some(b), _) => write_report(w, b)?,
+            (None, why) => writeln!(
+                w,
+                "firmware         : not reported ({})",
+                why.as_deref().unwrap_or("?")
+            )?,
+        }
         match r.ctap_firmware_version {
             Some(v) => writeln!(
                 w,
-                "CTAP fw version  : {v:#x} (pico-fido core version, not a MultiKeys build id)"
+                "CTAP fw version  : {v:#x} (pico-fido core version, not the MultiKeys version)"
             )?,
             None => writeln!(w, "CTAP fw version  : unavailable")?,
         }
@@ -410,7 +467,14 @@ mod tests {
             pin_protocols: vec![],
             min_pin_length: None,
         };
-        let r = build_version("0.1.0", Some(1), Some(&fido), Some(&hid()));
+        let build = BuildInfo {
+            project: Some("multikey-fido".into()),
+            version: Some("0.3.0".into()),
+            commit: Some("281fae077113".into()),
+            image_sha256: Some([0xAB; 32]),
+            ..Default::default()
+        };
+        let r = build_version("0.1.0", Some(1), Some(&fido), Some(&hid()), Ok(&build));
         let mut c = TestConsole::default();
         emit(c.out(), true, &r, |_| Ok(())).unwrap();
         let v: serde_json::Value = serde_json::from_str(&c.stdout()).unwrap();
@@ -418,14 +482,20 @@ mod tests {
         assert_eq!(v["mkauth_protocol"], 1);
         assert_eq!(v["ctap_firmware_version"], 0x0809);
         assert_eq!(v["usb_pid"], 0x4002);
-        assert!(v["note"].as_str().unwrap().contains("build identifier"));
+        assert_eq!(v["firmware"]["version"], "0.3.0");
+        assert_eq!(v["firmware"]["commit"], "281fae077113");
+        assert_eq!(v["firmware"]["image_sha256"], "ab".repeat(32));
+        assert!(v["firmware_error"].is_null());
     }
 
     #[test]
     fn version_without_transports_is_all_null() {
-        let r = build_version("0.1.0", None, None, None);
+        let r = build_version("0.1.0", None, None, None, Err("no reader".into()));
         assert_eq!(r.mkauth_protocol, None);
         assert_eq!(r.ctap_firmware_version, None);
         assert!(r.ctap_versions.is_empty());
+        assert!(r.firmware.is_none());
+        assert_eq!(r.firmware_error.as_deref(), Some("no reader"));
+        assert_eq!(r.note, VERSION_NOTE_NO_BUILD);
     }
 }

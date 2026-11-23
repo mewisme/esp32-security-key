@@ -3,9 +3,11 @@
 //! Exit codes: 0 ok, 1 failure, 2 usage / ambiguous selection / refused by policy, 3 no device or PC/SC/HID
 //! unavailable, 4 user-presence timeout or denied, 5 wrong PIN, 6 PIN blocked, 130 cancelled at a prompt.
 
+mod cmd_build;
 mod cmd_device;
 mod cmd_fido;
 mod cmd_mkauth;
+mod cmd_watch;
 mod console;
 mod error;
 mod output;
@@ -130,8 +132,29 @@ enum DeviceCmd {
     Info,
     /// MKAUTH enrollment state and FIDO PIN state of one device.
     Status,
-    /// Tool, protocol and CTAP versions (the firmware has no build identifier).
+    /// Tool, protocol and CTAP versions, and the firmware build when the key reports one.
     Version,
+    /// What firmware is running: name, version, source commit, image SHA-256, chip and security state (MKAUTH INS
+    /// 07; read-only, no button, no PIN). With --manifest the image is checked against a release.
+    Build {
+        /// A release's firmware-manifest.json: says whether the key runs exactly one of its published images.
+        #[arg(long, value_name = "FILE")]
+        manifest: Option<PathBuf>,
+    },
+    /// Passkey activity as it happens: every registration, sign-in and BOOT-button wait the key reports, with the site,
+    /// the account and what went wrong. Read-only; one program at a time can hold the key's vendor interface (close
+    /// the web installer tab first). With --json, one JSON object per line.
+    Watch {
+        /// USB id of the key as VID:PID in hexadecimal (default 303a:4002).
+        #[arg(long, value_name = "VID:PID")]
+        usb: Option<String>,
+        /// Stop after this many events.
+        #[arg(long, value_name = "N")]
+        count: Option<u32>,
+        /// Stop after this many seconds.
+        #[arg(long, value_name = "SECONDS")]
+        timeout: Option<u64>,
+    },
     /// Show the device name and whether a rename is waiting for USB re-enumeration.
     Show,
     /// Store a new device name (button press; also the MKAUTH PIN once enrolled). 1-31 printable ASCII
@@ -255,7 +278,12 @@ fn supports_json(cmd: &Cmd) -> bool {
         Cmd::Readers | Cmd::Status | Cmd::List { .. } => true,
         Cmd::Device { cmd } => matches!(
             cmd,
-            DeviceCmd::List | DeviceCmd::Info | DeviceCmd::Status | DeviceCmd::Version
+            DeviceCmd::List
+                | DeviceCmd::Info
+                | DeviceCmd::Status
+                | DeviceCmd::Version
+                | DeviceCmd::Build { .. }
+                | DeviceCmd::Watch { .. }
         ),
         Cmd::Fido { cmd } => match cmd {
             FidoCmd::Info => true,
@@ -323,6 +351,12 @@ fn run(cli: Cli, c: &mut dyn Console) -> Res {
             DeviceCmd::Info => cmd_device::info(c, &sel, json),
             DeviceCmd::Status => cmd_device::status(c, &sel, json),
             DeviceCmd::Version => cmd_device::version(c, &sel, json),
+            DeviceCmd::Build { manifest } => cmd_build::build(&strict(), c, json, manifest),
+            DeviceCmd::Watch {
+                usb,
+                count,
+                timeout,
+            } => cmd_watch::watch(c, json, usb.as_deref(), count, timeout),
             DeviceCmd::Show => cmd_device::show(&strict(), c),
             DeviceCmd::Rename { name, reenumerate } => {
                 cmd_device::rename(&strict(), c, &name, reenumerate)

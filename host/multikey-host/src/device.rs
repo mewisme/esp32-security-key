@@ -2,8 +2,8 @@ use crate::error::{Error, Result};
 use crate::transport::{PcscTransport, Transport};
 use crate::trust::KeyEntry;
 use multikey_proto::{
-    self as proto, DeviceName, Enrollment, Info, StatusWord, DEVICE_ID_LEN, NONCE_LEN, PUBKEY_LEN,
-    SELECT_RESPONSE,
+    self as proto, BuildInfo, DeviceName, Enrollment, Info, StatusWord, DEVICE_ID_LEN, NONCE_LEN,
+    PUBKEY_LEN, SELECT_RESPONSE,
 };
 use std::time::{Duration, Instant};
 use subtle::ConstantTimeEq;
@@ -128,6 +128,18 @@ impl<T: Transport> Device<T> {
     pub fn reenumerate(&mut self, pin: &[u8]) -> Result<()> {
         let apdu = proto::device_name_reenumerate_apdu(pin)?;
         self.name_command(&apdu).map(|_| ())
+    }
+
+    /// Read what the running firmware is (INS 07): name, version, source commit, image SHA-256, chip. Needs no
+    /// button and no PIN. A firmware built before this command answers 6D00 (`BuildInfoUnsupported`).
+    pub fn build_info(&mut self) -> Result<BuildInfo> {
+        let data = self
+            .command(&proto::build_info_apdu(), Error::Status(0x6985))
+            .map_err(|e| match e {
+                Error::Status(0x6D00) => Error::BuildInfoUnsupported,
+                other => other,
+            })?;
+        Ok(proto::parse_build_info(&data)?)
     }
 
     /// Challenge-response authentication against `trusted`.
@@ -375,6 +387,22 @@ mod tests {
     fn trusted_key_from_entry() {
         let e = KeyEntry::new("alice", &testkey::public_key(), &testkey::TEST_DEVICE_ID);
         assert_eq!(TrustedKey::from_entry(&e).unwrap(), trusted());
+    }
+
+    #[test]
+    fn build_info_reads_without_button_or_pin() {
+        let mut m = MockDevice::enrolled();
+        m.button = false; // a read must not need the button
+        m.build_info = Some(vec![0x01, 0x02, 0x05, b'0', b'.', b'3', b'.', b'0']);
+        let (mut d, _) = dev(m);
+        let info = d.build_info().unwrap();
+        assert_eq!(info.version.as_deref(), Some("0.3.0"));
+    }
+
+    #[test]
+    fn build_info_on_a_firmware_without_ins_07() {
+        let (mut d, _) = dev(MockDevice::blank()); // answers 6D00
+        assert!(matches!(d.build_info(), Err(Error::BuildInfoUnsupported)));
     }
 
     #[test]

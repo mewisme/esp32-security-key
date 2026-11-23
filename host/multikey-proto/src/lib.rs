@@ -3,6 +3,8 @@
 use p256::ecdsa::{signature::Verifier, Signature, VerifyingKey};
 use thiserror::Error;
 
+pub mod events;
+
 /// Applet identifier.
 pub const AID: [u8; 8] = [0xF0, 0x4D, 0x4B, 0x41, 0x55, 0x54, 0x48, 0x01];
 /// Expected SELECT response data.
@@ -13,6 +15,9 @@ pub const INS_ENROLL: u8 = 0x02;
 pub const INS_CHALLENGE: u8 = 0x03;
 pub const INS_REVOKE: u8 = 0x04;
 pub const INS_DEVICE_NAME: u8 = 0x06;
+pub const INS_BUILD_INFO: u8 = 0x07;
+/// First byte of a BUILD_INFO response.
+pub const BUILD_INFO_FORMAT: u8 = 0x01;
 /// Longest device name in bytes (one esp_tinyusb string descriptor).
 pub const NAME_MAX: usize = 31;
 pub const NAME_GET: u8 = 0x00;
@@ -298,6 +303,191 @@ pub fn parse_device_name(data: &[u8]) -> Result<DeviceName, ProtoError> {
         reenumeration_pending: data[0] & 0x02 != 0,
         rename_supported: data[0] & 0x04 != 0,
         name: name.to_owned(),
+    })
+}
+
+/// Tags of the `INS 07` BUILD_INFO response entries (`docs/PROTOCOLS.md`).
+pub mod build_tag {
+    pub const PROJECT: u8 = 0x01;
+    pub const VERSION: u8 = 0x02;
+    pub const IDF: u8 = 0x03;
+    pub const COMMIT: u8 = 0x04;
+    pub const IMAGE_SHA256: u8 = 0x05;
+    pub const ELF_SHA256: u8 = 0x06;
+    pub const FLASH_BUILT: u8 = 0x07;
+    pub const FLASH_CHIP: u8 = 0x08;
+    pub const SECURITY: u8 = 0x09;
+    pub const CHIP: u8 = 0x0A;
+    pub const RESET: u8 = 0x0B;
+    pub const UPTIME: u8 = 0x0C;
+    pub const PARTITION: u8 = 0x0D;
+}
+
+/// What the running firmware reports about itself (`INS 07`, read-only, no button, no PIN). A field is `None`
+/// when the firmware did not send it (a newer or older build); unknown tags are skipped.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct BuildInfo {
+    pub project: Option<String>,
+    pub version: Option<String>,
+    pub idf_version: Option<String>,
+    /// Source commit the firmware was built from: 12 hex digits, `+dirty` when tracked files were modified, or
+    /// `unknown`.
+    pub commit: Option<String>,
+    /// SHA-256 of the app image as flashed: equals `images[role=app].sha256` of the release manifest.
+    pub image_sha256: Option<[u8; 32]>,
+    pub elf_sha256: Option<[u8; 32]>,
+    /// Flash size the image was built for, e.g. `16MB`.
+    pub flash_built_for: Option<String>,
+    /// Flash size the chip reports, in bytes.
+    pub flash_chip_bytes: Option<u32>,
+    pub flash_encryption: Option<bool>,
+    pub secure_boot: Option<bool>,
+    /// `esp_chip_model_t`.
+    pub chip_model: Option<u8>,
+    /// Full chip revision, `major * 100 + minor`.
+    pub chip_revision: Option<u16>,
+    pub chip_cores: Option<u8>,
+    /// `esp_reset_reason_t` of this boot.
+    pub reset_reason: Option<u8>,
+    pub uptime_seconds: Option<u32>,
+    pub partition_offset: Option<u32>,
+    pub partition_label: Option<String>,
+}
+
+/// `80 07 00 00 00`: read what the firmware is (no authorization needed).
+pub fn build_info_apdu() -> Vec<u8> {
+    vec![CLA, INS_BUILD_INFO, 0, 0, 0x00]
+}
+
+/// Parses a BUILD_INFO response (`fmt(1)=01` then `tag | len | value` entries). Text is accepted only as printable
+/// ASCII, so nothing a device sends can inject control characters into a terminal or a report.
+pub fn parse_build_info(data: &[u8]) -> Result<BuildInfo, ProtoError> {
+    let bad = |what: &'static str| ProtoError::BadLength {
+        what,
+        len: data.len(),
+    };
+    match data.first() {
+        Some(&BUILD_INFO_FORMAT) => {}
+        Some(&v) => return Err(ProtoError::BadVersion(v)),
+        None => return Err(bad("build info")),
+    }
+    let text = |v: &[u8]| -> Result<String, ProtoError> {
+        if v.iter().all(|b| (0x20..=0x7E).contains(b)) {
+            Ok(String::from_utf8_lossy(v).into_owned())
+        } else {
+            Err(bad("build info (text is not printable ASCII)"))
+        }
+    };
+    let fixed = |v: &[u8], n: usize| -> Result<(), ProtoError> {
+        if v.len() == n {
+            Ok(())
+        } else {
+            Err(bad("build info (entry has the wrong length)"))
+        }
+    };
+    let be32 = |v: &[u8]| u32::from_be_bytes([v[0], v[1], v[2], v[3]]);
+    let mut info = BuildInfo::default();
+    let mut seen = 0u32;
+    let mut rest = &data[1..];
+    while !rest.is_empty() {
+        let (Some(&tag), Some(&len)) = (rest.first(), rest.get(1)) else {
+            return Err(bad("build info (truncated entry)"));
+        };
+        let Some(v) = rest.get(2..2 + usize::from(len)) else {
+            return Err(bad("build info (truncated entry)"));
+        };
+        rest = &rest[2 + usize::from(len)..];
+        if tag < 32 {
+            if seen & (1 << tag) != 0 {
+                return Err(bad("build info (repeated entry)"));
+            }
+            seen |= 1 << tag;
+        }
+        match tag {
+            build_tag::PROJECT => info.project = Some(text(v)?),
+            build_tag::VERSION => info.version = Some(text(v)?),
+            build_tag::IDF => info.idf_version = Some(text(v)?),
+            build_tag::COMMIT => info.commit = Some(text(v)?),
+            build_tag::IMAGE_SHA256 => {
+                fixed(v, 32)?;
+                info.image_sha256 = Some(arr(v));
+            }
+            build_tag::ELF_SHA256 => {
+                fixed(v, 32)?;
+                info.elf_sha256 = Some(arr(v));
+            }
+            build_tag::FLASH_BUILT => info.flash_built_for = Some(text(v)?),
+            build_tag::FLASH_CHIP => {
+                fixed(v, 4)?;
+                info.flash_chip_bytes = Some(be32(v));
+            }
+            build_tag::SECURITY => {
+                fixed(v, 1)?;
+                info.flash_encryption = Some(v[0] & 0x01 != 0);
+                info.secure_boot = Some(v[0] & 0x02 != 0);
+            }
+            build_tag::CHIP => {
+                fixed(v, 4)?;
+                info.chip_model = Some(v[0]);
+                info.chip_revision = Some(u16::from_be_bytes([v[1], v[2]]));
+                info.chip_cores = Some(v[3]);
+            }
+            build_tag::RESET => {
+                fixed(v, 1)?;
+                info.reset_reason = Some(v[0]);
+            }
+            build_tag::UPTIME => {
+                fixed(v, 4)?;
+                info.uptime_seconds = Some(be32(v));
+            }
+            build_tag::PARTITION => {
+                if v.len() < 4 {
+                    return Err(bad("build info (entry has the wrong length)"));
+                }
+                info.partition_offset = Some(be32(v));
+                info.partition_label = Some(text(&v[4..])?);
+            }
+            _ => {} // a tag from a newer firmware
+        }
+    }
+    Ok(info)
+}
+
+/// Name of an `esp_chip_model_t` value.
+pub fn chip_model_name(model: u8) -> Option<&'static str> {
+    Some(match model {
+        1 => "ESP32",
+        2 => "ESP32-S2",
+        5 => "ESP32-C3",
+        9 => "ESP32-S3",
+        12 => "ESP32-C2",
+        13 => "ESP32-C6",
+        16 => "ESP32-H2",
+        18 => "ESP32-P4",
+        _ => return None,
+    })
+}
+
+/// Name of an `esp_reset_reason_t` value.
+pub fn reset_reason_name(reason: u8) -> Option<&'static str> {
+    Some(match reason {
+        0 => "unknown",
+        1 => "power-on",
+        2 => "external pin",
+        3 => "software restart",
+        4 => "panic",
+        5 => "interrupt watchdog",
+        6 => "task watchdog",
+        7 => "other watchdog",
+        8 => "deep sleep wake-up",
+        9 => "brownout",
+        10 => "SDIO",
+        11 => "USB",
+        12 => "JTAG",
+        13 => "eFuse error",
+        14 => "power glitch",
+        15 => "CPU lock-up",
+        _ => return None,
     })
 }
 

@@ -28,6 +28,8 @@ pub struct MockDevice {
     /// Name the host currently sees (changes on re-enumeration only).
     pub active_name: String,
     pub reenumerations: u32,
+    /// Response data of INS 07 (`None` = a firmware that predates it, answering 6D00).
+    pub build_info: Option<Vec<u8>>,
 }
 
 impl MockDevice {
@@ -49,6 +51,7 @@ impl MockDevice {
             stored_name: None,
             active_name: DEFAULT_NAME.to_owned(),
             reenumerations: 0,
+            build_info: None,
         }
     }
 
@@ -237,6 +240,10 @@ impl MockDevice {
                 Self::sw(0x9000, vec![])
             }
             proto::INS_DEVICE_NAME => self.handle_name(apdu[2], apdu[3], data),
+            proto::INS_BUILD_INFO => match &self.build_info {
+                Some(bytes) => Self::sw(0x9000, bytes.clone()),
+                None => Self::sw(StatusWord::UnknownIns.into(), vec![]),
+            },
             _ => Self::sw(StatusWord::UnknownIns.into(), vec![]),
         }
     }
