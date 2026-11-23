@@ -3,8 +3,9 @@
 Open-source USB security key firmware for the ESP32-S3 (target board: generic **ESP32-S3 N16R8** devkit, 16 MB flash,
 native USB OTG), plus Rust host tools.
 
-> **Status: early development. Nothing here has been run on real hardware.** Firmware images build (ESP-IDF v5.5.6) and
-> the host tools pass unit tests against a mock device. See [docs/ROADMAP.md](docs/ROADMAP.md) for the per-feature status
+> **Status: early development, tested on one board only.** The fido image runs on an ESP32-S3 N16R8 (Windows 11): it enumerates, passes
+> basic CTAP2/U2F checks and enforces a real button press (see [docs/hw-reports/](docs/hw-reports/)). Most features are still
+> untested; the host tools otherwise pass unit tests against a mock device. See [docs/ROADMAP.md](docs/ROADMAP.md) for the status
 > matrix. Do not use it to protect real accounts. The ESP32-S3 is not a secure element ([docs/SECURITY.md](docs/SECURITY.md)).
 
 ## What it is
@@ -13,7 +14,7 @@ Two firmware images, built from one tree on top of the AGPL-3.0 [Pico Keys](http
 
 | Image (`--app`) | Provides | Status |
 |---|---|---|
-| `fido` | FIDO2/CTAP2 + U2F over USB HID (upstream pico-fido v8.2), OATH/OTP applets, **MKAUTH** custom challenge-response applet over CCID | Build verified; not hardware verified |
+| `fido` | FIDO2/CTAP2 + U2F over USB HID (upstream pico-fido v8.2), OATH/OTP applets, **MKAUTH** custom challenge-response applet over CCID | Basic FIDO2 flow and user presence hardware verified on one board (Windows 11); MKAUTH SELECT/GET_INFO verified; everything else untested |
 | `openpgp` | OpenPGP card + PIV over CCID (upstream pico-openpgp main `9b23276`) | Build verified; not hardware verified |
 
 A single merged FIDO+OpenPGP image is **Blocked** ([ADR-0002](docs/ADR-0002-separate-images.md)).

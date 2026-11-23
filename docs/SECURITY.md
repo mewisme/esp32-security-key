@@ -59,9 +59,12 @@ README makes the same distinction for chips without OTP secrets.
   stock upstream build asserts the FIDO UP flag without any button press. Patch 0001 makes `button_timeout_seconds()`
   return `CONFIG_MULTIKEY_UP_TIMEOUT_MS` (>= 1 s, from Kconfig, not lowerable from the host). It also requires the button
   to be seen released, then pressed, then released after the request starts (upstream accepted a button already held down).
-  Verified by code reading and build only; **not hardware verified**: `tools/ctap_smoke.py` must be run on a real board and
-  must show that makeCredential/getAssertion block until BOOT is pressed. An earlier statement in this repository that
-  there is "no user-presence shortcut" referred only to MKAUTH and was incomplete for FIDO.
+  Hardware result (2026-11-23, one board, `docs/hw-reports/2026-11-23-first-run.md`): the stock behaviour was confirmed to
+  accept makeCredential with no button press (0.2 s, no presence keepalive; an additional upstream gap: no presence check
+  at all when the platform sends no pinUvAuthParam, fixed by `patches/pico-fido/0001`). After the fixes a request without a
+  press is refused after 15 s, a press-and-release satisfies it, and a button held down before the request does not. One
+  unexplained early success at about 10 s was seen in 1 of 6 no-touch runs (probable early press); open. An earlier statement
+  here that there is "no user-presence shortcut" referred only to MKAUTH and was incomplete for FIDO.
 - MKAUTH policy bit0 is hard-wired; CI asserts `sdkconfig.prod` and `sdkconfig.defaults` do not set
   `CONFIG_MULTIKEY_ALLOW_UNSET_PINS_FOR_CI`.
 - GPIO0 (BOOT) as the presence button is safe for boot and flashing because it is only read as an input after boot

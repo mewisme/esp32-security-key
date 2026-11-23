@@ -113,5 +113,5 @@ Save the output as `docs/hw-reports/<date>-<topic>.md` with board model, which U
 
 - `No CTAPHID device found`: not elevated, or the board is in download mode (`PID_1001`), or the native port is not connected.
 - A request succeeds in the no-touch phase: do not use the device; report it. (One such result was seen once, see the hardware
-  report, and could not be reproduced in 6 later no-touch runs.)
+  report, and could not be reproduced in 5 later no-touch runs.)
 - `OPERATION_DENIED` on a touch step: the 15 s window passed before you pressed; press when the prompt appears.
