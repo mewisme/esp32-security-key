@@ -27,7 +27,6 @@ import {
 } from "@/lib/firmware/release-select";
 import type { Build } from "@/lib/firmware/types";
 import { formatBytes } from "@/lib/format";
-import { formatDate } from "./format-date";
 
 function verificationBadge(build: Build, t: Messages): { variant: "success-light" | "warning-light"; text: string } {
   if (build.verification === "hardware-verified") {
@@ -177,10 +176,9 @@ export function FirmwareDownloads({
               <SelectGroup>
                 {catalog.releases.map((r) => (
                   <SelectItem key={r.tag} value={r.tag}>
-                    <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <span className="flex items-center gap-2 whitespace-nowrap">
                       <span className="font-medium tabular-nums">v{r.manifest.version}</span>
                       <ReleaseBadges release={r} latestStable={r.tag === latestStableTag} />
-                      {r.publishedAt && <span className="text-xs text-muted-foreground">{formatDate(r.publishedAt, locale)}</span>}
                     </span>
                   </SelectItem>
                 ))}
