@@ -2,12 +2,14 @@
 // second interface running the same CCID parser (pico-keys-sdk/src/usb/ccid/ccid.c). Framing: 10-byte header
 // bMessageType, dwLength (LE32), bSlot, bSeq, b7, b8, b9.
 import { FirmwareError } from "../errors/firmware-error";
+import { CCID_EVENT } from "./key-events";
 
 const ICC_POWER_ON = 0x62;
 const XFR_BLOCK = 0x6f;
 const DATA_BLOCK = 0x80;
 const HEADER = 10;
 const POWER_ON_TIMEOUT_MS = 5000;
+const MAX_KEPT_EVENTS = 32;
 
 function header(type: number, len: number, seq: number): Uint8Array {
   return Uint8Array.from([type, len & 0xff, (len >>> 8) & 0xff, (len >>> 16) & 0xff, (len >>> 24) & 0xff, 0, seq, 0, 0, 0]);
@@ -45,6 +47,7 @@ export class WebCcid {
   private seq = 0;
   private buf = new Uint8Array(0);
   private abandoned = false;
+  private events: Uint8Array[] = [];
 
   private constructor(
     private readonly device: USBDevice,
@@ -95,6 +98,32 @@ export class WebCcid {
     await this.device.close().catch(() => {});
   }
 
+  /**
+   * Event messages (passkey activity) that arrived while a command was in flight or at power-on: they were queued in the
+   * key before anybody read them. Payloads only (the bytes after the CCID header), oldest first.
+   */
+  takeEvents(): Uint8Array[] {
+    const e = this.events;
+    this.events = [];
+    return e;
+  }
+
+  /**
+   * The payload of the next event message. Waits without a limit; WebUSB cannot cancel a pending read, so the caller ends a
+   * wait by closing the connection (which makes the pending transfer fail). Other message types are skipped.
+   */
+  async nextEvent(): Promise<Uint8Array> {
+    for (;;) {
+      const m = await this.readMessage();
+      if (m[0] === CCID_EVENT) return m.slice(HEADER);
+    }
+  }
+
+  private keepEvent(m: Uint8Array): void {
+    this.events.push(m.slice(HEADER));
+    if (this.events.length > MAX_KEPT_EVENTS) this.events.shift();
+  }
+
   private async exchange(type: number, payload: Uint8Array): Promise<Uint8Array> {
     const seq = this.seq;
     this.seq = (this.seq + 1) & 0xff;
@@ -105,6 +134,10 @@ export class WebCcid {
     await this.device.transferOut(this.epOut, msg);
     for (;;) {
       const m = await this.readMessage();
+      if (m[0] === CCID_EVENT) {
+        this.keepEvent(m);
+        continue;
+      }
       if (m[0] !== DATA_BLOCK || m[6] !== seq) continue;
       const len = m[1]! | (m[2]! << 8) | (m[3]! << 16) | (m[4]! * 0x1000000);
       if (m[7] === 0x80 && len === 0) continue; // time extension

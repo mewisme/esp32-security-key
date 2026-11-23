@@ -13,6 +13,7 @@ const LINKS = [
   { to: "/install", key: "install" },
   { to: "/first-use", key: "firstUse" },
   { to: "/passkeys", key: "passkeys" },
+  { to: "/key", key: "keyInfo" },
   { to: "/help", key: "help" },
   { to: "/releases", key: "releases" },
 ] as const;

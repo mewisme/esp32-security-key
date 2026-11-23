@@ -7,6 +7,7 @@ import { useI18n } from "@/i18n/context";
 import { I18nProvider } from "@/i18n/I18nProvider";
 import { applyTheme, storedTheme } from "@/lib/theme";
 import { FirstUsePage } from "@/pages/FirstUse";
+import { KeyInfoPage } from "@/pages/KeyInfo";
 import { HelpPage } from "@/pages/Help";
 import { HomePage } from "@/pages/Home";
 import { NotFoundPage } from "@/pages/NotFound";
@@ -47,6 +48,7 @@ createRoot(document.getElementById("root")!).render(
             />
             <Route path="first-use" element={<FirstUsePage />} />
             <Route path="passkeys" element={<PasskeyLabPage />} />
+            <Route path="key" element={<KeyInfoPage />} />
             <Route path="help" element={<HelpPage />} />
             <Route path="releases" element={<ReleasesPage />} />
             <Route path="*" element={<NotFoundPage />} />

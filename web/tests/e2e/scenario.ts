@@ -28,7 +28,26 @@ export interface Scenario {
     silentAfterRestart?: number;
     /** The write is applied, the key restarts, but its answer never reaches the page. */
     dropWriteAnswer?: boolean;
+    /** MKAUTH INS 07. Absent: the key answers like the firmware that predates BUILD_INFO (status 6D00). */
+    build?: { imageSha256?: string; version?: string; commit?: string; flashEncryption?: boolean; secureBoot?: boolean };
+    /** Passkey events the key pushes while the page watches. `queued` ones were waiting in the key already. */
+    events?: ScriptedEvent[];
   };
+}
+
+export interface ScriptedEvent {
+  afterMs: number;
+  queued?: boolean;
+  op: "make-credential" | "get-assertion" | "user-presence";
+  result: "pending" | "ok" | "error";
+  rpId?: string;
+  userName?: string;
+  userDisplayName?: string;
+  algorithm?: number;
+  authFlags?: number;
+  error?: number;
+  credentialCount?: number;
+  operation?: "make-credential" | "get-assertion";
 }
 
 export const SCENARIO_KEY = "multikeys-e2e-scenario";

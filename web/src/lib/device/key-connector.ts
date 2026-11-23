@@ -2,12 +2,21 @@
 // (WebCCID). Re-enumeration after a rename is awaited through navigator.usb connect/disconnect events.
 import { FirmwareError } from "../errors/firmware-error";
 import type { DeviceCheck } from "../flashing/machine";
+import { type KeyEvent, parseKeyEvent } from "./key-events";
 import { NoAnswerError, WebCcid } from "./webccid";
+
+/** Events that arrive this soon after the interface is claimed were already queued in the key. */
+const BACKLOG_WINDOW_MS = 500;
 
 export interface KeyConnection {
   identity(): Promise<DeviceCheck>;
   transmit(apdu: Uint8Array, timeoutMs: number): Promise<Uint8Array>;
   waitForReenumeration(timeoutMs: number): Promise<void>;
+  /**
+   * Passkey activity the key reports (registration, sign-in, button wait). Events the key had queued come first, flagged
+   * `backlog`; then live ones until `signal` aborts. The session cannot send commands meanwhile and is closed at the end.
+   */
+  watchEvents(onEvent: (event: KeyEvent, backlog: boolean) => void, signal: AbortSignal): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -102,6 +111,33 @@ class WebUsbKeyConnection implements KeyConnection {
     await this.closeCcid();
     await this.device.close().catch(() => {});
     return wait;
+  }
+
+  async watchEvents(onEvent: (event: KeyEvent, backlog: boolean) => void, signal: AbortSignal): Promise<void> {
+    this.ccid ??= await this.openCcid();
+    const ccid = this.ccid;
+    // Whatever the key had queued is delivered within moments of claiming the interface; later events happened while
+    // this page was watching. The key cannot say when a queued event happened, so the page does not pretend to know.
+    const backlogUntil = Date.now() + BACKLOG_WINDOW_MS;
+    const deliver = (payload: Uint8Array) => {
+      try {
+        onEvent(parseKeyEvent(payload), Date.now() < backlogUntil);
+      } catch {
+        // A malformed event is dropped: it must not end the watch.
+      }
+    };
+    for (const payload of ccid.takeEvents()) deliver(payload);
+    // A pending WebUSB read cannot be cancelled: closing the session makes it fail, which ends the loop.
+    const onAbort = () => void this.closeCcid();
+    signal.addEventListener("abort", onAbort, { once: true });
+    try {
+      while (!signal.aborted) deliver(await ccid.nextEvent());
+    } catch (e) {
+      if (!signal.aborted) throw e;
+    } finally {
+      signal.removeEventListener("abort", onAbort);
+      await this.closeCcid();
+    }
   }
 
   async close(): Promise<void> {

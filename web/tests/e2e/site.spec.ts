@@ -33,7 +33,7 @@ test("language toggle switches the page to Vietnamese and remembers it", async (
 async function expectNoHorizontalScroll(page: Page, width: number) {
   await page.setViewportSize({ width, height: 900 });
   await setup(page, {});
-  for (const path of ["/", "/install", "/first-use", "/passkeys", "/help", "/releases", "/nope"]) {
+  for (const path of ["/", "/install", "/first-use", "/passkeys", "/key", "/help", "/releases", "/nope"]) {
     await page.goto(path);
     await page.waitForLoadState("networkidle");
     const [scrollWidth, innerWidth] = await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]);

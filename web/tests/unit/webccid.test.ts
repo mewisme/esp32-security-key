@@ -146,4 +146,35 @@ describe("WebCcid", () => {
     await expect(c.close()).resolves.toBeUndefined();
     expect(f.events).toEqual(["claim 3", "release 3", "close"]);
   });
+
+  describe("passkey events", () => {
+    const event = (data: number[]) => msg(0x7f, 0, data);
+
+    it("keeps the events that were queued before power-on and arrive between an answer", async () => {
+      const queued = [0x03, 0x00, 0x05, 0x08, 0x01];
+      const f = fakeDevice({ replies: [event(queued), atr, event([0x01, 0x01, 0x03]), msg(0x80, 1, [0x90, 0])] });
+      const c = await WebCcid.open(f.usb);
+      expect([...(await c.transmit(Uint8Array.from([1]), 1000))]).toEqual([0x90, 0]);
+      // Oldest first; the answers are unaffected by the events around them.
+      expect(c.takeEvents().map((e) => [...e])).toEqual([queued, [0x01, 0x01, 0x03]]);
+      expect(c.takeEvents()).toEqual([]);
+    });
+
+    it("nextEvent waits for the next event message and skips everything else", async () => {
+      const f = fakeDevice({ replies: [atr, msg(0x80, 9, [1]), event([0x02, 0x01, 0x03])] });
+      const c = await WebCcid.open(f.usb);
+      expect([...(await c.nextEvent())]).toEqual([0x02, 0x01, 0x03]);
+    });
+
+    it("keeps only the newest events, so an unread session cannot grow without bound", async () => {
+      const flood = Array.from({ length: 40 }, (_, i) => event([0x01, 0x01, 0x04, i]));
+      const f = fakeDevice({ replies: [atr, ...flood, msg(0x80, 1, [0x90, 0])] });
+      const c = await WebCcid.open(f.usb);
+      await c.transmit(Uint8Array.from([1]), 1000);
+      const kept = c.takeEvents();
+      expect(kept).toHaveLength(32);
+      expect(kept[0]![3]).toBe(8); // the first 8 of the 40 were dropped
+      expect(kept[31]![3]).toBe(39);
+    });
+  });
 });

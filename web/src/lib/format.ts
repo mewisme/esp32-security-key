@@ -20,3 +20,13 @@ export function formatBytes(n: number, locale: Locale): string {
 export function formatHex(n: number): string {
   return `0x${n.toString(16).toUpperCase().padStart(5, "0")}`;
 }
+
+/** `5 s`, `3 min 5 s`, `2 h 5 min`: units that read the same in every supported language. */
+export function formatUptime(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor(seconds / 60) % 60;
+  const s = seconds % 60;
+  if (h > 0) return `${h} h ${m} min`;
+  if (m > 0) return `${m} min ${s} s`;
+  return `${s} s`;
+}

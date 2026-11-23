@@ -38,6 +38,7 @@ function fake(o: Opts) {
     async waitForReenumeration() {
       if (o.reenum === "timeout") throw new FirmwareError("name-not-verified", "timeout");
     },
+    async watchEvents() {},
     async close() {},
   };
   return { conn, sent };

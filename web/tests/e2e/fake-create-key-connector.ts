@@ -2,10 +2,52 @@
 // decodes the real APDUs; the scenario comes from localStorage["multikeys-e2e-scenario"] (see scenario.ts).
 import type { KeyConnection, KeyConnector } from "@/lib/device/key-connector";
 import { validateDeviceName } from "@/lib/device/device-name";
-import { getInfoApdu, nameGetApdu, selectApdu } from "@/lib/device/mkauth";
+import { getInfoApdu, buildInfoApdu, nameGetApdu, selectApdu } from "@/lib/device/mkauth";
+import { type KeyEvent, parseKeyEvent } from "@/lib/device/key-events";
 import { NoAnswerError } from "@/lib/device/webccid";
 import { FirmwareError } from "@/lib/errors/firmware-error";
-import { readScenario } from "./scenario";
+import { readScenario, type ScriptedEvent } from "./scenario";
+
+const OP_CODE = { "make-credential": 1, "get-assertion": 2, "user-presence": 3 } as const;
+const RESULT_CODE = { pending: 0, ok: 1, error: 2 } as const;
+
+/** A key event payload exactly as pico-fido's event_send lays it out. */
+function encodeEvent(e: ScriptedEvent): Uint8Array {
+  const text = new TextEncoder();
+  const fields: number[] = [];
+  const add = (tag: number, value: ArrayLike<number>) => fields.push(tag, value.length, ...Array.from(value));
+  if (e.rpId !== undefined) add(1, text.encode(e.rpId));
+  if (e.userName !== undefined) add(2, text.encode(e.userName));
+  if (e.userDisplayName !== undefined) add(3, text.encode(e.userDisplayName));
+  if (e.algorithm !== undefined) add(4, [(e.algorithm >>> 24) & 0xff, (e.algorithm >>> 16) & 0xff, (e.algorithm >>> 8) & 0xff, e.algorithm & 0xff]);
+  if (e.authFlags !== undefined) add(5, [e.authFlags]);
+  if (e.error !== undefined) add(6, [e.error]);
+  if (e.credentialCount !== undefined) add(7, [e.credentialCount]);
+  if (e.operation !== undefined) add(8, [OP_CODE[e.operation]]);
+  return Uint8Array.from([OP_CODE[e.op], RESULT_CODE[e.result], 3 + fields.length, ...fields]);
+}
+
+/** A BUILD_INFO response (without the status word) as the firmware lays it out. */
+function encodeBuildInfo(b: NonNullable<NonNullable<ReturnType<typeof readScenario>["key"]>["build"]>): number[] {
+  const text = new TextEncoder();
+  const out: number[] = [0x01];
+  const add = (tag: number, value: ArrayLike<number>) => out.push(tag, value.length, ...Array.from(value));
+  const hex = (h: string) => Array.from({ length: h.length / 2 }, (_, i) => Number.parseInt(h.slice(2 * i, 2 * i + 2), 16));
+  add(0x01, text.encode("multikey-fido"));
+  add(0x02, text.encode(b.version ?? "0.2.0"));
+  add(0x03, text.encode("v5.5.6"));
+  add(0x04, text.encode(b.commit ?? "281fae077113"));
+  add(0x05, hex(b.imageSha256 ?? "ab".repeat(32)));
+  add(0x06, hex("cd".repeat(32)));
+  add(0x07, text.encode("16MB"));
+  add(0x08, [0x01, 0x00, 0x00, 0x00]);
+  add(0x09, [(b.flashEncryption ? 1 : 0) | (b.secureBoot ? 2 : 0)]);
+  add(0x0a, [0x09, 0x00, 0x00, 0x02]);
+  add(0x0b, [0x01]);
+  add(0x0c, [0x00, 0x00, 0x01, 0x2c]);
+  add(0x0d, [0x00, 0x02, 0x00, 0x00, ...text.encode("factory")]);
+  return out;
+}
 
 declare global {
   interface Window {
@@ -69,6 +111,7 @@ async function handle(apdu: Uint8Array): Promise<Uint8Array> {
     const flags = (s.custom ? 1 : 0) | (s.name !== s.enumerated ? 2 : 0) | (k.renameSupported === false ? 0 : 4);
     return sw([flags, ...new TextEncoder().encode(s.name)], 0x9000);
   }
+  if (same(apdu, buildInfoApdu())) return k.build ? sw(encodeBuildInfo(k.build), 0x9000) : sw([], 0x6d00);
   if (apdu[0] !== 0x80 || apdu[1] !== 0x06 || (apdu[2] !== 1 && apdu[2] !== 2)) return sw([], 0x6d00);
   if (k.renameSupported === false) return sw([], 0x6985);
   const lc = apdu[4] ?? 0;
@@ -126,6 +169,20 @@ class FakeKeyConnection implements KeyConnection {
     restart();
   }
 
+  async watchEvents(onEvent: (event: KeyEvent, backlog: boolean) => void, signal: AbortSignal) {
+    const events = readScenario().key?.events ?? [];
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    // The bytes go through the production decoder, exactly as a real key's would.
+    const push = (e: ScriptedEvent, backlog: boolean) => onEvent(parseKeyEvent(encodeEvent(e)), backlog);
+    for (const e of events.filter((x) => x.queued)) push(e, true);
+    for (const e of events.filter((x) => !x.queued)) timers.push(setTimeout(() => push(e, false), e.afterMs));
+    await new Promise<void>((resolve) => {
+      if (signal.aborted) resolve();
+      else signal.addEventListener("abort", () => resolve(), { once: true });
+    });
+    for (const t of timers) clearTimeout(t);
+  }
+
   async close() {}
 }
 
@@ -135,6 +192,8 @@ export class FakeKeyConnector implements KeyConnector {
   }
 
   async connect(): Promise<KeyConnection> {
+    // The browser's device chooser was dismissed.
+    if (readScenario().chooser === "cancel") throw Object.assign(new Error("No device selected."), { name: "NotFoundError" });
     return new FakeKeyConnection();
   }
 }
