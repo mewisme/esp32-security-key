@@ -1,0 +1,8 @@
+# Board profile: generic ESP32-S3 N16R8 devkit, onboard BOOT button as the user-presence button, no LED.
+# Copy to sdkconfig.board (git-ignored):   Copy-Item boards\esp32s3-n16r8-boot-button.board sdkconfig.board
+#
+# ASSUMPTION to verify physically: the board has the standard ESP32-S3 BOOT circuit, i.e. a push button
+# between GPIO0 and GND with an external pull-up (docs/HARDWARE.md, "First hardware setup").
+CONFIG_MULTIKEY_BUTTON_GPIO=0
+CONFIG_MULTIKEY_BUTTON_ACTIVE_LOW=y
+CONFIG_MULTIKEY_LED_TYPE_NONE=y

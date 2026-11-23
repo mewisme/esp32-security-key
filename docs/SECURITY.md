@@ -54,8 +54,21 @@ README makes the same distinction for chips without OTP secrets.
 
 ## Rules enforced in the repository
 
-- No `user_presence=true` shortcut: MKAUTH policy bit0 is hard-wired; CI asserts `sdkconfig.prod` and
-  `sdkconfig.defaults` do not set `CONFIG_MULTIKEY_ALLOW_UNSET_PINS_FOR_CI`.
+- **User presence is real and not configurable.** Upstream pico-keys-sdk returns a button timeout of 0 unless one was
+  commissioned into the device's phy config, and a timeout of 0 makes every presence check succeed immediately, i.e. a
+  stock upstream build asserts the FIDO UP flag without any button press. Patch 0001 makes `button_timeout_seconds()`
+  return `CONFIG_MULTIKEY_UP_TIMEOUT_MS` (>= 1 s, from Kconfig, not lowerable from the host). It also requires the button
+  to be seen released, then pressed, then released after the request starts (upstream accepted a button already held down).
+  Verified by code reading and build only; **not hardware verified**: `tools/ctap_smoke.py` must be run on a real board and
+  must show that makeCredential/getAssertion block until BOOT is pressed. An earlier statement in this repository that
+  there is "no user-presence shortcut" referred only to MKAUTH and was incomplete for FIDO.
+- MKAUTH policy bit0 is hard-wired; CI asserts `sdkconfig.prod` and `sdkconfig.defaults` do not set
+  `CONFIG_MULTIKEY_ALLOW_UNSET_PINS_FOR_CI`.
+- GPIO0 (BOOT) as the presence button is safe for boot and flashing because it is only read as an input after boot
+  (HARDWARE.md); the build rejects pins that collide with USB or flash/PSRAM and requires acknowledgement for strapping
+  pins 3/45/46.
+- `tools/check_no_irreversible.py` checks a finished dev build: no Secure Boot / flash-encryption / eFuse-provisioning
+  option enabled, and no project object linked against an eFuse write API.
 - Dev attestation only; no FIDO certification and no CTAP 2.1 claim.
 - OATH/OTP applets (YubiKey-compatible) are enabled in the fido image because upstream references them unconditionally.
   They enlarge the attack surface; removing them needs an upstream-level change.

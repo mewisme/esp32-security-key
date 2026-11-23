@@ -33,6 +33,12 @@ No GPIO is assumed. Set `CONFIG_MULTIKEY_BUTTON_GPIO` and `CONFIG_MULTIKEY_LED_G
 ([docs/HARDWARE.md](docs/HARDWARE.md)); the build fails while they are unset. The default USB VID/PID is a development
 placeholder and must not be used for distribution.
 
+## First hardware run (BOOT button, no LED)
+
+See [docs/FIRST_RUN_WINDOWS.md](docs/FIRST_RUN_WINDOWS.md): copy `boards/esp32s3-n16r8-boot-button.board` to `sdkconfig.board`,
+build, flash by hand, run `tools/ctap_smoke.py`. Physical checks (BOOT circuit, which USB-C port is native) are in
+[docs/HARDWARE.md](docs/HARDWARE.md).
+
 ## Build
 
 Prerequisite: ESP-IDF v5.5.6 activated (`idf.py` on PATH), see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
@@ -54,7 +60,7 @@ burn eFuses on first boot (unlike upstream); that behaviour is opt-in.
 [ARCHITECTURE](docs/ARCHITECTURE.md) · [HARDWARE](docs/HARDWARE.md) · [SECURITY](docs/SECURITY.md) ·
 [PROTOCOLS](docs/PROTOCOLS.md) · [DEVELOPMENT](docs/DEVELOPMENT.md) · [TESTING](docs/TESTING.md) ·
 [PROVISIONING](docs/PROVISIONING.md) · [ROADMAP](docs/ROADMAP.md) · [LINUX_PAM](docs/LINUX_PAM.md) ·
-[WINDOWS](docs/WINDOWS.md) · [DEPENDENCIES](docs/DEPENDENCIES.md) · [ADR-0001](docs/ADR-0001-foundation.md) ·
+[WINDOWS](docs/WINDOWS.md) · [FIRST_RUN_WINDOWS](docs/FIRST_RUN_WINDOWS.md) · [DEPENDENCIES](docs/DEPENDENCIES.md) · [ADR-0001](docs/ADR-0001-foundation.md) ·
 [ADR-0002](docs/ADR-0002-separate-images.md)
 
 ## License

@@ -5,10 +5,18 @@ menu "MultiKey board and USB identity"
         range -1 48
         default -1
         help
-            GPIO connected to the user-presence button. There is NO default: the
-            build fails while this is -1. Pick a pin that is not used by flash,
-            octal PSRAM (GPIO 26-37 on N16R8 modules), USB (GPIO 19/20) or
-            strapping functions unless you understand the consequences.
+            GPIO connected to the physical user-presence button. There is NO default: the build
+            fails while this is -1. A button press is always required for user presence; there is no
+            option to skip it.
+
+            GPIO 0 is the standard BOOT button on ESP32-S3 devkits (active low, external pull-up).
+            It is a strapping pin: holding it LOW while the chip leaves reset enters the ROM download
+            mode. The firmware only reads it as an input after boot and never drives it
+            (docs/HARDWARE.md).
+
+            The build rejects pins that cannot work on an N16R8 module: 19/20 (USB), 26-37
+            (flash / octal PSRAM). Pins 3, 45 and 46 are strapping pins and need
+            MULTIKEY_BUTTON_STRAPPING_ACK.
 
     config MULTIKEY_BUTTON_ACTIVE_LOW
         bool "Button pulls the pin to GND when pressed"
@@ -16,23 +24,30 @@ menu "MultiKey board and USB identity"
         help
             When enabled the internal pull-up is used and a LOW level means pressed.
             When disabled the internal pull-down is used and a HIGH level means pressed.
+            GPIO 0 must be active low (the BOOT circuit).
+
+    config MULTIKEY_BUTTON_STRAPPING_ACK
+        bool "I understand the chosen button pin (3, 45 or 46) is a strapping pin"
+        default n
+        help
+            Required only for GPIO 3, 45 and 46. Wrong external levels on these pins at reset can
+            change JTAG source, flash voltage or boot messages.
 
     config MULTIKEY_BUTTON_DEBOUNCE_MS
         int "Button debounce time (ms)"
         range 5 200
         default 30
 
-    config MULTIKEY_LED_GPIO
-        int "Status LED GPIO number"
-        range -1 48
-        default -1
-        help
-            GPIO connected to the status LED (plain LED or WS2812 data line). There is
-            NO default: the build fails while this is -1.
-
     choice MULTIKEY_LED_TYPE
-        prompt "Status LED type"
-        default MULTIKEY_LED_TYPE_WS2812
+        prompt "Status LED"
+        default MULTIKEY_LED_TYPE_NONE
+        help
+            The LED is optional. With NONE no LED GPIO is configured or driven and every LED call
+            is a no-op. Without an LED nothing signals that the key is waiting for a button press,
+            so the host application's own prompt ("touch your security key") is the only hint.
+
+        config MULTIKEY_LED_TYPE_NONE
+            bool "No LED"
 
         config MULTIKEY_LED_TYPE_PLAIN
             bool "Plain LED (single GPIO)"
@@ -40,6 +55,13 @@ menu "MultiKey board and USB identity"
         config MULTIKEY_LED_TYPE_WS2812
             bool "WS2812 / NeoPixel (single data line)"
     endchoice
+
+    config MULTIKEY_LED_GPIO
+        int "Status LED GPIO number (ignored when the LED type is NONE)"
+        range -1 48
+        default -1
+        help
+            There is no default pin: the build fails when an LED type is selected and this is -1.
 
     config MULTIKEY_LED_ACTIVE_LOW
         bool "Plain LED is lit when the pin is LOW"
@@ -50,6 +72,9 @@ menu "MultiKey board and USB identity"
         int "User-presence wait timeout (ms)"
         range 1000 60000
         default 15000
+        help
+            How long a request waits for a button press before it fails. Always at least one
+            second: user presence cannot be disabled.
 
     config MULTIKEY_USB_VID
         hex "USB vendor ID (DEVELOPMENT PLACEHOLDER)"
@@ -69,8 +94,7 @@ menu "MultiKey board and USB identity"
         default n
         help
             Lets the build succeed with -1 pins so that CI can compile-check the tree.
-            The resulting image refuses to start (see multikey_platform_init). Never
-            enable this in a flashable configuration; sdkconfig.prod must not set it.
+            Never enable this in a flashable configuration; sdkconfig.prod must not set it.
 
 endmenu
 

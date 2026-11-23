@@ -26,6 +26,14 @@ jobs:
           ! grep -E "^CONFIG_MULTIKEY_ALLOW_EFUSE_PROVISIONING=y" sdkconfig.defaults sdkconfig.dev sdkconfig.prod
       - name: Build (compile check, pins unset, image unusable)
         run: . $IDF_PATH/export.sh && python3 tools/build.py ${{ matrix.profile }} --app ${{ matrix.app }} --ci-pins
+      - name: Real-pin dev build (BOOT-button board profile) and irreversible-operation check
+        if: matrix.profile == 'dev'
+        run: |
+          . $IDF_PATH/export.sh
+          cp boards/esp32s3-n16r8-boot-button.board sdkconfig.board
+          python3 tools/build.py dev --app ${{ matrix.app }} --clean
+          python3 tools/check_no_irreversible.py ${{ matrix.app }}-dev
+          rm sdkconfig.board
       - name: Unset pins must fail a normal build
         run: |
           . $IDF_PATH/export.sh

@@ -113,8 +113,16 @@ def main():
     devs = list(CtapHidDevice.list_devices())
     if not devs:
         print("No CTAPHID device found.")
+        if sys.platform == "win32":
+            print("On Windows, python-fido2 needs an elevated (Administrator) PowerShell to open FIDO HID devices.")
+        print("Check: the board's NATIVE USB port (GPIO19/20) is connected, the fido image is flashed, and")
+        print("Get-PnpDevice -PresentOnly | Where-Object InstanceId -like 'USB\\VID_303A*' lists the device.")
+        return 2
+    if not 0 <= a.index < len(devs):
+        print(f"--index {a.index} out of range: {len(devs)} device(s) found.")
         return 2
     dev = devs[a.index]
+    print("When a step says 'touch', press the BOOT button once (hold it only briefly, release it).")
     print(f"Device: {dev.descriptor if hasattr(dev, 'descriptor') else dev}  product={getattr(dev, 'product_name', None)}")
     if not CAPABILITY.CBOR.supported(dev.capabilities):
         record("CTAP2 GetInfo", "FAIL", "device does not advertise CBOR capability")
