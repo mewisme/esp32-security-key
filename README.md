@@ -38,7 +38,7 @@ board's **BOOT** button. It is open source and builds on the [Pico Keys](https:/
 | A **BOOT** button | It becomes the touch button. The firmware has no status light. |
 | A USB data cable | Many cables only carry power. |
 
-Tested boards and what is not supported: [multikeys.mewis.me](https://multikeys.mewis.me/#compatibility) and
+Tested boards and what is not supported: [multikeys.mewis.me](https://multikeys.mewis.me/#hardware) and
 [docs/HARDWARE.md](docs/HARDWARE.md).
 
 ## Install
@@ -56,7 +56,9 @@ it from the official release, verifies it, and shows exactly what it will write 
 beforehand (for example "Mew's Security Key"); the name is applied after the flash is verified, needs a BOOT press, and can be changed
 later on the First use page. Tested on real hardware on one board (Windows/Chrome): updating an existing install, naming and renaming
 the key ([installer report](docs/hw-reports/2026-11-23-web-installer.md),
-[naming report](docs/hw-reports/2026-11-23-profiles-and-personalization.md)).
+[naming report](docs/hw-reports/2026-11-23-profiles-and-personalization.md)). The site is available in English and Vietnamese and
+also has a Passkey lab (`/passkeys`) that registers a test passkey on the key; the lab is tested with a virtual authenticator only, not yet on
+real hardware.
 
 ### PowerShell (developers, the verified method)
 
@@ -101,7 +103,8 @@ multikey fido info | pin status                      # read-only
 multikey fido pin set | change                       # FIDO PIN (set is irreversible without authenticatorReset)
 multikey fido credentials list | delete --id HEX
 multikey mkauth status | enroll | auth | list | revoke
-multikey device rename "My Key"
+multikey device show | rename "My Key" | reset-name | reenumerate   # USB name (BOOT press)
+multikey readers                                   # PC/SC readers
 ```
 
 Reference, exit codes and the Windows elevation rule: [docs/CLI.md](docs/CLI.md) · Linux PAM: [docs/LINUX_PAM.md](docs/LINUX_PAM.md) ·

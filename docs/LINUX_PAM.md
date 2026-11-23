@@ -1,12 +1,13 @@
 # Linux PAM module (`pam_multikey.so`)
 
-Status: **Implemented** (module) · **Unit tested** (decision logic and argument parsing, mock device, run on Windows) ·
-**Not build-verified on Linux** (needs libpam; only the non-Linux stub was compiled) · **Not hardware verified**.
+Status: **Implemented** (module) · **Unit tested** (decision logic and argument parsing, mock device) · **Build verified on Linux**
+(CI builds and tests `multikey-pam`; the release workflow checks the shipped `.so`: dependencies, symbols, `dlopen`, and a `pamtester`
+run with no key that must fail closed) · **Not hardware verified** (no authentication with a real key through PAM).
 
 The module authenticates a PAM user with the MKAUTH v1 applet ([PROTOCOLS.md](PROTOCOLS.md)): it looks up the user in
 the trust store, asks the device for a challenge response (the user presses the button) and verifies the signature
-against the stored public key and device id. **No PIN is used or prompted.** Presence of the key plus a button press
-is the whole check.
+against the stored public key and device id. **No PIN is used or prompted at login** (the MKAUTH PIN set by `enroll` guards
+`revoke` and renames, not `authenticate`). Presence of the key plus a button press is the whole check.
 
 ## Install the prebuilt module
 
@@ -43,8 +44,8 @@ libpam; run `cargo test -p multikey-pam` for the logic tests.
 
 ```sh
 multikey readers
-sudo multikey enroll --user alice          # sets the device PIN, creates the key, asks before writing
-multikey list                              # /etc/multikey/trusted.toml, keep it root-owned, mode 0644 or stricter
+sudo multikey mkauth enroll --user alice   # creates the key, sets the MKAUTH PIN, asks before writing the trust store
+multikey mkauth list                       # /etc/multikey/trusted.toml, keep it root-owned, mode 0644 or stricter
 ```
 
 The trust store must be writable only by root: anyone who can edit it can trust their own key.
@@ -59,7 +60,7 @@ The trust store must be writable only by root: anyone who can edit it can trust 
 
 ## Test first, safely
 
-`tools/pam_test.sh --i-understand` creates a throw-away service `/etc/pam.d/multikey-test` (only
+`sudo tools/pam_test.sh --i-understand` creates a throw-away service `/etc/pam.d/multikey-test` (only
 `auth sufficient pam_multikey.so …` and `auth required pam_deny.so`), runs `pamtester multikey-test $USER authenticate`
 and removes the file on exit. It never edits login, sudo, sshd or system-auth. Pending hardware: not yet run.
 
@@ -100,7 +101,7 @@ The module never returns a hard failure for environmental problems, so the passw
 ## Safe rollout rules
 
 1. Open a **root shell and leave it open** (and a second one) before changing any file in `/etc/pam.d/`.
-2. Run `tools/pam_test.sh --i-understand` and confirm both a success (key plugged, button pressed) and a fall-through
+2. Run `sudo tools/pam_test.sh --i-understand` and confirm both a success (key plugged, button pressed) and a fall-through
    (key unplugged).
 3. Only then add the line to one service, never first to `login`/`sudo` of a machine you cannot recover. Prefer a VM or
    a spare machine; test `sudo` from the open root shell's neighbour terminal.

@@ -47,7 +47,7 @@ Tag `local` is accepted only by the dev server (`import.meta.env.DEV`); producti
 |---|---|
 | `GET /api/releases` | releases from GitHub's `releases.atom` feed (drafts never appear; the REST API is avoided because unauthenticated calls from Workers' shared IPs are rate-limited) whose `firmware-manifest.json` exists (HEAD check, newest 10); cached 5 min |
 | `GET /api/firmware/:tag/:asset` | proxies `releases/download/:tag/:asset`; `tag` must be `vX.Y.Z[-pre]`, `asset` must be `firmware-manifest.json`, `SHA256SUMS` or `multikey-firmware-v<tag version>-esp32s3-<4mb\|8mb\|16mb>-<fido\|openpgp>-dev.zip` (`n16r8` instead of the size only for the v0.2.0 assets published before the profiles); max 16 MiB; cached immutable |
-| other `/api/*` | 404 (`405` for non-GET) |
+| other `/api/*` | 404 (`405` for methods other than GET and HEAD) |
 
 GitHub release downloads have no CORS headers, hence the proxy. The Worker holds no secrets or tokens and builds upstream
 URLs only from the two validated path segments (`worker/routes.ts`, unit-tested). Everything else is static assets with an SPA
@@ -171,8 +171,9 @@ uses only 100, 150, 200 or 300 ms, never `transition-all`, and has a reduced-mot
    silence it. The CSP is not loosened for it.
 
 CI (`.github/workflows/web.yml`) runs lint, unit tests, the production build (`tsc -b` then `vite build`, then a grep that the
-bundle holds no test double: `multikeys-e2e-scenario`, `FakeDriver`, `FakeKeyConnector`) and the e2e tests on every push that touches `web/**` or
-`tools/flash_policy.json` (the browser is installed with `playwright install --with-deps chromium` on every run; a browser cache was measured and gave no reliable gain,
+bundle holds no test double: `multikeys-e2e-scenario`, `FakeDriver`, `FakeKeyConnector`) and the e2e tests on pushes to `main` and on
+pull requests, both only when they touch `web/**`, `tools/flash_policy.json` or the workflow itself (the browser is installed with
+`playwright install --with-deps chromium` on every run; a browser cache was measured and gave no reliable gain,
 `docs/CI_PERFORMANCE.md`); it deploys only from a manual `workflow_dispatch` with
 `deploy: staging|production`, using the `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` secrets of the `cloudflare-<target>`
 environment.

@@ -16,4 +16,6 @@ Steps run and results (paste script output):
 Unexpected behaviour:
 ```
 
-No reports exist yet.
+Reports so far (all one ESP32-S3 N16R8 board, Windows 11, 2026-11-23): `2026-11-23-read-only-probe.md`, `2026-11-23-first-run.md`,
+`2026-11-23-uv-and-identity.md`, `2026-11-23-management-cli-and-webusb.md`, `2026-11-23-web-installer.md`,
+`2026-11-23-profiles-and-personalization.md`. Reports are historical: failed runs are kept and raw output is not edited.

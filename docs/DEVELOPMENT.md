@@ -32,7 +32,8 @@ python tools/build.py prod --app openpgp
 python tools/build.py prod --harden --signing-key K.pem --i-understand-irreversible   # see PROVISIONING.md
 ```
 
-Build directories: `build-<app>-<profile>[-hardened]/`; generated sdkconfig: `sdkconfig.<app>-<profile>.generated`
+Build directories: `build-<app>-<profile>[-hardened]/`, with a `-4mb` or `-8mb` suffix after the profile for those flash sizes
+(the 16 MB profile has none); generated sdkconfig: `sdkconfig.<app>-<profile>[-<size>].generated`
 (all git-ignored). `build.py` applies the patches first; the `pico-keys-sdk` submodule then shows as modified, which is expected.
 
 ## Changing upstream code
@@ -54,8 +55,8 @@ of the touched files, then applies the remaining ones in order. To start from a 
 `git -C <submodule> checkout -- .` and run `python tools/apply_patches.py` again.
 
 Current stacks: `pico-keys-sdk` 0001 (board/LED/VID-PID/user presence/USB strings), 0002 (no automatic eFuse writes), 0003 (USB
-identity: Kconfig strings, stored device name); `pico-fido` 0001 (enforce user presence), 0002 (project AAGUID, attestation
-subject), 0003 (makeCredUvNotRqd default).
+identity: Kconfig strings, stored device name), 0004 (WebUSB landing page); `pico-fido` 0001 (enforce user presence), 0002 (project
+AAGUID, attestation subject), 0003 (makeCredUvNotRqd default), 0004 (WCID events up to 255 bytes, long text truncated).
 
 ## Changing the MKAUTH protocol
 
@@ -67,12 +68,6 @@ vectors in `host/multikey-proto/tests/vectors.json`.
 `cd host && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test` (+ `cargo test -p multikey-pam`).
 `tools/run_emulation_tests.sh` (WSL/Linux) runs the FIDO UV-policy suite against the patched pico-fido emulation build.
 The firmware itself has no on-target unit tests; hardware procedures are in TESTING.md.
-
-### Current stacked patches
-
-`patches/pico-keys-sdk/0001-0004` (board/LED/VID-PID/user presence, no automatic eFuse writes, USB identity, WebUSB landing page) and
-`patches/pico-fido/0001-0003` (user presence, project AAGUID, makeCredUvNotRqd default). A new patch is generated from the submodule after
-`git -C <sub> add -A` as the baseline (the diff then contains only the new edits), then `git -C <sub> reset -q`.
 
 ## Script and packaging tests (no hardware)
 

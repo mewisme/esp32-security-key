@@ -1,8 +1,8 @@
 name: web
 
 # Web installer (web/): typecheck, lint, unit and e2e tests on every change. Deploys only from a manual run with
-# `deploy: staging|production`; the Cloudflare secrets live in the `cloudflare-<target>` environments (production should have
-# a required reviewer).
+# `deploy: staging|production`; the job targets the `cloudflare-<target>` GitHub environments, which do not exist yet (see
+# web/README.md), so deploys are currently run locally with wrangler. Production should get a required reviewer.
 on:
   push:
     branches: [main]

@@ -1,7 +1,8 @@
 # Security model
 
-Status: design and build-time controls exist; **no hardware has been tested and nothing here has had a security review**.
-Do not protect real accounts with development builds.
+Status: design and build-time controls exist. One ESP32-S3 N16R8 board was tested on 2026-11-23 (user presence, FIDO UV/PIN
+behaviour, the management channel, flashing; `docs/hw-reports/`); the hardened profile and the eFuse operations were never run on
+hardware. **Nothing here has had a security review.** Do not protect real accounts with development builds.
 
 ## What the ESP32-S3 is and is not
 

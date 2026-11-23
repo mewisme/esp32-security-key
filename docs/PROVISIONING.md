@@ -1,6 +1,6 @@
 # Provisioning
 
-Everything here is manual. No script in this repository flashes boards, burns eFuses or enables Secure Boot.
+Everything here is manual. No script in this repository burns eFuses or enables Secure Boot (the development flashers `tools/flash-dev.ps1` and the web installer write only the bootloader, partition table and app, after a typed confirmation).
 Commands that change hardware permanently are marked **[IRREVERSIBLE – operator confirms]**.
 
 ## 1. Development unit
@@ -8,7 +8,7 @@ Commands that change hardware permanently are marked **[IRREVERSIBLE – operato
 ```
 cp <your pins> sdkconfig.board      # see docs/HARDWARE.md
 python tools/build.py dev           # or --app openpgp
-idf.py -B build-fido-dev -p COMx flash monitor
+idf.py -B build-fido-dev -p COMx flash monitor   # or tools/flash-dev.ps1 (docs/FLASHING_ADVANCED.md)
 ```
 
 State after this: eFuses untouched (patch 0002), secrets obfuscated only, JTAG/download open.

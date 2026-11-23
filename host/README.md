@@ -9,9 +9,11 @@ Crates:
 - `multikey-fido` — FIDO2 management (GetInfo, PIN, credential management) over USB HID via `ctap-hid-fido2` (pinned `=3.6.1`), behind an `Authenticator` trait with a mock.
 - `multikey-host` — PC/SC transport (`pcsc`), `Device` operations, trust store, device inventory (feature `inventory`, used by the CLI; the PAM module does not link HID code).
 - `multikey-cli` — the `multikey` binary.
+- `multikey-pam` — the Linux PAM module `pam_multikey.so` (not in the default workspace members; links libpam on Linux only; see [docs/LINUX_PAM.md](../docs/LINUX_PAM.md)).
 
-Spec: `docs/PROTOCOLS.md` ("MKAUTH v1"). No hardware has been used; logic is tested against an
-in-memory mock device that signs with a public, TEST-ONLY key (`multikey-proto` feature `test-key`).
+Spec: `docs/PROTOCOLS.md` ("MKAUTH v1"). Unit tests run against an in-memory mock device that signs with a public, TEST-ONLY key
+(`multikey-proto` feature `test-key`); the commands were also run against a real key on one board (Windows 11), see
+[docs/ROADMAP.md](../docs/ROADMAP.md) and `docs/hw-reports/`.
 
 ```
 cargo fmt --check

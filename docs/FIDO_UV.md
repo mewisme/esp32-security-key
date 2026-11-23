@@ -47,7 +47,7 @@ Three independent layers; only the first is firmware.
 So: to see no PIN prompt, the RP/site must use `discouraged` or `preferred` without a passkey and without PRF. A key that
 advertised `uv` or hid `clientPin` would only be lying to the browser.
 
-## `makeCredUvNotRqd` (default on since this change)
+## `makeCredUvNotRqd` (on by default)
 
 CTAP 2.1: when a PIN *is* set, a non-discoverable credential may be created with a touch alone if the authenticator advertises
 `makeCredUvNotRqd`. Upstream sets it only after `authenticatorReset`, so a never-reset key advertised `false`. Kconfig

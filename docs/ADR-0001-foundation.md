@@ -19,8 +19,9 @@ Status: accepted (2026-11-22)
 5. **Pinned versions:** see [DEPENDENCIES.md](DEPENDENCIES.md). pico-fido v8.2 pins pico-keys-sdk `50699e5`; that SDK
    commit is used for every app. pico-openpgp v5.0 pins a different, older SDK commit (`b35df81`) and is therefore
    validated against `50699e5` at build time (see ROADMAP).
-6. **Custom auth transport = an APDU applet on the CCID interface**, not a third USB interface (endpoint budget on
-   the S3 OTG core, free PC/SC support on Windows and Linux).
+6. **Custom auth transport = an APDU applet on the CCID interface**, not an extra USB interface for MKAUTH itself (endpoint
+   budget on the S3 OTG core, free PC/SC support on Windows and Linux). Later addition: a second, vendor-class (WinUSB) interface
+   that runs the same CCID parser so the browser can reach MKAUTH over WebUSB (see [PROTOCOLS.md](PROTOCOLS.md)).
 7. **No assumed GPIOs.** Button and LED pins are Kconfig values defaulting to -1; the build fails while unset.
 8. **PSRAM disabled** so key material never goes to external RAM.
 9. **Dev/prod split:** `sdkconfig.dev`, `sdkconfig.prod`, separate build dirs. No script burns eFuses or enables

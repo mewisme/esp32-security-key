@@ -28,6 +28,9 @@
 | `readers` | lists PC/SC readers | yes | PC/SC |
 | legacy `status`, `enroll`, `auth`, `list`, `revoke` | hidden aliases of the `mkauth` commands | read-only ones | first-match reader (`--reader`) |
 
+The `mkauth enroll|auth|list|revoke` commands (and the legacy aliases) also take `--trust-store PATH` (default: `/etc/multikey/trusted.toml` on Linux,
+`%ProgramData%\MultiKeys\trusted.toml` on Windows with a fallback to the legacy `%ProgramData%\MultiKey\trusted.toml`).
+
 `--json` on any other command is refused with exit 2 before anything is sent. JSON is pretty-printed with stable snake_case field
 names on stdout; prompts, warnings and the "touch the key" hint go to stderr.
 

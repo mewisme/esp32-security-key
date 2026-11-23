@@ -19,5 +19,5 @@ the build is not fully reproducible; a release build should vendor or hash-check
 `pico-keys-sdk` shows as modified after `tools/apply_patches.py` runs (our patches, see `patches/`); this is expected.
 
 Host release builds use `--locked` against the tracked `host/Cargo.lock`; `tools/gen_notices.py` writes the third-party license inventory
-shipped in every archive. GitHub Actions in `release.yml` and the `flash-script` job are pinned by commit SHA; the older jobs in `ci.yml`
-still use `actions/checkout@v4` and `dtolnay/rust-toolchain@stable` (unpinned, open item).
+shipped in every archive. Every GitHub Action in `ci.yml`, `release.yml` and `web.yml` is pinned by commit SHA (checked with
+`grep uses:` on 2026-11-23).

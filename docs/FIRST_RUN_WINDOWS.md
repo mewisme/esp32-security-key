@@ -106,7 +106,7 @@ Read-only check of the CCID/MKAUTH applet (no state change):
 ```powershell
 Set-Location host
 cargo run -q -p multikey-cli -- readers
-cargo run -q -p multikey-cli -- status
+cargo run -q -p multikey-cli -- mkauth status
 ```
 
 ## 7. Report

@@ -115,5 +115,5 @@ is verified on both configurations; the live check and the browser notification 
 | Rust: name validation, APDU encodings, authorization/PIN/button/no-change rules (mock) | nothing | `cd host && cargo test` |
 | USB strings on the bus, per interface | board (Windows, no elevation) | `python tools/usb_identity.py --expect-product "<name>"` |
 | Device-side validation (bad names, lengths, P1/P2, no-press timeout) | board, no press | `python tools/mkauth_name_test.py --nobutton` |
-| Full rename flow with re-enumeration, replug persistence, restore | board, 3 presses, 1 replug | `python tools/name_flow_test.py` |
+| Full rename flow with re-enumeration, replug persistence, restore | board, 2 presses, 1 replug | `python tools/name_flow_test.py` |
 | Credentials survive update/rename | board, elevated | `tools\run_elevated.ps1 tools\ctap_survival.py snapshot` / `verify` |

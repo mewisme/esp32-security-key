@@ -1,7 +1,8 @@
 # Windows
 
-Status: platform FIDO2 / OpenSSH paths **unverified, not hardware verified**; PC/SC MKAUTH path **Unit tested** in the
-host library only (mock device); Credential Provider **Not implemented**.
+Status: the browser/Windows Hello platform WebAuthn path and the OpenSSH paths are **unverified** (not run with a browser or
+OpenSSH on hardware; python-fido2 on an elevated shell works). The PC/SC MKAUTH path is **Hardware verified** on one board
+(Windows 11, 2026-11-23: `readers`, `mkauth status/enroll/auth/revoke`, `device rename`); Credential Provider **Not implemented**.
 
 ## What works with none of our code (all pending hardware)
 
@@ -16,15 +17,16 @@ host library only (mock device); Credential Provider **Not implemented**.
 ## Supported way to use MKAUTH on Windows: PC/SC
 
 The MKAUTH applet is reached through the CCID interface of the `fido` image. Windows exposes it through winscard
-(`SCardTransmit`); `multikey-host` uses the `pcsc` crate, which links winscard on Windows, so `multikey enroll|auth|status`
+(`SCardTransmit`); `multikey-host` uses the `pcsc` crate, which links winscard on Windows, so `multikey mkauth enroll|auth|status`
 work from scripts and services in the same way as on Linux. Trust store: `%ProgramData%\MultiKeys\trusted.toml` (tools up to 0.1.0 used `%ProgramData%\MultiKey\trusted.toml`; if only that file exists it is still used)
-(restrict its ACL to Administrators/SYSTEM write). Whether the Windows smart-card stack accepts the CCID descriptors of
-this device is pending hardware.
+(restrict its ACL to Administrators/SYSTEM write). The Windows smart-card stack accepted the device's CCID descriptors
+(reader `Microsoft Usbccid Smartcard Reader`, [hw-reports/2026-11-23-first-run.md](hw-reports/2026-11-23-first-run.md)). The FIDO side of
+`multikey` (`multikey fido ...`, `device info`) needs an **elevated** terminal on Windows, see [CLI.md](CLI.md).
 
 ## What does not work, and why
 
 - A **Windows service cannot unlock a session** or satisfy the logon screen: the secure desktop and credential entry
-  belong to LogonUI and the registered credential providers. Running `multikey auth` from a service proves possession
+  belong to LogonUI and the registered credential providers. Running `multikey mkauth auth` from a service proves possession
   but unlocks nothing.
 - **Unlocking the local logon screen** requires a **Credential Provider**: a COM DLL registered under
   `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\Credential Providers` and loaded by LogonUI.

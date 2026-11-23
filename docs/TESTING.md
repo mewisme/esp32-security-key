@@ -15,11 +15,11 @@ pastes a real report into `docs/hw-reports/`. Reports so far: `2026-11-23-read-o
 | Rust unit tests | `cd host && cargo test` | Rust toolchain | no | see ROADMAP.md |
 | Rust lint | `cd host && cargo fmt --check && cargo clippy -- -D warnings` | Rust toolchain | no | see ROADMAP.md |
 | Tool self-test (eFuse reporter) | `python tools/provision_check.py --self-test` | `pip install -r tools/requirements.txt` not required for this step | no | Unit tested (fixtures only) |
-| CTAP2/U2F smoke | `python tools/ctap_smoke.py [--pin PIN] [--skip-pin-change]` | venv with `tools/requirements.txt`; **fido** image flashed; Windows: elevated shell | yes | pending hardware |
+| CTAP2/U2F smoke | `python tools/ctap_smoke.py [--pin PIN] [--skip-pin-change]` (a `--pin` on a PIN-less key SETS that PIN, which ends touch-only use; see FIDO_UV.md) | venv with `tools/requirements.txt`; **fido** image flashed; Windows: elevated shell | yes | pending hardware |
 | SSH sk keys | `tools/ssh_smoke.sh --yes` / `tools\ssh_smoke.ps1 -Yes` | OpenSSH >= 8.3 (verify-required needs >= 8.4); fido image | yes | pending hardware |
 | OpenPGP card | `tools/gpg_smoke.sh` | gpg 2.2+, pcscd/scdaemon; **openpgp** image (not the fido image) | yes | pending hardware |
-| MKAUTH round trip | `multikey enroll` / `multikey auth` / `multikey revoke` (host CLI) | PC/SC; fido image | yes | pending hardware |
-| eFuse state report | `python tools/provision_check.py -p COMx` (read-only `espefuse summary`) | board in download mode; `tools/requirements.txt` | yes | pending hardware |
+| MKAUTH round trip | `multikey mkauth enroll --user U` / `mkauth auth --user U` / `mkauth revoke --user U` (host CLI) | PC/SC; fido image | yes | Hardware verified once (Windows 11; `2026-11-23-management-cli-and-webusb.md`) |
+| eFuse state report | `python tools/provision_check.py -p COMx` (read-only `espefuse summary`) | board in download mode; `tools/requirements.txt` | yes | Hardware verified (read-only, one blank chip; `2026-11-23-read-only-probe.md`) |
 | FIDO UV/PIN policy, no hardware | `tools/run_emulation_tests.sh` (WSL/Linux; CI job `fido-emulation`) | rsync, cmake, ninja, gcc, libssl-dev, python3; builds pico-fido's `ENABLE_EMULATION` binary from a /tmp copy | no | Integration tested (28 pass, 3 pinned upstream deviations) |
 | FIDO UV/UP on the board | `tools\run_elevated.ps1 tools\ctap_uv_test.py [--only info raw nopin timeout cancel stale pin]` | venv; fido image; elevated PowerShell; `--pin` only with an existing PIN | yes | see docs/hw-reports |
 | Credentials survive update/rename | `ctap_survival.py snapshot` ... change ... `verify` (via `run_elevated.ps1`) | same | yes | see docs/hw-reports |
@@ -42,22 +42,8 @@ write nothing but non-resident test credentials for `multikey.test` / `multikey.
 
 ## Hardware reports (`docs/hw-reports/`)
 
-One file per run: `docs/hw-reports/<YYYY-MM-DD>-<topic>.md` (e.g. `2026-12-01-ctap.md`), written by a human who
-ran the test. Template:
-
-```
-# <topic> report <YYYY-MM-DD>
-- Board: <module/devkit, flash/PSRAM>
-- Image: fido | openpgp   Config: dev | prod
-- Firmware commit: <git sha>   ESP-IDF: <version>
-- Host OS / tool versions: <e.g. Windows 11 24H2, OpenSSH 9.x, gpg 2.4.x, python-fido2 2.x>
-- GPIO pins used: button=<n> led=<n>
-- Command(s) run:
-- Raw output (verbatim):
-- Result: PASS | FAIL | partial   Notes:
-```
-
-Failed runs are kept. Do not edit raw output.
+One file per test session: `docs/hw-reports/<YYYY-MM-DD>-<topic>.md`, written by a human who ran the test. The template (one
+copy only) is in [hw-reports/README.md](hw-reports/README.md). Failed runs are kept. Do not edit raw output.
 
 ## Manual compatibility matrix
 
@@ -70,10 +56,10 @@ Every cell stays `pending hardware` until a report exists in `docs/hw-reports/`.
 | GitHub (security key 2FA) | pending hardware | pending hardware | fido image |
 | Google account (security key) | pending hardware | pending hardware | fido image |
 | Microsoft account (security key) | pending hardware | pending hardware | fido image |
-| Windows Hello / Entra sign-in | pending hardware | n/a | platform WebAuthn API; no local-account unlock (see WINDOWS.md if present) |
+| Windows Hello / Entra sign-in | pending hardware | n/a | platform WebAuthn API; no local-account unlock (see WINDOWS.md) |
 | Linux PAM (`pam_multikey`) | n/a | pending hardware | test only via a throw-away PAM service, never login/sudo first |
 | ssh (`ecdsa-sk`, `ed25519-sk`, resident keys) | pending hardware | pending hardware | fido image; ed25519-sk needs EdDSA in GetInfo |
-| git SSH commit signing | pending hardware | pending hardware | see PROTOCOLS.md |
+| git SSH commit signing | pending hardware | pending hardware | `tools/ssh_smoke.*` (`ssh-keygen -Y sign`) |
 | gpg (card status, sign, decrypt, gpg-agent SSH) | pending hardware | pending hardware | **openpgp** image |
 
 ## Power-loss and persistence (pending hardware)
@@ -83,7 +69,8 @@ credentials survive reboot. Status: pending hardware.
 
 ## Host CLI, flash script and release pipeline (no hardware)
 
-- `cd host && cargo test --locked`: 103 tests (proto 13, host 41, fido 17, cli 32). The FIDO PIN and credential
+- `cd host && cargo test --locked`: 116 tests (proto 19, host 43, fido 17, cli 37; `multikey-pam`, 11 more, is not a default member:
+  `cargo test -p multikey-pam`). The FIDO PIN and credential
   flows run against `MockAuthenticator`, including assertions that no PIN appears in any output. The real HID path of
   `ctap-hid-fido2` has no emulator coverage here (pico-fido's emulation speaks a virtual transport, not HID): `fido *` against a real key
   is a hardware test and is only partly done (see ROADMAP).
@@ -92,6 +79,7 @@ credentials survive reboot. Status: pending hardware.
   tests run on Linux, the PowerShell tests on Windows).
 - `cd web && pnpm lint && pnpm test && pnpm build`: eslint, 174 unit tests (manifest v1/v2, profile selection, installer state machine,
   MKAUTH APDUs, WebCCID framing, renaming orchestration including a silent or slow key, locale detection), production build and the check
-  that no test double is in the bundle. `pnpm test:e2e` runs 47 Playwright tests against a simulated board and a simulated key, in English
-  and Vietnamese (`web/README.md`); they are not hardware tests.
+  that no test double is in the bundle. `pnpm test:e2e` runs 58 Playwright `test()` cases (installer, site, Passkey lab at `/passkeys`,
+  reduced-motion; some loop over pages) against a simulated board, a simulated key and a virtual authenticator, with English and
+  Vietnamese checks (`web/README.md`); they are not hardware tests.
 - `.github/workflows/release.yml` verifies the packaged artifact itself (version output, help, static CRT, PAM symbols/load/fail-closed).
