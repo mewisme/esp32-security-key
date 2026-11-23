@@ -206,9 +206,19 @@ class FlashId(unittest.TestCase):
         self.assertEqual(mac, "80:b5:4e:c8:22:78")
 
     def test_wrong_chip_or_size(self):
-        self.assertTrue(fd.check_flash_id(self.OK.replace("ESP32-S3", "ESP32")) [0])
-        self.assertTrue(fd.check_flash_id(self.OK.replace("16MB", "8MB"))[0])
+        self.assertTrue(fd.check_flash_id(self.OK.replace("ESP32-S3", "ESP32"))[0])
+        self.assertTrue(fd.check_flash_id(self.OK.replace("16MB", "2MB"))[0])
         self.assertTrue(fd.check_flash_id("garbage")[0])
+
+    def test_size_must_match_the_profile_exactly(self):
+        eight = self.OK.replace("16MB", "8MB")
+        self.assertEqual(fd.check_flash_id(eight, "esp32s3-8mb")[0], [])
+        problems = fd.check_flash_id(eight)[0]  # the default profile is 16 MB
+        self.assertEqual(len(problems), 1)
+        self.assertIn("flash size is 8MB, this build is for 16MB (profile esp32s3-16mb)", problems[0])
+        self.assertIn("supported profiles: 4MB, 8MB, 16MB", problems[0])
+        self.assertTrue(fd.check_flash_id(self.OK, "esp32s3-4mb")[0])
+        self.assertTrue(fd.check_flash_id(self.OK, "esp32s3-8mb")[0])
 
 
 class UsbIdentity(unittest.TestCase):

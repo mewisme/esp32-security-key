@@ -1,5 +1,6 @@
 MultiKeys {title} v{version}
-Board: ESP32-S3 N16R8 (16 MB flash, native USB, BOOT button on GPIO0 used as the touch button, no LED)
+Board: ESP32-S3 (native USB, BOOT button on GPIO0 used as the touch button, no LED)
+For ESP32-S3 boards with {flash_size} quad-SPI flash; the installer picks this file automatically.
 
 EXPERIMENTAL DEVELOPMENT FIRMWARE - not suitable for protecting important accounts.
 It uses a development USB identity (VID:PID {vid}:{pid}) and a development AAGUID, has no Secure Boot and no flash

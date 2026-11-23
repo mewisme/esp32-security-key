@@ -2,18 +2,20 @@
 """Package, describe and verify prebuilt MultiKeys firmware (stdlib only).
 
   python tools/package_firmware.py package --build-dir build-fido-dev --sdkconfig sdkconfig.fido-dev.generated \
-      --app fido --board esp32s3-n16r8-boot-button --version 0.2.0 --commit <sha> --out dist-fw --source-date-epoch N
+      --app fido --hw esp32s3-16mb --version 0.2.0 --commit <sha> --out dist-fw --source-date-epoch N
   python tools/package_firmware.py manifest --entries 'dist-fw/*.entry.json' --version 0.2.0 --tag v0.2.0 \
-      --commit <sha> --out dist-fw/firmware-manifest.json
-  python tools/package_firmware.py verify dist-fw/multikey-firmware-v0.2.0-esp32s3-n16r8-fido-dev.zip \
+      --commit <sha> --out dist-fw/firmware-manifest.json [--require-release-profiles]
+  python tools/package_firmware.py verify dist-fw/multikey-firmware-v0.2.0-esp32s3-16mb-fido-dev.zip \
       --manifest dist-fw/firmware-manifest.json
 
-`package` refuses anything that is not a flashable development image for the supported board: wrong chip or flash
-size, unset pins, CI-only images, Secure Boot / flash encryption / eFuse provisioning, an image that touches nvs,
-phy_init or part0, a partition table that differs from partitions.csv, an app whose descriptor names another project
-or version, or a WebUSB landing URL other than the web installer. The zip is deterministic (sorted entries, fixed
-timestamps). The manifest (firmware-manifest.json) is what the web installer reads; its format is documented in
-docs/RELEASES.md and validated again in web/src/lib/firmware/manifest.ts.
+`package` refuses anything that is not a flashable development image for the chosen hardware profile
+(tools/flash_policy.json: esp32s3-4mb, esp32s3-8mb, esp32s3-16mb): wrong chip, or flash size, mode or frequency
+(also in the bootloader and app image headers), unset pins, CI-only images, Secure Boot / flash encryption / eFuse
+provisioning, an image that touches nvs, phy_init or part0, a partition table that differs from partitions.csv, an app
+whose descriptor names another project or version, or a WebUSB landing URL other than the web installer. The zip is
+deterministic (sorted entries, fixed timestamps). The manifest (firmware-manifest.json, schema_version 2) is what the
+web installer reads; its format is documented in docs/RELEASES.md and validated again in
+web/src/lib/firmware/manifest.ts.
 """
 from __future__ import annotations
 
@@ -37,7 +39,8 @@ from package_release import FORBIDDEN  # noqa: E402
 REPOSITORY = "mewisme/esp32-security-key"
 LANDING_URL = "https://multikeys.mewis.me"
 VERSION_RE = re.compile(r"^\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?$")
-ASSET_RE = re.compile(r"^multikey-firmware-v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)-esp32s3-n16r8-(fido|openpgp)-dev\.zip$")
+ASSET_RE = re.compile(r"^multikey-firmware-v(?P<version>\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)-esp32s3-(?P<hw>4mb|8mb|16mb)-"
+                      r"(?P<image>fido|openpgp)-dev\.zip$")
 COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 DATA_PRESERVING_FROM = "0.2.0"
 INSTALL_MODES = ["first-install", "update", "update-unverified", "switch-image", "replace-compatible-layout",
@@ -64,8 +67,8 @@ def cargo_version(text: str) -> str:
     return v.group(1)
 
 
-def package_name(version: str, app: str) -> str:
-    return f"multikey-firmware-v{version}-esp32s3-n16r8-{app}-dev.zip"
+def package_name(version: str, app: str, hw: str) -> str:
+    return f"multikey-firmware-v{version}-{hw}-{app}-dev.zip"
 
 
 def image_file(role: str, app: str) -> str:
@@ -102,7 +105,7 @@ def dumps(obj) -> str:
     return json.dumps(obj, sort_keys=True, indent=2, ensure_ascii=False) + "\n"
 
 
-def check_config(cfg: dict, board_cfg: dict) -> None:
+def check_config(cfg: dict, board_cfg: dict, prof: dict) -> None:
     problems = []
     if cfg.get("CONFIG_MULTIKEY_ALLOW_UNSET_PINS_FOR_CI") == "y":
         problems.append("CI-only image (--ci-pins) cannot be packaged")
@@ -113,10 +116,16 @@ def check_config(cfg: dict, board_cfg: dict) -> None:
     elif cfg.get("CONFIG_MULTIKEY_BUTTON_GPIO") != want_gpio:
         problems.append(f"CONFIG_MULTIKEY_BUTTON_GPIO={cfg.get('CONFIG_MULTIKEY_BUTTON_GPIO')} but the board file "
                         f"says {want_gpio}")
-    for key in ("CONFIG_MULTIKEY_BUTTON_ACTIVE_LOW", "CONFIG_MULTIKEY_LED_TYPE_NONE", "CONFIG_ESPTOOLPY_FLASHSIZE_16MB",
+    for key in ("CONFIG_MULTIKEY_BUTTON_ACTIVE_LOW", "CONFIG_MULTIKEY_LED_TYPE_NONE",
+                f"CONFIG_ESPTOOLPY_FLASHSIZE_{prof['flash_size']}",
+                f"CONFIG_ESPTOOLPY_FLASHMODE_{prof['config_flash_mode'].upper()}",
                 "CONFIG_MULTIKEY_WEBUSB_LANDING_ENABLED"):
         if cfg.get(key) != "y":
             problems.append(f"{key} must be y")
+    name = cfg.get("CONFIG_MULTIKEY_USB_PRODUCT_NAME")
+    if name is None or not 1 <= len(name) <= 31 or not all(" " <= c <= "~" for c in name) or name != name.strip(" "):
+        problems.append(f"CONFIG_MULTIKEY_USB_PRODUCT_NAME {name!r} is not a valid device name (1-31 printable ASCII "
+                        "characters, no leading or trailing space)")
     if cfg.get("CONFIG_PARTITION_TABLE_CUSTOM_FILENAME") != "partitions.csv":
         problems.append("CONFIG_PARTITION_TABLE_CUSTOM_FILENAME must be partitions.csv")
     url = cfg.get("CONFIG_MULTIKEY_WEBUSB_LANDING_URL")
@@ -136,7 +145,7 @@ def check_config(cfg: dict, board_cfg: dict) -> None:
         raise PackageError("; ".join(problems))
 
 
-def package(build_dir: Path, sdkconfig: Path, app: str, board: str, version: str, commit: str, out: Path,
+def package(build_dir: Path, sdkconfig: Path, app: str, hw: str, version: str, commit: str, out: Path,
             epoch: int, partitions: Path = ROOT / "partitions.csv", license_file: Path = ROOT / "LICENSE",
             boards_dir: Path = ROOT / "boards", templates: Path = TEMPLATES) -> tuple[Path, dict]:
     if not VERSION_RE.match(version):
@@ -146,6 +155,11 @@ def package(build_dir: Path, sdkconfig: Path, app: str, board: str, version: str
     if app not in TITLES:
         raise PackageError(f"unknown app {app!r}")
     try:
+        prof = fd.profile(hw)
+    except ValueError as e:
+        raise PackageError(str(e)) from e
+    board = prof["board"]
+    try:
         fa = json.loads((build_dir / "flasher_args.json").read_text(encoding="utf-8"))
         chip = fa["extra_esptool_args"]["chip"]
         settings = fa["flash_settings"]
@@ -154,14 +168,16 @@ def package(build_dir: Path, sdkconfig: Path, app: str, board: str, version: str
         raise PackageError(f"cannot read {build_dir / 'flasher_args.json'}: {e}") from e
     if chip != "esp32s3":
         raise PackageError(f"build target is {chip!r}, not esp32s3")
-    if settings.get("flash_size") != fd.POLICY["flash_size"]:
-        raise PackageError(f"flash size is {settings.get('flash_size')!r}, not {fd.POLICY['flash_size']}")
+    for key, want in (("flash_size", prof["flash_size"]), ("flash_mode", prof["flash_mode"]),
+                      ("flash_freq", prof["flash_freq"])):
+        if settings.get(key) != want:
+            raise PackageError(f"{key.replace('_', ' ')} is {settings.get(key)!r}, profile {hw} needs {want!r}")
 
     cfg = fd.parse_sdkconfig(sdkconfig.read_text(encoding="utf-8"))
     board_file = boards_dir / f"{board}.board"
     if not board_file.is_file():
         raise PackageError(f"unknown board {board!r} ({board_file} missing)")
-    check_config(cfg, fd.parse_sdkconfig(board_file.read_text(encoding="utf-8")))
+    check_config(cfg, fd.parse_sdkconfig(board_file.read_text(encoding="utf-8")), prof)
 
     parts = fd.parse_partitions_csv(partitions.read_text(encoding="utf-8"))
     images = sorted(files.items())
@@ -174,6 +190,10 @@ def package(build_dir: Path, sdkconfig: Path, app: str, board: str, version: str
     if problems:
         raise PackageError("image layout: " + "; ".join(problems))
     by_role = {fd.ALLOWED_WRITES[off]: (off, blobs[rel]) for off, rel in images}
+    header_problems = [f"{role}: {p.removeprefix('image header ')}" for role in ("bootloader", "app")
+                       for p in fd.check_image_header(by_role[role][1], prof)]
+    if header_problems:
+        raise PackageError("image header: " + "; ".join(header_problems))
     status, detail = fd.parse_device_table(by_role["partition-table"][1], parts)
     if status != "match":
         raise PackageError(f"built partition table does not match partitions.csv: {detail}")
@@ -186,24 +206,28 @@ def package(build_dir: Path, sdkconfig: Path, app: str, board: str, version: str
         raise PackageError(f"app version is {desc['version']!r}, expected {version!r} (build with --release?)")
 
     entry = {
-        "id": f"esp32s3-n16r8-{app}-dev", "image": app, "project_name": f"multikey-{app}", "version": version,
-        "title": TITLES[app], "board": board, "chip": fd.POLICY["chip"], "flash_size": fd.POLICY["flash_size"],
-        "flash_mode": settings.get("flash_mode"), "flash_freq": settings.get("flash_freq"),
+        "id": f"{hw}-{app}-dev", "image": app, "project_name": f"multikey-{app}", "version": version,
+        "title": TITLES[app], "board": board, "chip": fd.POLICY["chip"], "flash_size": prof["flash_size"],
+        "flash_mode": prof["flash_mode"], "flash_freq": prof["flash_freq"],
+        "profile_id": hw, "flash_interface": prof["flash_interface"], "psram_required": prof["psram_required"],
         "security_profile": "development",
         "idf_version": desc["idf_ver"] or cfg.get("CONFIG_IDF_INIT_VERSION", ""),
         "user_presence": {"gpio": int(cfg["CONFIG_MULTIKEY_BUTTON_GPIO"]), "active_low": True}, "led": "none",
         "usb": {"vid": int(cfg["CONFIG_MULTIKEY_USB_VID"], 0), "pid": int(cfg["CONFIG_MULTIKEY_USB_PID"], 0),
-                "webusb_landing_url": cfg["CONFIG_MULTIKEY_WEBUSB_LANDING_URL"]},
+                "webusb_landing_url": cfg["CONFIG_MULTIKEY_WEBUSB_LANDING_URL"],
+                "product_name": cfg["CONFIG_MULTIKEY_USB_PRODUCT_NAME"],
+                "custom_name": cfg.get("CONFIG_MULTIKEY_USB_CUSTOM_NAME_ENABLED") == "y"},
         "images": [{"role": fd.ALLOWED_WRITES[off], "file": image_file(fd.ALLOWED_WRITES[off], app), "offset": off,
                     "size": len(blobs[rel]), "sha256": sha256(blobs[rel])} for off, rel in images],
         "partitions": [{"name": n, "type": p["type"], "subtype": p["subtype"], "offset": p["offset"],
                         "size": p["size"]} for n, p in parts.items()],
-        "layout_id": layout_id(parts),
+        "layout_id": layout_id(parts), "partition_schema": layout_id(parts),
         "protected_partitions": list(fd.PROTECTED), "repurpose_fill": list(fd.POLICY["repurpose_fill"]),
         "update": {"data_preserving_from": DATA_PRESERVING_FROM}, "install_modes": INSTALL_MODES,
-        "verification": "build-verified",
+        "verified_hardware": [v["label"] for v in prof["verified_hardware"]],
+        "verification": prof["verification"],
     }
-    name = package_name(version, app)
+    name = package_name(version, app, hw)
     root = name.removesuffix(".zip")
     command = "python -m esptool --chip esp32s3 -p PORT write_flash " + " ".join(
         f"{i['offset']:#x} {i['file']}" for i in entry["images"])
@@ -215,7 +239,7 @@ def package(build_dir: Path, sdkconfig: Path, app: str, board: str, version: str
     data["NOTICE.txt"] = (templates / "NOTICE.txt").read_text(encoding="utf-8").replace("{version}", version).encode()
     data["README.txt"] = (templates / "README.txt").read_text(encoding="utf-8").format(
         title=TITLES[app].removeprefix("MultiKeys "), version=version, command=command, app_file=f"multikey-{app}.bin",
-        vid=f"{entry['usb']['vid']:04X}", pid=f"{entry['usb']['pid']:04X}").encode()
+        flash_size=prof["flash_size"], vid=f"{entry['usb']['vid']:04X}", pid=f"{entry['usb']['pid']:04X}").encode()
     if sorted(data) != member_names(app):
         raise PackageError(f"internal: member set {sorted(data)}")
     for member in data:
@@ -230,7 +254,7 @@ def package(build_dir: Path, sdkconfig: Path, app: str, board: str, version: str
     return dest, full
 
 
-def manifest(entry_paths: list, version: str, tag: str, commit: str) -> dict:
+def manifest(entry_paths: list, version: str, tag: str, commit: str, require_release_profiles: bool = False) -> dict:
     if not VERSION_RE.match(version):
         raise PackageError(f"bad version {version!r}")
     if tag != f"v{version}" and tag != "local":
@@ -240,13 +264,21 @@ def manifest(entry_paths: list, version: str, tag: str, commit: str) -> dict:
     if not entry_paths:
         raise PackageError("no build entries")
     builds = [json.loads(Path(p).read_text(encoding="utf-8")) for p in entry_paths]
-    ids = [b["id"] for b in builds]
-    if len(set(ids)) != len(ids):
-        raise PackageError(f"duplicate build ids {ids}")
+    for path, b in zip(entry_paths, builds):
+        if "profile_id" not in b:
+            raise PackageError(f"{path} has no profile_id (made by an older package_firmware.py?)")
+    keys = [(b["image"], b["profile_id"]) for b in builds]
+    if len(set(keys)) != len(keys):
+        raise PackageError(f"duplicate build ids {sorted(b['id'] for b in builds)}")
     for b in builds:
         if b["version"] != version:
             raise PackageError(f"build {b['id']} has version {b['version']!r}, manifest is {version!r}")
-    return {"schema": "multikeys-firmware-manifest", "schema_version": 1, "version": version, "tag": tag,
+    if require_release_profiles:
+        have = {b["profile_id"] for b in builds if b["image"] == "fido"}
+        missing = sorted(p["id"] for p in fd.PROFILES.values() if p.get("release") and p["id"] not in have)
+        if missing:
+            raise PackageError(f"no fido build for release profile(s) {', '.join(missing)}")
+    return {"schema": "multikeys-firmware-manifest", "schema_version": 2, "version": version, "tag": tag,
             "source_commit": commit, "repository": REPOSITORY, "builds": sorted(builds, key=lambda b: b["id"])}
 
 
@@ -287,7 +319,7 @@ def main() -> int:
     p.add_argument("--build-dir", required=True, type=Path)
     p.add_argument("--sdkconfig", required=True, type=Path)
     p.add_argument("--app", choices=sorted(TITLES), required=True)
-    p.add_argument("--board", required=True)
+    p.add_argument("--hw", choices=sorted(fd.PROFILES), required=True, help="hardware profile of the build")
     p.add_argument("--version", required=True)
     p.add_argument("--commit", required=True)
     p.add_argument("--out", required=True, type=Path)
@@ -298,6 +330,8 @@ def main() -> int:
     m.add_argument("--tag", required=True)
     m.add_argument("--commit", required=True)
     m.add_argument("--out", required=True, type=Path)
+    m.add_argument("--require-release-profiles", action="store_true",
+                   help="fail unless every release profile in tools/flash_policy.json has a fido build")
     v = sub.add_parser("verify", help="re-check a firmware zip against the manifest")
     v.add_argument("zip", nargs="+", type=Path)
     v.add_argument("--manifest", required=True, type=Path)
@@ -307,11 +341,11 @@ def main() -> int:
         if a.cmd == "version":
             print(cargo_version((ROOT / "host" / "Cargo.toml").read_text(encoding="utf-8")))
         elif a.cmd == "package":
-            dest, entry = package(a.build_dir, a.sdkconfig, a.app, a.board, a.version, a.commit, a.out,
+            dest, entry = package(a.build_dir, a.sdkconfig, a.app, a.hw, a.version, a.commit, a.out,
                                   a.source_date_epoch)
             print(f"{dest}  sha256={entry['package']['sha256']}")
         elif a.cmd == "manifest":
-            man = manifest(sorted(glob.glob(a.entries)), a.version, a.tag, a.commit)
+            man = manifest(sorted(glob.glob(a.entries)), a.version, a.tag, a.commit, a.require_release_profiles)
             a.out.write_text(dumps(man), encoding="utf-8")
             print(f"{a.out}: {len(man['builds'])} build(s)")
         else:

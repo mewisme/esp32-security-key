@@ -4,12 +4,18 @@
 This script only builds. It never flashes, never touches eFuses and never enables Secure Boot.
 Requires an activated ESP-IDF v5.5.x environment (idf.py on PATH).
 
-  python tools/build.py dev                       # FIDO2 image, dev profile, needs sdkconfig.board
+  python tools/build.py dev                       # FIDO2 image, dev profile, 16 MB flash, needs sdkconfig.board
+  python tools/build.py dev --hw esp32s3-4mb --board esp32s3-boot-button --clean   # 4 MB flash profile
   python tools/build.py prod --app openpgp
   python tools/build.py dev --ci-pins             # compile check without pins; image is unusable
   python tools/build.py dev --release             # firmware version without the -dev suffix (release packaging)
+
+Every (app, security profile, hardware profile) gets its own build-<tag>/ directory and sdkconfig.<tag>.generated: the
+tag is e.g. fido-dev for the default 16 MB profile and fido-dev-4mb / fido-dev-8mb for the others (flash_dev.build_tag).
+The hardware profile (--hw, tools/flash_policy.json) selects the flash size; the built image is checked against it.
 """
 import argparse
+import json
 import os
 import shutil
 import subprocess
@@ -17,15 +23,22 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import flash_dev as fd  # noqa: E402
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("profile", choices=["dev", "prod"])
     ap.add_argument("--app", choices=["fido", "openpgp"], default="fido")
+    ap.add_argument("--hw", choices=sorted(fd.PROFILES), default=fd.DEFAULT_PROFILE,
+                    help="hardware profile (flash size); each profile builds into its own directory")
+    ap.add_argument("--board", metavar="NAME",
+                    help="layer boards/NAME.board (button, LED) instead of the root sdkconfig.board")
     ap.add_argument("--ci-pins", action="store_true",
                     help="allow unset GPIOs (compile check only; never flash the result)")
-    ap.add_argument("--clean", action="store_true", help="remove the build directory first")
+    ap.add_argument("--clean", action="store_true",
+                    help="remove the build directory and its generated sdkconfig first")
     ap.add_argument("--release", action="store_true",
                     help="stamp the plain host/Cargo.toml version (no -dev suffix) into the app descriptor")
     ap.add_argument("--harden", action="store_true",
@@ -47,6 +60,12 @@ def main() -> int:
     if args.release and args.ci_pins:
         print("--release cannot be combined with --ci-pins", file=sys.stderr)
         return 2
+    if args.board and args.ci_pins:
+        print("--board cannot be combined with --ci-pins", file=sys.stderr)
+        return 2
+    if args.board and not (ROOT / "boards" / f"{args.board}.board").is_file():
+        print(f"unknown board {args.board} (boards/{args.board}.board missing)", file=sys.stderr)
+        return 2
     if args.harden:
         if args.profile != "prod":
             print("--harden is only valid with the prod profile", file=sys.stderr)
@@ -60,13 +79,22 @@ def main() -> int:
             print(f"signing key not found: {args.signing_key}", file=sys.stderr)
             return 2
 
-    tag = f"{args.app}-{args.profile}" + ("-hardened" if args.harden else "")
+    tag = fd.build_tag(args.app, args.profile, args.hw, args.harden)
     build_dir = ROOT / f"build-{tag}"
     sdkconfig = ROOT / f"sdkconfig.{tag}.generated"
-    if args.clean and build_dir.exists():
-        shutil.rmtree(build_dir)
+    if args.clean:
+        if build_dir.exists():
+            shutil.rmtree(build_dir)
+        sdkconfig.unlink(missing_ok=True)
 
-    defaults = ["sdkconfig.defaults", f"sdkconfig.{args.profile}"]
+    size_line = f"CONFIG_ESPTOOLPY_FLASHSIZE_{fd.profile(args.hw)['flash_size']}=y"
+    if sdkconfig.exists() and size_line not in sdkconfig.read_text(encoding="utf-8").splitlines():
+        print(f"{sdkconfig.name} was generated for another flash size; rerun with --clean", file=sys.stderr)
+        return 2
+
+    flash_defaults = ROOT / f"build-{tag}-flash.defaults"
+    flash_defaults.write_text(fd.flash_fragment(args.hw))
+    defaults = ["sdkconfig.defaults", f"sdkconfig.{args.profile}", flash_defaults.name]
     if args.harden:
         defaults.append("sdkconfig.hardening")
         key = ROOT / f"build-{tag}-signing.defaults"
@@ -76,6 +104,8 @@ def main() -> int:
         ci = ROOT / f"build-{tag}-ci-pins.defaults"
         ci.write_text("CONFIG_MULTIKEY_ALLOW_UNSET_PINS_FOR_CI=y\n")
         defaults.append(ci.name)
+    elif args.board:
+        defaults.append(f"boards/{args.board}.board")
     elif (ROOT / "sdkconfig.board").exists():
         defaults.append("sdkconfig.board")
 
@@ -95,6 +125,20 @@ def main() -> int:
         rc = subprocess.call(step, cwd=ROOT, env=env)
         if rc:
             return rc
+    # The image must really be for the selected flash size (a stale or hand-edited configuration would not be).
+    if size_line not in sdkconfig.read_text(encoding="utf-8").splitlines():
+        print(f"{sdkconfig.name} does not select {size_line}; rerun with --clean", file=sys.stderr)
+        return 1
+    try:
+        built = json.loads((build_dir / "flasher_args.json").read_text(encoding="utf-8"))["flash_settings"]["flash_size"]
+    except (OSError, ValueError, KeyError) as e:
+        print(f"cannot read the flash size from {build_dir.name}/flasher_args.json: {e}", file=sys.stderr)
+        return 1
+    want = fd.profile(args.hw)["flash_size"]
+    if built != want:
+        print(f"{build_dir.name} was built for {built} flash, profile {args.hw} needs {want}; rerun with --clean",
+              file=sys.stderr)
+        return 1
     return 0
 
 

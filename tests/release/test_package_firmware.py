@@ -1,5 +1,6 @@
 import hashlib
 import json
+import re
 import sys
 import tempfile
 import unittest
@@ -14,15 +15,20 @@ COMMIT = "a" * 40
 SDKCONFIG = """CONFIG_IDF_TARGET="esp32s3"
 CONFIG_IDF_INIT_VERSION="5.5.6"
 CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 CONFIG_MULTIKEY_BUTTON_GPIO=0
 CONFIG_MULTIKEY_BUTTON_ACTIVE_LOW=y
 CONFIG_MULTIKEY_LED_TYPE_NONE=y
 CONFIG_MULTIKEY_USB_VID=0x303A
 CONFIG_MULTIKEY_USB_PID=0x4002
+CONFIG_MULTIKEY_USB_PRODUCT_NAME="MultiKeys Security Key"
+CONFIG_MULTIKEY_USB_CUSTOM_NAME_ENABLED=y
 CONFIG_MULTIKEY_WEBUSB_LANDING_ENABLED=y
 CONFIG_MULTIKEY_WEBUSB_LANDING_URL="https://multikeys.mewis.me"
 """
+SIZE_NIBBLE = {"4MB": 2, "8MB": 3, "16MB": 4}
+HW = {"4MB": "esp32s3-4mb", "8MB": "esp32s3-8mb", "16MB": "esp32s3-16mb"}
 
 
 def entry(label, typ, sub, off, size):
@@ -36,41 +42,59 @@ def ptable(part0_off=0x200000):
     return (t + b"\xeb\xeb" + b"\xff" * 30).ljust(0xC00, b"\xff")
 
 
-def app_bin(version="0.2.0", project="multikey-fido"):
+def image_header(flash_size="16MB", mode=2, freq=0xF):
+    """e9, segment count, flash mode (2 = dio), flash size (high nibble) | frequency (low nibble, f = 80m)."""
+    return bytes([0xE9, 3, mode, (SIZE_NIBBLE[flash_size] << 4) | freq])
+
+
+def app_bin(version="0.2.0", project="multikey-fido", flash_size="16MB"):
     desc = (0xABCD5432).to_bytes(4, "little") + b"\0" * 12 + version.encode().ljust(32, b"\0") + \
         project.encode().ljust(32, b"\0") + b"12:00:00".ljust(16, b"\0") + b"Nov 23 2026".ljust(16, b"\0") + \
         b"v5.5.6".ljust(32, b"\0")
-    return (b"\xe9" + b"\0" * 31 + desc).ljust(0x9000, b"\x5a")
+    return (image_header(flash_size) + b"\0" * 28 + desc).ljust(0x9000, b"\x5a")
+
+
+def bootloader_bin(flash_size="16MB"):
+    return image_header(flash_size) + b"\x01" * 0x5000
 
 
 class Base(unittest.TestCase):
+    hw = "esp32s3-16mb"
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.dir = Path(self.tmp.name)
         self.build = self.dir / "build"
         (self.build / "bootloader").mkdir(parents=True)
         (self.build / "partition_table").mkdir()
-        (self.build / "bootloader" / "bootloader.bin").write_bytes(b"\xe9" + b"\x01" * 0x5000)
         (self.build / "partition_table" / "partition-table.bin").write_bytes(ptable())
-        (self.build / "multikey-fido.bin").write_bytes(app_bin())
         self.flasher = {"flash_settings": {"flash_mode": "dio", "flash_size": "16MB", "flash_freq": "80m"},
                         "flash_files": {"0x0": "bootloader/bootloader.bin", "0x20000": "multikey-fido.bin",
                                         "0x8000": "partition_table/partition-table.bin"},
                         "extra_esptool_args": {"chip": "esp32s3"}}
         self.sdk = SDKCONFIG
+        self.use_flash_size("16MB")
         self.boards = self.dir / "boards"
         self.boards.mkdir()
-        (self.boards / "esp32s3-n16r8-boot-button.board").write_text(
+        (self.boards / "esp32s3-boot-button.board").write_text(
             "CONFIG_MULTIKEY_BUTTON_GPIO=0\nCONFIG_MULTIKEY_BUTTON_ACTIVE_LOW=y\n")
 
     def tearDown(self):
         self.tmp.cleanup()
 
+    def use_flash_size(self, size):
+        """Make the fake build (flasher args, sdkconfig, both image headers) a `size` build and select its profile."""
+        self.hw = HW[size]
+        self.flasher["flash_settings"]["flash_size"] = size
+        self.sdk = re.sub(r"CONFIG_ESPTOOLPY_FLASHSIZE_\d+MB=y", f"CONFIG_ESPTOOLPY_FLASHSIZE_{size}=y", self.sdk)
+        (self.build / "bootloader" / "bootloader.bin").write_bytes(bootloader_bin(size))
+        (self.build / "multikey-fido.bin").write_bytes(app_bin(flash_size=size))
+
     def package(self, version="0.2.0", app="fido", out="out", epoch=1700000000):
         (self.build / "flasher_args.json").write_text(json.dumps(self.flasher))
         sdk = self.dir / "sdkconfig"
-        sdk.write_text(self.sdk)
-        return pf.package(self.build, sdk, app, "esp32s3-n16r8-boot-button", version, COMMIT, self.dir / out, epoch,
+        sdk.write_text(self.sdk, encoding="utf-8")
+        return pf.package(self.build, sdk, app, self.hw, version, COMMIT, self.dir / out, epoch,
                           boards_dir=self.boards)
 
     def rejects(self, fragment, **kw):
@@ -78,11 +102,15 @@ class Base(unittest.TestCase):
             self.package(**kw)
         self.assertIn(fragment, str(cm.exception))
 
+    def entries(self, out="out"):
+        return [str(p) for p in sorted((self.dir / out).glob("*.entry.json"))]
+
 
 class Package(Base):
     def test_happy_path_digests_and_determinism(self):
         dest, e = self.package()
-        self.assertEqual(dest.name, "multikey-firmware-v0.2.0-esp32s3-n16r8-fido-dev.zip")
+        self.assertEqual(dest.name, "multikey-firmware-v0.2.0-esp32s3-16mb-fido-dev.zip")
+        self.assertEqual(pf.ASSET_RE.match(dest.name).groupdict(), {"version": "0.2.0", "hw": "16mb", "image": "fido"})
         root = dest.name.removesuffix(".zip")
         with zipfile.ZipFile(dest) as z:
             self.assertEqual(sorted(z.namelist()), [f"{root}/{m}" for m in pf.member_names("fido")])
@@ -92,12 +120,30 @@ class Package(Base):
             readme = z.read(f"{root}/README.txt").decode()
         self.assertEqual(fw, {k: v for k, v in e.items() if k != "package"})
         self.assertIn("0x0 bootloader.bin 0x8000 partition-table.bin 0x20000 multikey-fido.bin", readme)
+        self.assertIn("16MB quad-SPI flash", readme)
         self.assertEqual([(i["role"], i["offset"]) for i in e["images"]],
                          [("bootloader", 0), ("partition-table", 0x8000), ("app", 0x20000)])
-        self.assertEqual(e["usb"], {"vid": 0x303A, "pid": 0x4002, "webusb_landing_url": "https://multikeys.mewis.me"})
+        self.assertEqual(e["usb"], {"vid": 0x303A, "pid": 0x4002, "webusb_landing_url": "https://multikeys.mewis.me",
+                                    "product_name": "MultiKeys Security Key", "custom_name": True})
         self.assertEqual(e["package"]["sha256"], hashlib.sha256(dest.read_bytes()).hexdigest())
         dest2, _ = self.package(out="out2")
         self.assertEqual(dest.read_bytes(), dest2.read_bytes())
+
+    def test_entry_describes_the_profile(self):
+        _, e = self.package()
+        self.assertEqual(
+            {k: e[k] for k in ("id", "profile_id", "board", "chip", "flash_size", "flash_mode", "flash_freq",
+                               "flash_interface", "psram_required", "verification", "verified_hardware")},
+            {"id": "esp32s3-16mb-fido-dev", "profile_id": "esp32s3-16mb", "board": "esp32s3-boot-button",
+             "chip": "ESP32-S3", "flash_size": "16MB", "flash_mode": "dio", "flash_freq": "80m",
+             "flash_interface": "quad", "psram_required": False, "verification": "hardware-verified",
+             "verified_hardware": ["ESP32-S3 N16R8"]})
+        self.assertEqual(e["partition_schema"], e["layout_id"])
+        self.use_flash_size("4MB")
+        _, e4 = self.package(out="out4")
+        self.assertEqual((e4["id"], e4["profile_id"], e4["flash_size"], e4["verification"], e4["verified_hardware"]),
+                         ("esp32s3-4mb-fido-dev", "esp32s3-4mb", "4MB", "build-verified", []))
+        self.assertEqual(e4["layout_id"], e["layout_id"])  # one partition table for every flash size
 
     def test_ci_pins_rejected(self):
         self.sdk += "CONFIG_MULTIKEY_ALLOW_UNSET_PINS_FOR_CI=y\n"
@@ -112,8 +158,42 @@ class Package(Base):
         self.rejects("not esp32s3")
 
     def test_flash_size_rejected(self):
-        self.flasher["flash_settings"]["flash_size"] = "8MB"
+        self.flasher["flash_settings"]["flash_size"] = "2MB"
         self.rejects("flash size")
+
+    def test_profile_must_match_the_build_flash_size(self):
+        self.hw = "esp32s3-4mb"  # a 16 MB build packaged as the 4 MB profile
+        self.rejects("flash size")
+
+    def test_flash_mode_and_frequency_must_match_the_profile(self):
+        self.flasher["flash_settings"]["flash_freq"] = "40m"
+        self.rejects("flash freq")
+
+    def test_sdkconfig_must_select_the_profile_flash_size(self):
+        self.use_flash_size("4MB")
+        self.sdk = self.sdk.replace("CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y", "CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y")
+        self.rejects("CONFIG_ESPTOOLPY_FLASHSIZE_4MB must be y")
+
+    def test_unknown_profile_rejected(self):
+        self.hw = "esp32s3-2mb"
+        self.rejects("unknown hardware profile")
+
+    def test_image_header_must_match_the_profile(self):
+        self.use_flash_size("4MB")
+        (self.build / "bootloader" / "bootloader.bin").write_bytes(bootloader_bin("16MB"))
+        self.rejects("image header: bootloader: flash size is 16MB, profile esp32s3-4mb needs 4MB")
+
+    def test_app_image_header_is_checked_too(self):
+        (self.build / "multikey-fido.bin").write_bytes(app_bin(flash_size="8MB"))
+        self.rejects("app: flash size is 8MB, profile esp32s3-16mb needs 16MB")
+
+    def test_bad_image_magic_rejected(self):
+        (self.build / "bootloader" / "bootloader.bin").write_bytes(b"\x00" * 0x5000)
+        self.rejects("image header: bootloader: magic is 0x00")
+
+    def test_invalid_default_device_name_rejected(self):
+        self.sdk = self.sdk.replace('"MultiKeys Security Key"', '"Clé"')
+        self.rejects("CONFIG_MULTIKEY_USB_PRODUCT_NAME")
 
     def test_protected_overlap_rejected(self):
         self.flasher["flash_files"]["0x200000"] = "multikey-fido.bin"
@@ -142,14 +222,54 @@ class Package(Base):
 class ManifestAndVerify(Base):
     def make(self):
         dest, _ = self.package()
-        man = pf.manifest([str(p) for p in (self.dir / "out").glob("*.entry.json")], "0.2.0", "v0.2.0", COMMIT)
+        man = pf.manifest(self.entries(), "0.2.0", "v0.2.0", COMMIT)
         return dest, man
+
+    def package_all(self):
+        zips = []
+        for size in ("4MB", "8MB", "16MB"):
+            self.use_flash_size(size)
+            zips.append(self.package()[0])
+        return zips
 
     def test_verify_ok(self):
         dest, man = self.make()
         self.assertEqual(man["builds"][0]["layout_id"], pf.layout_id(pf.fd.parse_partitions_csv(
             (ROOT / "partitions.csv").read_text())))
         self.assertEqual(len(pf.verify(dest, man)), 8)
+
+    def test_manifest_is_schema_2_with_profile_ids(self):
+        zips = self.package_all()
+        man = pf.manifest(self.entries(), "0.2.0", "v0.2.0", COMMIT, require_release_profiles=True)
+        self.assertEqual(man["schema_version"], 2)
+        self.assertEqual([b["profile_id"] for b in man["builds"]], ["esp32s3-16mb", "esp32s3-4mb", "esp32s3-8mb"])
+        for z in zips:
+            self.assertEqual(len(pf.verify(z, man)), 8)
+
+    def test_release_profiles_are_required_on_request(self):
+        self.package()  # only the 16 MB build
+        pf.manifest(self.entries(), "0.2.0", "v0.2.0", COMMIT)  # fine for a local/CI dev bundle
+        with self.assertRaises(pf.PackageError) as cm:
+            pf.manifest(self.entries(), "0.2.0", "v0.2.0", COMMIT, require_release_profiles=True)
+        self.assertIn("esp32s3-4mb", str(cm.exception))
+        self.assertIn("esp32s3-8mb", str(cm.exception))
+        self.assertNotIn("esp32s3-16mb", str(cm.exception))
+
+    def test_non_release_profile_is_not_required(self):
+        original = pf.fd.PROFILES["esp32s3-4mb"]
+        pf.fd.PROFILES["esp32s3-4mb"] = dict(original, release=False)
+        self.addCleanup(pf.fd.PROFILES.__setitem__, "esp32s3-4mb", original)
+        for size in ("8MB", "16MB"):
+            self.use_flash_size(size)
+            self.package()
+        pf.manifest(self.entries(), "0.2.0", "v0.2.0", COMMIT, require_release_profiles=True)
+
+    def test_duplicate_image_and_profile_rejected(self):
+        self.package()
+        paths = self.entries()
+        with self.assertRaises(pf.PackageError) as cm:
+            pf.manifest(paths + paths, "0.2.0", "v0.2.0", COMMIT)
+        self.assertIn("duplicate build ids", str(cm.exception))
 
     def test_flipped_byte_rejected(self):
         dest, man = self.make()
@@ -162,7 +282,7 @@ class ManifestAndVerify(Base):
     def test_manifest_version_mismatch_rejected(self):
         self.package()
         with self.assertRaises(pf.PackageError) as cm:
-            pf.manifest([str(p) for p in (self.dir / "out").glob("*.entry.json")], "0.2.1", "v0.2.1", COMMIT)
+            pf.manifest(self.entries(), "0.2.1", "v0.2.1", COMMIT)
         self.assertIn("has version '0.2.0'", str(cm.exception))
 
     def test_manifest_requires_entries_and_matching_tag(self):
@@ -170,7 +290,7 @@ class ManifestAndVerify(Base):
             pf.manifest([], "0.2.0", "v0.2.0", COMMIT)
         self.package()
         with self.assertRaises(pf.PackageError):
-            pf.manifest([str(p) for p in (self.dir / "out").glob("*.entry.json")], "0.2.0", "v0.3.0", COMMIT)
+            pf.manifest(self.entries(), "0.2.0", "v0.3.0", COMMIT)
 
 
 if __name__ == "__main__":

@@ -43,6 +43,13 @@ NATIVE_DOWNLOAD = tuple(POLICY["native_usb"]["download"])
 NATIVE_APP = tuple(POLICY["native_usb"]["app"])
 UART_BRIDGES = {(vid, pid): name for vid, pid, name in POLICY["uart_bridges"]}
 
+# Hardware profiles: one per supported flash size. All use the same partition table (it ends at 0x300000, below 4 MiB).
+PROFILES: dict = {p["id"]: p for p in POLICY["profiles"]}
+DEFAULT_PROFILE = POLICY["default_profile"]
+SIZE_CODES = {"4MB": 2, "8MB": 3, "16MB": 4}  # image header byte 3, high nibble
+MODE_CODES = {"qio": 0, "qout": 1, "dio": 2, "dout": 3}  # image header byte 2
+FREQ_CODES = {"80m": 0xF}  # image header byte 3, low nibble
+
 APP_DESC_MAGIC = 0xABCD5432
 APP_DESC_IMAGE_OFFSET = 0x20  # esp_app_desc_t follows the 24-byte image header and the 8-byte segment header
 
@@ -64,6 +71,52 @@ class Stop(Exception):
 
 
 # --------------------------------------------------------------------------- pure helpers
+
+def profile(hw: str) -> dict:
+    try:
+        return PROFILES[hw]
+    except KeyError:
+        raise ValueError(f"unknown hardware profile {hw!r} (known: {', '.join(sorted(PROFILES))})") from None
+
+
+def supported_flash_sizes() -> list:
+    """Flash sizes of every profile, ascending (['4MB', '8MB', '16MB'])."""
+    return sorted({p["flash_size"] for p in PROFILES.values()}, key=lambda s: SIZE_CODES[s])
+
+
+def build_tag(app: str, sec_profile: str, hw: str, hardened: bool = False) -> str:
+    """Build directory / sdkconfig tag. The default (16 MB) profile keeps the historical `fido-dev` form."""
+    profile(hw)
+    suffix = "" if hw == DEFAULT_PROFILE else "-" + hw.removeprefix("esp32s3-")
+    return f"{app}-{sec_profile}" + ("-hardened" if hardened else "") + suffix
+
+
+def flash_fragment(hw: str) -> str:
+    """sdkconfig defaults that select the profile's flash size and mode (layered over sdkconfig.defaults)."""
+    prof = profile(hw)
+    lines = [f"CONFIG_ESPTOOLPY_FLASHSIZE_{prof['flash_size']}=y"]
+    lines += [f"# CONFIG_ESPTOOLPY_FLASHSIZE_{size} is not set" for size in sorted(SIZE_CODES, key=SIZE_CODES.get)
+              if size != prof["flash_size"]]
+    lines.append(f"CONFIG_ESPTOOLPY_FLASHMODE_{prof['config_flash_mode'].upper()}=y")
+    return "\n".join(lines) + "\n"
+
+
+def check_image_header(blob: bytes, prof: dict) -> list:
+    """Problems in the first four bytes of an esp image (bootloader or app) versus the profile: magic 0xE9, flash mode
+    (byte 2), flash size (byte 3, high nibble) and flash frequency (byte 3, low nibble)."""
+    if len(blob) < 4:
+        return ["image is shorter than its 4-byte image header"]
+    if blob[0] != 0xE9:
+        return [f"image header magic is {blob[0]:#04x}, expected 0xe9"]
+    problems = []
+    for what, codes, have, want in (("mode", MODE_CODES, blob[2], prof["flash_mode"]),
+                                    ("size", SIZE_CODES, blob[3] >> 4, prof["flash_size"]),
+                                    ("frequency", FREQ_CODES, blob[3] & 0xF, prof["flash_freq"])):
+        shown = next((name for name, code in codes.items() if code == have), f"code {have:#x}")
+        if shown != want:
+            problems.append(f"image header flash {what} is {shown}, profile {prof['id']} needs {want}")
+    return problems
+
 
 def parse_size(text: str) -> int:
     t = text.strip().rstrip(",")
@@ -276,14 +329,17 @@ def esptool_readonly(python: str, port: str, *sub: str) -> list:
     return argv
 
 
-def check_flash_id(output: str) -> tuple[list, str | None]:
-    """Validate `esptool flash_id` output: ESP32-S3 with 16MB flash. Returns (problems, MAC)."""
+def check_flash_id(output: str, hw: str = DEFAULT_PROFILE) -> tuple[list, str | None]:
+    """Validate `esptool flash_id` output: an ESP32-S3 whose flash size is the profile's. Returns (problems, MAC)."""
+    want = profile(hw)["flash_size"]
     problems = []
     if "ESP32-S3" not in output:
         problems.append("the chip is not an ESP32-S3")
     m = re.search(r"Detected flash size:\s*(\S+)", output)
-    if not m or m.group(1) != "16MB":
-        problems.append(f"flash size is {m.group(1) if m else 'unknown'}, expected 16MB (N16R8)")
+    found = m.group(1) if m else "unknown"
+    if found != want:
+        problems.append(f"flash size is {found}, this build is for {want} (profile {hw}); "
+                        f"supported profiles: {', '.join(supported_flash_sizes())}")
     mac = re.search(r"MAC:\s*([0-9a-fA-F:]{17})", output)
     return problems, (mac.group(1).lower() if mac else None)
 
@@ -372,10 +428,10 @@ def run_flash(args: argparse.Namespace) -> int:
 
     step(2, total, "board configuration")
     board = ROOT / "sdkconfig.board"
-    sample = ROOT / "boards" / "esp32s3-n16r8-boot-button.board"
+    sample = ROOT / "boards" / "esp32s3-boot-button.board"
     if not board.exists():
         shutil.copyfile(sample, board)
-        print("  created sdkconfig.board from boards/esp32s3-n16r8-boot-button.board (BOOT button = GPIO0, active low)")
+        print("  created sdkconfig.board from boards/esp32s3-boot-button.board (BOOT button = GPIO0, active low)")
     gpio = board_gpio(board.read_text())
     if gpio is None:
         raise Stop(EXIT_PREREQ, "sdkconfig.board does not define CONFIG_MULTIKEY_BUTTON_GPIO")

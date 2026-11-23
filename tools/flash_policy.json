@@ -1,7 +1,20 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "chip": "ESP32-S3",
-  "flash_size": "16MB",
+  "default_profile": "esp32s3-16mb",
+  "profiles": [
+    {"id": "esp32s3-16mb", "label": "16 MB", "flash_size": "16MB", "flash_mode": "dio", "config_flash_mode": "qio",
+     "flash_freq": "80m", "flash_interface": "quad", "psram_required": false, "board": "esp32s3-boot-button",
+     "verification": "hardware-verified",
+     "verified_hardware": [{"label": "ESP32-S3 N16R8", "chip_feature": "Embedded PSRAM 8MB"}], "release": true},
+    {"id": "esp32s3-8mb", "label": "8 MB", "flash_size": "8MB", "flash_mode": "dio", "config_flash_mode": "qio",
+     "flash_freq": "80m", "flash_interface": "quad", "psram_required": false, "board": "esp32s3-boot-button",
+     "verification": "build-verified", "verified_hardware": [], "release": true},
+    {"id": "esp32s3-4mb", "label": "4 MB", "flash_size": "4MB", "flash_mode": "dio", "config_flash_mode": "qio",
+     "flash_freq": "80m", "flash_interface": "quad", "psram_required": false, "board": "esp32s3-boot-button",
+     "verification": "build-verified", "verified_hardware": [], "release": true}
+  ],
+  "legacy_builds": {"esp32s3-n16r8-fido-dev": "esp32s3-16mb", "esp32s3-n16r8-openpgp-dev": "esp32s3-16mb"},
   "allowed_writes": [
     {"offset": 0, "role": "bootloader", "max_size": 32768},
     {"offset": 32768, "role": "partition-table", "max_size": 4096},
