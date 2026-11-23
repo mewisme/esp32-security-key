@@ -34,6 +34,17 @@ jobs:
           python3 tools/build.py dev --app ${{ matrix.app }} --clean
           python3 tools/check_no_irreversible.py ${{ matrix.app }}-dev
           rm sdkconfig.board
+      - name: Firmware packaging, manifest and verify (same code path as the release)
+        if: matrix.profile == 'dev' && matrix.app == 'fido'
+        run: |
+          set -eu
+          v="$(python3 tools/package_firmware.py version)-dev"
+          python3 tools/package_firmware.py package --build-dir build-fido-dev --sdkconfig sdkconfig.fido-dev.generated \
+            --app fido --board esp32s3-n16r8-boot-button --version "$v" --commit "$GITHUB_SHA" --out dist-fw \
+            --source-date-epoch 0
+          python3 tools/package_firmware.py manifest --entries 'dist-fw/*.entry.json' --version "$v" --tag local \
+            --commit "$GITHUB_SHA" --out dist-fw/firmware-manifest.json
+          python3 tools/package_firmware.py verify dist-fw/multikey-firmware-*.zip --manifest dist-fw/firmware-manifest.json
       - name: Unset pins must fail a normal build
         run: |
           . $IDF_PATH/export.sh

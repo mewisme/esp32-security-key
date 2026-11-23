@@ -1,0 +1,18 @@
+MultiKeys firmware - third-party notices
+
+This firmware image is a combined work licensed under the GNU Affero General Public License v3.0 or later
+(see LICENSE). It contains code from the following projects:
+
+  pico-keys-sdk     AGPL-3.0     https://github.com/polhenarejos/pico-keys-sdk
+  pico-fido         AGPL-3.0     https://github.com/polhenarejos/pico-fido
+  ESP-IDF           Apache-2.0   https://github.com/espressif/esp-idf
+  esp_tinyusb       Apache-2.0   https://components.espressif.com/components/espressif/esp_tinyusb
+  TinyUSB           MIT          https://github.com/hathach/tinyusb
+  neopixel          MIT          https://components.espressif.com/components/zorxx/neopixel
+  mbedTLS (EdDSA)   Apache-2.0   https://github.com/polhenarejos/mbedtls (fork of https://github.com/Mbed-TLS/mbedtls)
+  tinycbor          MIT          https://github.com/intel/tinycbor
+
+Exact versions and pins: docs/DEPENDENCIES.md in the source tree.
+
+Corresponding source: https://github.com/mewisme/esp32-security-key/tree/v{version}
+(submodules pinned there; local patches in patches/ are applied by tools/apply_patches.py).

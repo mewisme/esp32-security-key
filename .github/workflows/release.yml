@@ -1,14 +1,28 @@
 name: release
 
-# Builds the host-tool release assets (no firmware) and, only for a v* tag, publishes them as a GitHub Release.
-# Pull requests, pushes to main and manual runs build and verify everything but never reach the `release` job.
+# Builds the release assets (host tools + prebuilt development firmware + firmware manifest) and, only for a v* tag,
+# publishes them as a GitHub Release. Pull requests, pushes to main and manual runs build and verify everything but
+# never reach the `release` job, which is the only job with write access.
 on:
   pull_request:
     paths:
       - 'host/**'
       - 'tools/package_release.py'
+      - 'tools/package_firmware.py'
+      - 'tools/flash_policy.json'
+      - 'tools/build.py'
+      - 'tools/flash_dev.py'
+      - 'tools/check_usb_descriptors.py'
       - 'tools/gen_notices.py'
       - 'tools/check_pe_imports.py'
+      - 'components/**'
+      - 'patches/**'
+      - 'boards/**'
+      - 'partitions.csv'
+      - 'sdkconfig.*'
+      - 'CMakeLists.txt'
+      - 'pico-keys-sdk'
+      - 'pico-fido'
       - 'packaging/**'
       - 'tests/release/**'
       - 'LICENSE'
@@ -43,7 +57,9 @@ jobs:
         with:
           persist-credentials: false
       - name: Release script tests
-        run: python3 -m unittest discover tests/release
+        run: |
+          pip install pyyaml==6.0.2
+          python3 -m unittest discover tests/release
       - name: Version, tag and notes consistency
         id: v
         env:
@@ -221,17 +237,51 @@ jobs:
           retention-days: 14
           compression-level: 0
 
-  release:
-    needs: [meta, build]
-    if: needs.meta.outputs.is_release == 'true' && needs.build.result == 'success'
+  firmware:
+    needs: meta
     runs-on: ubuntu-22.04
-    permissions:
-      contents: write
+    container: espressif/idf:v5.5.6
     env:
       VERSION: ${{ needs.meta.outputs.version }}
-      PRERELEASE: ${{ needs.meta.outputs.prerelease }}
-      GH_TOKEN: ${{ github.token }}
-      TAG: ${{ github.ref_name }}
+      SOURCE_DATE_EPOCH: ${{ needs.meta.outputs.source_date_epoch }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - name: Apply patches
+        run: git config --global --add safe.directory '*' && python3 tools/apply_patches.py
+      - name: Build the FIDO2 development image (release version stamp, BOOT-button board profile)
+        run: |
+          . $IDF_PATH/export.sh
+          cp boards/esp32s3-n16r8-boot-button.board sdkconfig.board
+          python3 tools/build.py dev --app fido --clean --release
+      - name: Irreversible-operation and USB descriptor checks
+        run: |
+          . $IDF_PATH/export.sh
+          python3 tools/check_no_irreversible.py fido-dev
+          python3 tools/check_usb_descriptors.py --sdkconfig sdkconfig.fido-dev.generated
+      - name: Package
+        run: |
+          python3 tools/package_firmware.py package --build-dir build-fido-dev \
+            --sdkconfig sdkconfig.fido-dev.generated --app fido --board esp32s3-n16r8-boot-button \
+            --version "$VERSION" --commit "$GITHUB_SHA" --out dist-fw --source-date-epoch "$SOURCE_DATE_EPOCH"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: firmware-esp32s3-n16r8-fido-dev
+          path: dist-fw/
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+  assemble:
+    # Builds and checks the exact release bundle without publishing anything.
+    needs: [meta, build, firmware]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.meta.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -248,11 +298,24 @@ jobs:
         with:
           name: asset-pam-linux-x86_64
           path: dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: firmware-esp32s3-n16r8-fido-dev
+          path: dist
+      - name: Firmware manifest and verification
+        run: |
+          set -euo pipefail
+          python3 tools/package_firmware.py manifest --entries 'dist/*.entry.json' --version "$VERSION" \
+            --tag "v$VERSION" --commit "$GITHUB_SHA" --out dist/firmware-manifest.json
+          python3 tools/package_firmware.py verify dist/multikey-firmware-*.zip --manifest dist/firmware-manifest.json
+          rm dist/*.entry.json
       - name: Exactly the expected assets, checksums
         run: |
           set -euo pipefail
           cd dist
           expected=$(printf '%s\n' \
+            "firmware-manifest.json" \
+            "multikey-firmware-v$VERSION-esp32s3-n16r8-fido-dev.zip" \
             "multikey-pam-v$VERSION-linux-x86_64.tar.gz" \
             "multikey-v$VERSION-linux-x86_64.tar.gz" \
             "multikey-v$VERSION-windows-x86_64.zip" | sort)
@@ -260,13 +323,46 @@ jobs:
           if [[ "$expected" != "$actual" ]]; then
             echo "asset set mismatch"; echo "expected:"; echo "$expected"; echo "actual:"; echo "$actual"; exit 1
           fi
-          sha256sum multikey-* > SHA256SUMS
+          sha256sum firmware-manifest.json multikey-* > SHA256SUMS
           sha256sum -c SHA256SUMS
           cat SHA256SUMS
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-bundle
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+  release:
+    needs: [meta, assemble]
+    if: needs.meta.outputs.is_release == 'true' && needs.assemble.result == 'success'
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.meta.outputs.version }}
+      PRERELEASE: ${{ needs.meta.outputs.prerelease }}
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-bundle
+          path: dist
+      - name: Checksums
+        run: |
+          set -euo pipefail
+          cd dist
+          test "$(ls -1 | wc -l)" -eq 6
+          sha256sum -c SHA256SUMS
       - name: Create the GitHub Release
         run: |
           set -euo pipefail
           flags=()
           if [[ "$PRERELEASE" == "true" ]]; then flags+=(--prerelease); fi
-          gh release create "$TAG" dist/* --verify-tag --title "multikey $TAG" \
+          gh release create "$TAG" dist/* --verify-tag --title "MultiKeys $TAG" \
             --notes-file "docs/releases/v$VERSION.md" "${flags[@]}"
