@@ -1,0 +1,73 @@
+From: MultiKeys
+Subject: [PATCH] multikey: WCID events of up to 255 bytes, long text truncated instead of the event dropped
+
+Upstream event_send built the event in a 64 byte buffer and returned without sending as soon as the RP id and the
+user names did not fit together. The event header carries its length in one byte, so the limit is 255. Fixed-size
+fields (operation, flags, algorithm, error, credential count) are written first; RP id, user name and display name
+are cut to the room that is left.
+---
+diff --git a/src/fido/event.c b/src/fido/event.c
+index 7184b24..06d38a1 100644
+--- a/src/fido/event.c
++++ b/src/fido/event.c
+@@ -26,18 +26,28 @@
+ #endif
+ 
+ #if !defined(ENABLE_EMULATION) && defined(USB_ITF_CCID)
++#define EVENT_MAX_LEN 255
++
++/* Appends one TLV. A value longer than the room that is left is cut (it can end inside a UTF-8 sequence); a field
++ * with no room at all is skipped. */
+ static bool event_append_tlv(byte_buffer_t *buffer, event_tlv_t type, const_byte_array_t value) {
+-    if (value.len > UINT8_MAX || (value.len > 0 && value.data == NULL) || buffer->len > buffer->capacity ||
+-        buffer->capacity - buffer->len < 2 || value.len > buffer->capacity - buffer->len - 2) {
++    if ((value.len > 0 && value.data == NULL) || buffer->len > buffer->capacity || buffer->capacity - buffer->len < 2) {
+         return false;
+     }
++    size_t len = value.len;
++    if (len > UINT8_MAX) {
++        len = UINT8_MAX;
++    }
++    if (len > buffer->capacity - buffer->len - 2) {
++        len = buffer->capacity - buffer->len - 2;
++    }
+ 
+     buffer->data[buffer->len++] = (uint8_t)type;
+-    buffer->data[buffer->len++] = (uint8_t)value.len;
+-    if (value.len > 0) {
+-        memcpy(buffer->data + buffer->len, value.data, value.len);
++    buffer->data[buffer->len++] = (uint8_t)len;
++    if (len > 0) {
++        memcpy(buffer->data + buffer->len, value.data, len);
+     }
+-    buffer->len += value.len;
++    buffer->len += len;
+     return true;
+ }
+ 
+@@ -63,14 +73,21 @@ int event_send(event_op_t op, event_rc_t rc, const event_field_t *fields, size_t
+         return PICOKEYS_ERR_FILE_NOT_FOUND;
+     }
+ 
+-    uint8_t event_data[USB_LL_BUF_SIZE] = { 0 };
++    /* The length in the event header is one byte, so an event is at most EVENT_MAX_LEN bytes (the upstream 64 byte
++     * buffer silently dropped the whole event as soon as the RP id and the user names together did not fit). The
++     * fixed-size fields go first, then the text fields, each cut to the room that is left. */
++    uint8_t event_data[EVENT_MAX_LEN] = { 0 };
+     byte_buffer_t buffer = BYTE_BUFFER(event_data, sizeof(event_data));
+     buffer.len = 3;
+     buffer.data[0] = (uint8_t)op;
+     buffer.data[1] = (uint8_t)rc;
+-    for (size_t i = 0; i < fields_len; i++) {
+-        if (!event_append_tlv(&buffer, fields[i].type, fields[i].value)) {
+-            return PICOKEYS_WRONG_LENGTH;
++    for (int text = 0; text < 2; text++) {
++        for (size_t i = 0; i < fields_len; i++) {
++            const bool is_text = fields[i].type == TLV_RPID || fields[i].type == TLV_USER_NAME ||
++                                 fields[i].type == TLV_USER_DISPLAY_NAME;
++            if (is_text == (text == 1)) {
++                (void)event_append_tlv(&buffer, fields[i].type, fields[i].value);
++            }
+         }
+     }
+     buffer.data[2] = (uint8_t)buffer.len;

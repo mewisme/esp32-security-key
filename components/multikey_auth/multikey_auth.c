@@ -28,6 +28,17 @@
 #include "mbedtls/platform_util.h"
 #include "mbedtls/sha256.h"
 
+#include "esp_app_desc.h"
+#include "esp_chip_info.h"
+#include "esp_flash.h"
+#include "esp_flash_encrypt.h"
+#include "esp_image_format.h"
+#include "esp_ota_ops.h"
+#include "esp_partition.h"
+#include "esp_secure_boot.h"
+#include "esp_system.h"
+#include "esp_timer.h"
+
 #define MKA_EF_RECORD 0xBC00 /* free in pico-fido's fid map (see pico-fido/src/fido/files.h) */
 
 #define MKA_VERSION 1
@@ -486,11 +497,147 @@ static int cmd_device_name(void) {
 #endif
 }
 
+/*
+ * INS 07 BUILD_INFO: what is running on this key. Read-only, no data, no button, no PIN. Response:
+ *   fmt(1) = 01, then tag(1) | len(1) | value(len) entries. A reader skips tags it does not know.
+ *   01 project name (ASCII)            02 version (ASCII, esp_app_desc_t.version)   03 ESP-IDF version (ASCII)
+ *   04 source commit (ASCII, 12 hex, "+dirty" if the tree had local changes when the build was configured, or "unknown")
+ *   05 SHA-256 (32) of the running app image exactly as flashed: the same value as the manifest's images[role=app].sha256
+ *   06 SHA-256 (32) of the app ELF (esp_app_desc_t.app_elf_sha256)
+ *   07 flash size the image was built for (ASCII, e.g. "16MB")   08 flash size the chip reports (u32 BE, bytes)
+ *   09 security flags (u8): bit0 flash encryption on, bit1 secure boot on
+ *   0A chip: model(1) | full revision(2, BE, major*100+minor) | cores(1)
+ *   0B reset reason of this boot (u8, esp_reset_reason_t)   0C seconds since boot (u32 BE)
+ *   0D running partition: offset(4, BE) | label (ASCII)
+ * Nothing here identifies the owner or the device: the MAC address and the serial number are not reported.
+ */
+#define MKA_BUILD_FMT 1
+#define MKA_BUILD_MAX 255 /* short APDU response */
+#define BI_PROJECT 0x01
+#define BI_VERSION 0x02
+#define BI_IDF 0x03
+#define BI_COMMIT 0x04
+#define BI_IMAGE_SHA256 0x05
+#define BI_ELF_SHA256 0x06
+#define BI_FLASH_BUILT 0x07
+#define BI_FLASH_CHIP 0x08
+#define BI_SECURITY 0x09
+#define BI_CHIP 0x0A
+#define BI_RESET 0x0B
+#define BI_UPTIME 0x0C
+#define BI_PARTITION 0x0D
+
+#ifndef MULTIKEY_BUILD_COMMIT
+#define MULTIKEY_BUILD_COMMIT "unknown"
+#endif
+
+static bool bi_put(size_t *len, uint8_t tag, const void *value, size_t n) {
+    if (n > 255 || *len + 2 + n > MKA_BUILD_MAX) {
+        return false;
+    }
+    res_APDU[(*len)++] = tag;
+    res_APDU[(*len)++] = (uint8_t)n;
+    memcpy(res_APDU + *len, value, n);
+    *len += n;
+    return true;
+}
+
+static bool bi_put_str(size_t *len, uint8_t tag, const char *s, size_t max) {
+    return bi_put(len, tag, s, strnlen(s, max));
+}
+
+static bool bi_put_u32(size_t *len, uint8_t tag, uint32_t v) {
+    const uint8_t be[4] = { (uint8_t)(v >> 24), (uint8_t)(v >> 16), (uint8_t)(v >> 8), (uint8_t)v };
+    return bi_put(len, tag, be, sizeof(be));
+}
+
+/* SHA-256 over the first image_len bytes of the running app partition: the file that was flashed, appended digest
+ * included. Computed once (about 600 KB of flash), then cached. */
+static bool bi_image_sha256(uint8_t out[32]) {
+    static bool done = false;
+    static bool ok = false;
+    static uint8_t cache[32];
+    static uint8_t chunk[1024];
+    if (!done) {
+        done = true;
+        const esp_partition_t *part = esp_ota_get_running_partition();
+        esp_image_metadata_t meta;
+        const esp_partition_pos_t pos = part ? (esp_partition_pos_t){ .offset = part->address, .size = part->size }
+                                             : (esp_partition_pos_t){ 0, 0 };
+        if (part != NULL && esp_image_get_metadata(&pos, &meta) == ESP_OK && meta.image_len > 0 &&
+            meta.image_len <= part->size) {
+            mbedtls_sha256_context ctx;
+            mbedtls_sha256_init(&ctx);
+            ok = mbedtls_sha256_starts(&ctx, 0) == 0;
+            for (uint32_t off = 0; ok && off < meta.image_len; off += sizeof(chunk)) {
+                uint32_t n = meta.image_len - off;
+                if (n > sizeof(chunk)) {
+                    n = sizeof(chunk);
+                }
+                ok = esp_partition_read(part, off, chunk, n) == ESP_OK && mbedtls_sha256_update(&ctx, chunk, n) == 0;
+            }
+            ok = ok && mbedtls_sha256_finish(&ctx, cache) == 0;
+            mbedtls_sha256_free(&ctx);
+        }
+    }
+    if (ok) {
+        memcpy(out, cache, sizeof(cache));
+    }
+    return ok;
+}
+
+static int cmd_build_info(void) {
+    const esp_app_desc_t *desc = esp_app_get_description();
+    size_t len = 0;
+    res_APDU[len++] = MKA_BUILD_FMT;
+    bool ok = bi_put_str(&len, BI_PROJECT, desc->project_name, sizeof(desc->project_name)) &&
+              bi_put_str(&len, BI_VERSION, desc->version, sizeof(desc->version)) &&
+              bi_put_str(&len, BI_IDF, desc->idf_ver, sizeof(desc->idf_ver)) &&
+              bi_put_str(&len, BI_COMMIT, MULTIKEY_BUILD_COMMIT, 24);
+    uint8_t image_sha[32];
+    if (ok && bi_image_sha256(image_sha)) {
+        ok = bi_put(&len, BI_IMAGE_SHA256, image_sha, sizeof(image_sha));
+    }
+    ok = ok && bi_put(&len, BI_ELF_SHA256, desc->app_elf_sha256, sizeof(desc->app_elf_sha256)) &&
+         bi_put_str(&len, BI_FLASH_BUILT, CONFIG_ESPTOOLPY_FLASHSIZE, 8);
+    uint32_t chip_flash = 0;
+    if (ok && esp_flash_get_physical_size(esp_flash_default_chip, &chip_flash) == ESP_OK) {
+        ok = bi_put_u32(&len, BI_FLASH_CHIP, chip_flash);
+    }
+    const uint8_t security = (uint8_t)((esp_flash_encryption_enabled() ? 0x01 : 0x00) |
+                                       (esp_secure_boot_enabled() ? 0x02 : 0x00));
+    esp_chip_info_t chip;
+    esp_chip_info(&chip);
+    const uint8_t chip_bytes[4] = { (uint8_t)chip.model, (uint8_t)(chip.revision >> 8), (uint8_t)chip.revision,
+                                    (uint8_t)chip.cores };
+    const uint8_t reset = (uint8_t)esp_reset_reason();
+    ok = ok && bi_put(&len, BI_SECURITY, &security, 1) && bi_put(&len, BI_CHIP, chip_bytes, sizeof(chip_bytes)) &&
+         bi_put(&len, BI_RESET, &reset, 1) && bi_put_u32(&len, BI_UPTIME, (uint32_t)(esp_timer_get_time() / 1000000));
+    const esp_partition_t *running = esp_ota_get_running_partition();
+    if (ok && running != NULL) {
+        uint8_t part_entry[4 + 16];
+        const size_t label_len = strnlen(running->label, 16);
+        part_entry[0] = (uint8_t)(running->address >> 24);
+        part_entry[1] = (uint8_t)(running->address >> 16);
+        part_entry[2] = (uint8_t)(running->address >> 8);
+        part_entry[3] = (uint8_t)running->address;
+        memcpy(part_entry + 4, running->label, label_len);
+        ok = bi_put(&len, BI_PARTITION, part_entry, 4 + label_len);
+    }
+    if (!ok) {
+        return set_res_sw(0x6F, 0x00);
+    }
+    res_APDU_size = (uint16_t)len;
+    apdu.ne = res_APDU_size;
+    return SW_OK();
+}
+
 #define INS_GET_INFO 0x01
 #define INS_ENROLL 0x02
 #define INS_CHALLENGE 0x03
 #define INS_REVOKE 0x04
 #define INS_DEVICE_NAME 0x06
+#define INS_BUILD_INFO 0x07
 
 static const cmd_t mka_cmds[] = {
     { INS_GET_INFO, cmd_get_info },
@@ -498,6 +645,7 @@ static const cmd_t mka_cmds[] = {
     { INS_CHALLENGE, cmd_challenge },
     { INS_REVOKE, cmd_revoke },
     { INS_DEVICE_NAME, cmd_device_name },
+    { INS_BUILD_INFO, cmd_build_info },
     { 0x00, 0x0 }
 };
 
