@@ -1,8 +1,8 @@
 name: release
 
-# Builds the release assets (host tools + prebuilt development firmware + firmware manifest) and, only for a v* tag,
-# publishes them as a GitHub Release. Pull requests, pushes to main and manual runs build and verify everything but
-# never reach the `release` job, which is the only job with write access.
+# Builds the release assets (host tools + prebuilt development firmware for 4, 8 and 16 MB flash + firmware manifest)
+# and, only for a v* tag, publishes them as a GitHub Release. Pull requests, pushes to main and manual runs build and
+# verify everything but never reach the `release` job, which is the only job with write access.
 on:
   pull_request:
     paths:
@@ -139,13 +139,22 @@ jobs:
           toolchain: stable
           targets: ${{ matrix.target }}
           components: clippy, rustfmt
+      # Restored on pull requests and main only; a tagged release compiles from scratch.
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        if: needs.meta.outputs.is_release != 'true'
+        with:
+          workspaces: host -> target
+          key: ${{ matrix.name }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Linux dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libpcsclite-dev libudev-dev libpcsclite1 pcscd
           if [[ "${{ matrix.kind }}" == "pam" ]]; then sudo apt-get install -y libpam0g-dev pamtester; fi
+      # ci.yml runs fmt, clippy and the tests on main and on pull requests; a release re-runs them on the tagged commit.
       - name: Format, lint, test
+        if: needs.meta.outputs.is_release == 'true'
         working-directory: host
         run: |
           cargo fmt --check
@@ -241,34 +250,66 @@ jobs:
     needs: meta
     runs-on: ubuntu-22.04
     container: espressif/idf:v5.5.6
+    strategy:
+      fail-fast: false
+      matrix:
+        hw: [esp32s3-4mb, esp32s3-8mb, esp32s3-16mb]
     env:
       VERSION: ${{ needs.meta.outputs.version }}
       SOURCE_DATE_EPOCH: ${{ needs.meta.outputs.source_date_epoch }}
+      IDF_CCACHE_ENABLE: "1"
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      CCACHE_COMPILERCHECK: content
+      CCACHE_MAXSIZE: 500M
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: recursive
           persist-credentials: false
+      - name: ccache
+        run: |
+          ccache --version || (apt-get update && apt-get install -y ccache)
+          ccache -z
+      # Pull requests and main restore the compiler cache; a tagged release compiles from scratch.
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: needs.meta.outputs.is_release != 'true'
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-release-${{ matrix.hw }}-idf5.5.6-${{ github.sha }}
+          restore-keys: |
+            ccache-release-${{ matrix.hw }}-idf5.5.6-
       - name: Apply patches
         run: git config --global --add safe.directory '*' && python3 tools/apply_patches.py
+      - name: Build tag
+        run: |
+          tag=$(python3 -c "import sys; sys.path.insert(0, 'tools'); import flash_dev as f; print(f.build_tag('fido', 'dev', '${{ matrix.hw }}'))")
+          echo "TAG=$tag" >> "$GITHUB_ENV"
       - name: Build the FIDO2 development image (release version stamp, BOOT-button board profile)
         run: |
           . $IDF_PATH/export.sh
-          cp boards/esp32s3-n16r8-boot-button.board sdkconfig.board
-          python3 tools/build.py dev --app fido --clean --release
+          python3 tools/build.py dev --app fido --hw ${{ matrix.hw }} --board esp32s3-boot-button --clean --release
       - name: Irreversible-operation and USB descriptor checks
         run: |
           . $IDF_PATH/export.sh
-          python3 tools/check_no_irreversible.py fido-dev
-          python3 tools/check_usb_descriptors.py --sdkconfig sdkconfig.fido-dev.generated
+          python3 tools/check_no_irreversible.py "$TAG"
+          python3 tools/check_usb_descriptors.py --sdkconfig "sdkconfig.$TAG.generated"
       - name: Package
         run: |
-          python3 tools/package_firmware.py package --build-dir build-fido-dev \
-            --sdkconfig sdkconfig.fido-dev.generated --app fido --board esp32s3-n16r8-boot-button \
+          python3 tools/package_firmware.py package --build-dir "build-$TAG" \
+            --sdkconfig "sdkconfig.$TAG.generated" --app fido --hw ${{ matrix.hw }} \
             --version "$VERSION" --commit "$GITHUB_SHA" --out dist-fw --source-date-epoch "$SOURCE_DATE_EPOCH"
+      - name: ccache statistics
+        if: always()
+        run: ccache -s
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: needs.meta.outputs.is_release != 'true' && github.ref == 'refs/heads/main'
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-release-${{ matrix.hw }}-idf5.5.6-${{ github.sha }}
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: firmware-esp32s3-n16r8-fido-dev
+          name: firmware-${{ matrix.hw }}-fido-dev
           path: dist-fw/
           if-no-files-found: error
           retention-days: 14
@@ -300,22 +341,36 @@ jobs:
           path: dist
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: firmware-esp32s3-n16r8-fido-dev
+          pattern: firmware-*-fido-dev
+          merge-multiple: true
           path: dist
       - name: Firmware manifest and verification
         run: |
           set -euo pipefail
           python3 tools/package_firmware.py manifest --entries 'dist/*.entry.json' --version "$VERSION" \
-            --tag "v$VERSION" --commit "$GITHUB_SHA" --out dist/firmware-manifest.json
+            --tag "v$VERSION" --commit "$GITHUB_SHA" --out dist/firmware-manifest.json --require-release-profiles
           python3 tools/package_firmware.py verify dist/multikey-firmware-*.zip --manifest dist/firmware-manifest.json
           rm dist/*.entry.json
+      - name: Firmware summary
+        run: |
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          m = json.load(open("dist/firmware-manifest.json"))
+          print("| Profile | Verification | Package | Size (bytes) | SHA-256 |")
+          print("|---|---|---|---|---|")
+          for b in m["builds"]:
+              p = b["package"]
+              print(f"| {b['profile_id']} | {b['verification']} | {p['name']} | {p['size']} | `{p['sha256']}` |")
+          PY
       - name: Exactly the expected assets, checksums
         run: |
           set -euo pipefail
           cd dist
           expected=$(printf '%s\n' \
             "firmware-manifest.json" \
-            "multikey-firmware-v$VERSION-esp32s3-n16r8-fido-dev.zip" \
+            "multikey-firmware-v$VERSION-esp32s3-16mb-fido-dev.zip" \
+            "multikey-firmware-v$VERSION-esp32s3-4mb-fido-dev.zip" \
+            "multikey-firmware-v$VERSION-esp32s3-8mb-fido-dev.zip" \
             "multikey-pam-v$VERSION-linux-x86_64.tar.gz" \
             "multikey-v$VERSION-linux-x86_64.tar.gz" \
             "multikey-v$VERSION-windows-x86_64.zip" | sort)
@@ -357,7 +412,7 @@ jobs:
         run: |
           set -euo pipefail
           cd dist
-          test "$(ls -1 | wc -l)" -eq 6
+          test "$(ls -1 | wc -l)" -eq 8
           sha256sum -c SHA256SUMS
       - name: Create the GitHub Release
         run: |

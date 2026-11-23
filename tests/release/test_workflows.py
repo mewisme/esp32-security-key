@@ -1,13 +1,17 @@
-"""Publishing invariants of .github/workflows: only release.yml -> release may write or publish."""
+"""Publishing invariants of .github/workflows: only release.yml -> release may write or publish; caches are never
+restored for a tagged release and never written from anything but main."""
+import json
 import re
 import unittest
 from pathlib import Path
 
 import yaml
 
-WORKFLOWS = Path(__file__).resolve().parents[2] / ".github" / "workflows"
+ROOT = Path(__file__).resolve().parents[2]
+WORKFLOWS = ROOT / ".github" / "workflows"
 # Mutating release commands and third-party release actions (`gh release view` in meta is read-only).
 PUBLISHERS = re.compile(r"gh release (create|upload|edit|delete)|softprops|ncipollo")
+CACHE_ACTIONS = ("actions/cache", "Swatinem/rust-cache")
 
 
 def load(path: Path) -> dict:
@@ -16,6 +20,13 @@ def load(path: Path) -> dict:
     if True in data:
         data["on"] = data.pop(True)
     return data
+
+
+def steps_using(flow: dict, prefix: tuple):
+    for job_id, job in flow["jobs"].items():
+        for step in job.get("steps", []):
+            if str(step.get("uses", "")).startswith(prefix):
+                yield job_id, step
 
 
 class Workflows(unittest.TestCase):
@@ -55,6 +66,44 @@ class Workflows(unittest.TestCase):
             on = wf["on"]
             keys = on if isinstance(on, (list, str)) else on.keys()
             self.assertNotIn("pull_request_target", keys, name)
+
+    def test_tag_builds_do_not_restore_caches(self):
+        release = self.flows["release.yml"]
+        found = []
+        for job_id, step in steps_using({"jobs": {j: release["jobs"][j] for j in ("build", "firmware")}},
+                                        CACHE_ACTIONS):
+            found.append((job_id, step["uses"].split("@")[0]))
+            self.assertIn("is_release != 'true'", str(step.get("if", "")), (job_id, step["uses"]))
+        self.assertIn(("build", "Swatinem/rust-cache"), found)
+        self.assertIn(("firmware", "actions/cache/restore"), found)
+        self.assertIn(("firmware", "actions/cache/save"), found)
+
+    def test_caches_saved_only_from_main(self):
+        saves = rust = 0
+        for name, wf in self.flows.items():
+            for job_id, step in steps_using(wf, ("actions/cache/save",)):
+                saves += 1
+                self.assertIn("refs/heads/main", str(step.get("if", "")), (name, job_id))
+            for job_id, step in steps_using(wf, ("Swatinem/rust-cache",)):
+                rust += 1
+                self.assertIn("refs/heads/main", str((step.get("with") or {}).get("save-if", "")), (name, job_id))
+        self.assertGreaterEqual(saves, 2)  # ci.yml and release.yml firmware jobs
+        self.assertGreaterEqual(rust, 2)  # ci.yml host and release.yml build
+
+    def test_release_assets_cover_release_profiles(self):
+        policy = json.loads((ROOT / "tools" / "flash_policy.json").read_text(encoding="utf-8"))
+        release_profiles = [p["id"] for p in policy["profiles"] if p.get("release")]
+        self.assertTrue(release_profiles)
+        assemble = self.flows["release.yml"]["jobs"]["assemble"]
+        expected = next(s["run"] for s in assemble["steps"] if "expected=" in str(s.get("run", "")))
+        for hw in release_profiles:
+            self.assertIn(f"-{hw}-fido-dev.zip", expected, hw)
+        matrix = self.flows["release.yml"]["jobs"]["firmware"]["strategy"]["matrix"]["hw"]
+        self.assertEqual(sorted(matrix), sorted(release_profiles))
+        # 3 host archives + firmware-manifest.json + one zip per release profile + SHA256SUMS
+        release_job = self.flows["release.yml"]["jobs"]["release"]
+        count = next(s["run"] for s in release_job["steps"] if "wc -l" in str(s.get("run", "")))
+        self.assertIn(f"-eq {3 + 1 + len(release_profiles) + 1}", count)
 
 
 if __name__ == "__main__":

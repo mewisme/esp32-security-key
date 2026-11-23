@@ -1,10 +1,72 @@
 name: ci
+
+# Runs on pushes to main, on v* tags and on pull requests (a branch with an open pull request is no longer built twice).
+# `changes` decides which jobs have anything to check; a tag always runs everything. Caches are restored by every run
+# but saved only from main, so a pull request can never write a cache that another run trusts.
 on:
   push:
+    branches: [main]
+    tags: ['v*']
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  changes:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      firmware: ${{ steps.filter.outputs.firmware }}
+      host: ${{ steps.filter.outputs.host }}
+      tools: ${{ steps.filter.outputs.tools }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Tags have no base to diff against; the jobs below run unconditionally for them.
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        if: github.ref_type != 'tag'
+        with:
+          filters: |
+            firmware:
+              - 'components/**'
+              - 'boards/**'
+              - 'patches/**'
+              - 'pico-keys-sdk'
+              - 'pico-fido'
+              - 'pico-openpgp'
+              - '.gitmodules'
+              - 'dependencies.lock'
+              - 'sdkconfig.*'
+              - 'partitions*.csv'
+              - 'CMakeLists.txt'
+              - 'tools/**'
+              - 'packaging/**'
+              - 'tests/emulation/**'
+              - '.github/workflows/ci.yml'
+            host:
+              - 'host/**'
+              - '.github/workflows/ci.yml'
+            tools:
+              - 'tools/**'
+              - 'tests/**'
+              - 'boards/**'
+              - 'packaging/**'
+              - 'partitions*.csv'
+              - 'sdkconfig.*'
+              - '.github/workflows/*.yml'
+
   firmware:
+    needs: changes
+    if: needs.changes.outputs.firmware == 'true' || startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     container: espressif/idf:v5.5.6
     strategy:
@@ -12,10 +74,28 @@ jobs:
       matrix:
         app: [fido, openpgp]
         profile: [dev, prod]
+    env:
+      IDF_CCACHE_ENABLE: "1"
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      CCACHE_COMPILERCHECK: content
+      CCACHE_MAXSIZE: 500M
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: recursive
+          persist-credentials: false
+      - name: ccache
+        run: |
+          ccache --version || (apt-get update && apt-get install -y ccache)
+          ccache -z
+      # ccache entries are content-addressed: a broad restore key is safe, an object that does not match is a miss.
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-ci-${{ matrix.app }}-${{ matrix.profile }}-idf5.5.6-${{ github.sha }}
+          restore-keys: |
+            ccache-ci-${{ matrix.app }}-${{ matrix.profile }}-idf5.5.6-
       - name: Patches apply cleanly
         run: git config --global --add safe.directory '*' && python3 tools/apply_patches.py
       - name: Prod config has no CI pin override
@@ -26,39 +106,38 @@ jobs:
           ! grep -E "^CONFIG_MULTIKEY_ALLOW_EFUSE_PROVISIONING=y" sdkconfig.defaults sdkconfig.dev sdkconfig.prod
       - name: Build (compile check, pins unset, image unusable)
         run: . $IDF_PATH/export.sh && python3 tools/build.py ${{ matrix.profile }} --app ${{ matrix.app }} --ci-pins
+      # The FIDO2 dev image with real pins is built, checked and packaged for every flash size by release.yml.
       - name: Real-pin dev build (BOOT-button board profile) and irreversible-operation check
-        if: matrix.profile == 'dev'
+        if: matrix.profile == 'dev' && matrix.app == 'openpgp'
         run: |
           . $IDF_PATH/export.sh
-          cp boards/esp32s3-n16r8-boot-button.board sdkconfig.board
-          python3 tools/build.py dev --app ${{ matrix.app }} --clean
+          python3 tools/build.py dev --app ${{ matrix.app }} --board esp32s3-boot-button --clean
           python3 tools/check_no_irreversible.py ${{ matrix.app }}-dev
-          rm sdkconfig.board
-      - name: Firmware packaging, manifest and verify (same code path as the release)
-        if: matrix.profile == 'dev' && matrix.app == 'fido'
-        run: |
-          set -eu
-          v="$(python3 tools/package_firmware.py version)-dev"
-          python3 tools/package_firmware.py package --build-dir build-fido-dev --sdkconfig sdkconfig.fido-dev.generated \
-            --app fido --board esp32s3-n16r8-boot-button --version "$v" --commit "$GITHUB_SHA" --out dist-fw \
-            --source-date-epoch 0
-          python3 tools/package_firmware.py manifest --entries 'dist-fw/*.entry.json' --version "$v" --tag local \
-            --commit "$GITHUB_SHA" --out dist-fw/firmware-manifest.json
-          python3 tools/package_firmware.py verify dist-fw/multikey-firmware-*.zip --manifest dist-fw/firmware-manifest.json
       - name: Unset pins must fail a normal build
         run: |
           . $IDF_PATH/export.sh
           if python3 tools/build.py ${{ matrix.profile }} --app ${{ matrix.app }} --clean; then
             echo "build must fail when MULTIKEY_BUTTON_GPIO/LED_GPIO are unset"; exit 1
           fi
+      - name: ccache statistics
+        if: always()
+        run: ccache -s
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: github.ref == 'refs/heads/main'
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-ci-${{ matrix.app }}-${{ matrix.profile }}-idf5.5.6-${{ github.sha }}
 
   fido-emulation:
     # Hardware-free FIDO2 user-verification policy tests against pico-fido's native emulation build.
+    needs: changes
+    if: needs.changes.outputs.firmware == 'true' || startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: recursive
+          persist-credentials: false
       - name: Patches apply cleanly
         run: git config --global --add safe.directory '*' && python3 tools/apply_patches.py
       - name: Tools
@@ -67,16 +146,27 @@ jobs:
         run: bash tools/run_emulation_tests.sh
 
   host:
+    needs: changes
+    if: needs.changes.outputs.host == 'true' || startsWith(github.ref, 'refs/tags/')
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
           components: clippy, rustfmt
+      # Keyed by rustc version, Cargo.lock and the manifests; restored everywhere, saved only from main.
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: host -> target
+          key: ${{ matrix.os }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: 'Linux: PC/SC headers'
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libpcsclite-dev libudev-dev
@@ -96,6 +186,8 @@ jobs:
 
   flash-script:
     # Hardware-free checks of the Windows flash script and its Python safety logic.
+    needs: changes
+    if: needs.changes.outputs.tools == 'true' || startsWith(github.ref, 'refs/tags/')
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
