@@ -53,6 +53,6 @@ and `dtolnay/rust-toolchain@stable` in the older `ci.yml` jobs.
 
 ## Status
 
-The workflow and scripts are written and validated locally (YAML parse, the `meta` shell logic including tag/version mismatch cases, package
-tests, deterministic archives, PE import check on a real `multikey.exe`). **The workflow has not been run on GitHub and nothing has been
-tagged or published.**
+The workflow ran green on `main` (all three build legs, including the extracted-artifact checks, the static-CRT check and the PAM
+fail-closed smoke test; the `release` job is skipped outside tags). The first tag is `v0.1.0`; see the repository's Releases page for what
+was actually published.
