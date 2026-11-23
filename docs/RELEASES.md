@@ -1,8 +1,8 @@
 # Releases
 
 One GitHub Release per version carries **both** the host tools and, from v0.2.0, prebuilt development firmware plus a
-machine-readable firmware manifest; releases that include the hardware profiles carry one firmware zip per flash size (4, 8 and
-16 MB, [HARDWARE_PROFILES](HARDWARE_PROFILES.md)). v0.1.0 contained host tools only.
+machine-readable firmware manifest. From v0.3.0 the release carries one firmware zip per flash size (4, 8 and 16 MB,
+[HARDWARE_PROFILES](HARDWARE_PROFILES.md)); v0.2.0 has a single 16 MB firmware and v0.1.0 contained host tools only.
 
 The published firmware is the FIDO2 development image for ESP32-S3 boards with 4, 8 or 16 MB quad flash, with the BOOT button
 (GPIO0) as the touch button and no LED (`boards/esp32s3-boot-button.board`). Only the 16 MB build is hardware verified (one
@@ -79,9 +79,13 @@ protect against corruption, not against a compromised repository or release.
    (`cargo build --locked` must pass).
 2. Add `docs/releases/vX.Y.Z.md` (the release notes; the workflow refuses a tag without it).
 3. Commit and push to `main`. The `release` workflow runs on `main` (build, package and verify everything, **no publishing**);
-   wait for it to be green. `gh workflow run release.yml --ref main` runs it on demand.
-4. `git tag -a vX.Y.Z -m "MultiKeys X.Y.Z"` and `git push origin vX.Y.Z`. **Only with the maintainer's explicit approval.**
-   The tag push is what publishes.
+   wait for it to be green (and `ci` and `web`). `gh workflow run release.yml --ref main` runs it on demand. Its `release-bundle`
+   artifact (kept 14 days) holds the assets a tag would publish.
+4. `git tag -a vX.Y.Z -m "MultiKeys X.Y.Z"` on that exact commit and `git push origin vX.Y.Z`. **Only with the maintainer's explicit
+   approval.** The tag push is what publishes.
+5. Verify the published release: `gh release download vX.Y.Z -D build-rel`, `sha256sum -c SHA256SUMS`, and
+   `python tools/package_firmware.py verify build-rel/multikey-firmware-vX.Y.Z-*.zip --manifest build-rel/firmware-manifest.json`.
+   The web installer's Worker lists a new release by itself (`releases.atom`, cached for 5 minutes); it needs no redeploy.
 
 A `-suffix` in the version (`0.3.0-rc.1`) publishes a pre-release.
 
@@ -107,5 +111,16 @@ Third-party actions are pinned by commit SHA in every workflow.
 
 ## Status
 
-v0.1.0 (host tools) and v0.2.0 (host tools + FIDO2 development firmware + manifest) are published. For v0.2.0 the tag run
-passed every job; the downloaded assets pass `sha256sum -c SHA256SUMS` and `package_firmware.py verify`.
+v0.1.0 (host tools), v0.2.0 (host tools + FIDO2 development firmware + manifest) and v0.3.0 (host tools + firmware for 4, 8 and 16 MB +
+schema-2 manifest) are published. For v0.2.0 the tag run passed every job; the downloaded assets pass `sha256sum -c SHA256SUMS` and
+`package_firmware.py verify`.
+
+v0.3.0 (tag on commit `d267592`, `release` run 45146599187, published 2026-11-23 09:27 UTC as Stable and Latest): every job of the tag run
+passed. Checked on the published assets: 8 files; `sha256sum -c SHA256SUMS` OK; `package_firmware.py verify` OK for the three zips; in each
+zip the image headers (bootloader `e9 03 02 2f|3f|4f`, app `e9 06 02 2f|3f|4f` for 4, 8 and 16 MB), the app descriptor (`0.3.0`,
+`multikey-fido`, ESP-IDF v5.5.6) and `firmware.json`; and the web installer's own catalog and download/verification code (`fetchCatalog`,
+`downloadBuild`) accepts the manifest and every zip of v0.3.0 and v0.2.0 through the production Worker. Reproducibility: the `main` run of the
+same commit (warm caches) and the tag run (cold, no caches) produced byte-identical firmware zips, manifest, Linux archive and PAM archive. The
+Windows archive differs: 24 of 2,458,112 bytes of `multikey.exe`, the first being the PE link timestamp (offset 0x118); the others, from
+0x20dc94, were not identified. The published firmware zips were not flashed on a board (the hardware runs used a local build of the same
+sources, version stamp `0.2.0-dev`).

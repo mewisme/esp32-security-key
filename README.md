@@ -30,11 +30,13 @@ Tested board types and what is not supported: see the compatibility section on
 
 ### Easiest: in your browser
 
-**[Install MultiKeys → multikeys.mewis.me](https://multikeys.mewis.me)** — web installer for desktop Chrome/Edge — launching
-soon (the site is not live yet). Tested once on real hardware: one board, Windows/Chrome, updating an existing install
-([report](docs/hw-reports/2026-11-23-web-installer.md)). It reads your board's chip and flash size, picks the 4, 8 or 16 MB
-firmware for it, downloads the firmware from the official release, verifies it, and shows exactly what it will write before
-writing anything. Before you start you can choose a name for your key (for example "Mew's Security Key"); it is applied
+**[Install MultiKeys → multikeys.mewis.me](https://multikeys.mewis.me)** — web installer for desktop Chrome/Edge (also served
+from [multikeys-web.mewisme.workers.dev](https://multikeys-web.mewisme.workers.dev)). Tested on real hardware on one board
+(Windows/Chrome): updating an existing install, naming the key before flashing and renaming it afterwards
+([installer report](docs/hw-reports/2026-11-23-web-installer.md),
+[naming report](docs/hw-reports/2026-11-23-profiles-and-personalization.md)). It reads your board's chip and flash size, picks the
+4, 8 or 16 MB firmware for it, downloads the firmware from the official release, verifies it, and shows exactly what it will write
+before writing anything. Before you start you can choose a name for your key (for example "Mew's Security Key"); it is applied
 after the flash is verified, needs a BOOT button press, and can be changed later on the First use page.
 
 ### Developer: PowerShell (the verified method)
@@ -92,8 +94,9 @@ Manual commands, Linux/macOS, the OpenPGP image and recovering a board that has 
 - **v0.1.0**: host tools only (`multikey` for Windows and Linux, the Linux PAM module). No firmware.
 - **v0.2.0**: the same host tools plus prebuilt FIDO2 firmware for 16 MB ESP32-S3 boards (N16R8) and a
   `firmware-manifest.json` with checksums, used by the web installer.
-- **Later releases** carry one firmware zip per flash size (4, 8 and 16 MB; only the 16 MB build is hardware verified) in the
-  same manifest format (schema 2).
+- **v0.3.0**: the same host tools (no code change) and FIDO2 firmware for 4, 8 and 16 MB ESP32-S3 boards, one zip per flash size
+  (only the 16 MB build is hardware verified; the published zips themselves were not flashed), with a schema-2
+  `firmware-manifest.json`.
 
 Asset list, checksums and how releases are built: [docs/RELEASES.md](docs/RELEASES.md).
 

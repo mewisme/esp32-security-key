@@ -150,14 +150,23 @@ at the end of `index.css` zeroes their zoom and slide (WCAG 2.3.3) and the accor
 uses only 100, 150, 200 or 300 ms, never `transition-all`, and has a reduced-motion path;
 `tests/e2e/motion.spec.ts` fails if a page, stage, disclosure or menu moves under `reducedMotion: "reduce"`.
 
-## Staging and the custom domain
+## Staging, production and the custom domain
 
-1. `pnpm exec wrangler login` (once, by the account owner).
-2. `pnpm run deploy:staging` → `multikeys-web-staging.<subdomain>.workers.dev`; check `/api/releases` and `/install`.
-3. Production: `pnpm run deploy` → `multikeys-web.<subdomain>.workers.dev`.
-4. Custom domain, only after approval: add to the top level of `wrangler.jsonc`
-   `"routes": [{ "pattern": "multikeys.mewis.me", "custom_domain": true }]` (the `mewis.me` zone must be on the same
-   Cloudflare account), then `pnpm run deploy`.
+1. `pnpm exec wrangler login` (once, by the account owner). All deploys so far ran locally with that OAuth login: no GitHub
+   environment (`cloudflare-staging`, `cloudflare-production`) exists yet, so the manual CI deploy job below cannot run.
+2. `pnpm run deploy:staging` → `multikeys-web-staging.<subdomain>.workers.dev`; check `/api/releases` and `/install`. Staging sets
+   `routes: []` in `wrangler.jsonc`, so it can never take the custom domain over (the Vite-generated config of each environment
+   was checked).
+3. Production: `pnpm run deploy` (never bare `pnpm deploy`, which is pnpm's own command) deploys the Worker `multikeys-web` to
+   `https://multikeys-web.mewisme.workers.dev` and to the custom domain `https://multikeys.mewis.me`, the `routes` entry of
+   `wrangler.jsonc` (`custom_domain: true`). Cloudflare created the DNS record and the certificate on the first deploy because the
+   `mewis.me` zone is on the same account; the domain answered over HTTPS at once.
+4. A new firmware release needs no redeploy: the Worker lists releases from GitHub's `releases.atom` (cached 5 minutes) and
+   proxies their assets.
+5. On the custom domain Cloudflare's Web Analytics injects `static.cloudflareinsights.com/beacon.min.js`. The strict CSP
+   (`default-src 'self'`) blocks it, which shows as one console error per page; nothing else is affected, and it does not happen on
+   `workers.dev`. It is a zone setting, not part of this repo: turn off automatic injection for the hostname in the dashboard to
+   silence it. The CSP is not loosened for it.
 
 CI (`.github/workflows/web.yml`) runs lint, unit tests, the production build (`tsc -b` then `vite build`, then a grep that the
 bundle holds no test double: `multikeys-e2e-scenario`, `FakeDriver`, `FakeKeyConnector`) and the e2e tests on every push that touches `web/**` or
