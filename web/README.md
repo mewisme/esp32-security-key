@@ -4,8 +4,9 @@ The site at https://multikeys.mewis.me: a beginner installer that flashes MultiK
 Web Serial, plus first-use, help and release pages, a Passkey lab (`/passkeys`) that registers a test passkey on the key and
 signs in with it through the browser's WebAuthn API (everything is checked in the browser, nothing is sent or stored), and a
 "Your key" page (`/key`) that reads, over WebUSB and without changing anything, which firmware the key runs (MKAUTH `INS 07`,
-compared with the published manifests) and the passkey activity the key pushes (`src/lib/device/key-events.ts`). Only the
-simulated key of the e2e build (`tests/e2e/fake-create-key-connector.ts`, scenario `key.build` / `key.events`) has run it.
+compared with the published manifests) and the passkey activity the key pushes (`src/lib/device/key-events.ts`). Tested with the simulated
+key of the e2e build (`tests/e2e/fake-create-key-connector.ts`, scenario `key.build` / `key.events`), and run once against a real key
+(`docs/hw-reports/2026-11-23-build-info-and-passkey-events.md`: connect, firmware card and published match, success events).
 
 Stack: React 19 + Vite 8 + TypeScript 6 + Tailwind CSS 4 + shadcn/ui (Radix) with [ReUI](https://reui.io) components
 (`src/components/reui/`, installed as shipped), `esptool-js` 0.7.1 for the serial protocol, hosted on Cloudflare Workers with

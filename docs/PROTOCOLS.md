@@ -22,6 +22,7 @@ All commands use `CLA=0x80`. `P1=P2=0x00` except INS `06` (P1 = operation, P2 = 
 | `03` | CHALLENGE | `host_nonce(32)` | `device_nonce(32)` ‖ `signature(DER ECDSA, ≤72)` | Only when enrolled (else `6985`). Requires a button press. No PIN needed (the signature proves possession; the physical press proves presence). |
 | `04` | REVOKE | `PIN` | none | Requires PIN and a button press. Deletes the key and PIN, state returns to 0. |
 | `06` | DEVICE_NAME | by P1, see below | `flags(1)` ‖ `name` (GET, SET, CLEAR) | Read or change the name the key reports over USB. |
+| `07` | BUILD_INFO | none | `fmt(1)=01` ‖ `tag ‖ len ‖ value`... | What is running on the key: version, source commit, image SHA-256, chip. Read-only, no button, no PIN. See below. |
 
 - `pubkey` = uncompressed SEC1 P-256 point (`04 ‖ X ‖ Y`).
 - `device_id` = 16 random bytes generated at enrollment (stored with the key); GET_INFO returns 16 zero bytes while unenrolled.
@@ -61,6 +62,80 @@ All commands use `CLA=0x80`. `P1=P2=0x00` except INS `06` (P1 = operation, P2 = 
   enumeration) sends a command. The page therefore waits 1 s after the key is back and reads on a fresh claim, up to 6 times; the key's
   `6300` (button not pressed) is shown as such only when the key says it. With no BOOT press (libusb probe) the key answers `6300` after
   exactly 15.03 s, sends a time-extension frame every 1.51 s, and one extra vendor frame (`0x7F`, payload `03 00 03`) when the wait starts.
+
+### INS 07 BUILD_INFO (what is running on the key)
+
+`80 07 00 00 00`. Read-only: no button, no PIN, nothing is written. A firmware built before this command answers `6D00`; the host tools
+and the web page then say the firmware cannot report its build. Response: `fmt(1) = 01`, then entries `tag(1) ‖ len(1) ‖ value(len)`
+(at most 255 bytes in all). A reader skips tags it does not know and rejects a repeated tag, a truncated entry, or a text entry that is
+not printable ASCII (nothing a device sends can inject control characters into a terminal or a page).
+
+| Tag | Value | Source |
+|---|---|---|
+| `01` | project name, ASCII | `esp_app_desc_t.project_name` (`multikey-fido`) |
+| `02` | version, ASCII | `esp_app_desc_t.version`: the host workspace version, `-dev` suffix on non-release builds |
+| `03` | ESP-IDF version, ASCII | `esp_app_desc_t.idf_ver` |
+| `04` | source commit, ASCII | 12 hex digits of `git rev-parse HEAD` when CMake configured, `+dirty` if tracked files (submodules ignored) differed, `unknown` outside a git checkout |
+| `05` | SHA-256 of the app image as flashed, 32 bytes | computed over the first `image_len` bytes of the running partition, appended digest included, so it equals the manifest's `images[role=app].sha256` (checked: `file size == image_len` for a real build). Computed once per boot (about 600 KB of flash), then cached |
+| `06` | SHA-256 of the app ELF, 32 bytes | `esp_app_desc_t.app_elf_sha256` |
+| `07` | flash size the image was built for, ASCII (`16MB`) | `CONFIG_ESPTOOLPY_FLASHSIZE` |
+| `08` | flash size the chip reports, u32 BE bytes | `esp_flash_get_physical_size` |
+| `09` | security flags, 1 byte: bit0 flash encryption on, bit1 secure boot on | `esp_flash_encryption_enabled`, `esp_secure_boot_enabled` |
+| `0A` | chip: model(1) ‖ full revision(2, BE, major×100+minor) ‖ cores(1) | `esp_chip_info` (model 9 = ESP32-S3) |
+| `0B` | reset reason of this boot, 1 byte | `esp_reset_reason_t` |
+| `0C` | seconds since boot, u32 BE | `esp_timer_get_time` |
+| `0D` | running partition: offset(4, BE) ‖ label, ASCII | `esp_ota_get_running_partition` |
+
+Nothing here identifies the owner or the individual key: the MAC address, the serial number and the MKAUTH `device_id` are not part of
+it. A host compares tag `05` with the release manifests to learn whether the key runs exactly a published image: a match is proof that
+it is that image, no match means a local, modified or unlisted build (it is not proof of tampering). `multikey device build --manifest
+FILE` and the web page "Your key" do exactly that.
+
+### Live events (passkey activity)
+
+pico-fido reports every passkey operation as it happens. `event_send` (upstream `src/fido/event.c`) is called when a registration
+(`makeCredential`) or a sign-in (`getAssertion`) finishes, successfully or not, and when the key starts waiting for the BOOT button.
+The message is pushed on the **bulk IN endpoint of the vendor-class (WCID) interface**, the interface that carries MKAUTH for the web
+installer and is bound to WinUSB; it is not visible through PC/SC. It is a CCID message of type `0x7F`:
+
+```
+CCID header (10 bytes): 7F | dwLength (LE32) | bSlot=0 | bSeq=0 | bStatus | 00 00
+payload:                op(1) | result(1) | total length(1) | { type(1) | len(1) | value }...
+```
+
+`op`: 1 makeCredential, 2 getAssertion, 3 waiting for the button. `result`: 0 pending (a button wait), 1 ok, 2 error. `total length` is the
+length of the whole payload. Fields (all optional):
+
+| Type | Value |
+|---|---|
+| `01` | relying party id, text |
+| `02` | user name, text |
+| `03` | user display name, text |
+| `04` | COSE algorithm, 4 bytes BE (two's complement: `-7` = `FFFFFFF9`, ES256) |
+| `05` | authenticator-data flags, 1 byte (UP `01`, UV `04`, BE `08`, BS `10`, AT `40`, ED `80`) |
+| `06` | CTAP2 status code of a failed operation, 1 byte |
+| `07` | credentials that matched a sign-in request, 1 byte |
+| `08` | for a button wait: the operation that needs the press (1 or 2) |
+
+- **What it gives and what it does not.** The key sees the relying party id, the account the site chose, whether the button was pressed,
+  whether it reported the user as verified (the UV flag; it is the authenticator's claim, and a probe sign-in with `up=false` can carry
+  it without any button press), the algorithm and why a failure failed. It cannot tell which *provider* an account belongs to beyond
+  that id, cannot tell when a past event happened, and learns nothing about passkeys that were never created on it. A non-resident
+  credential leaves no trace on the key at all.
+- **Text is untrusted.** The site chose it. It can be cut short and can end inside a UTF-8 sequence; decoders replace control and
+  bidirectional-formatting characters (`multikey-proto` `sanitize_text`, the web `sanitizeText`).
+- **Length (local patch).** Upstream built the event in a 64-byte buffer and dropped the *whole* event when the fields did not fit. A
+  registration event spends 3 bytes on the header, 6 on the algorithm and 3 on the flags, which leaves 52 bytes for the three text
+  fields, each with 2 bytes of framing: `github.com` + `alice` + `Alice A.` (36 bytes with framing) fit, a 12-character RP id with a
+  25-character user name and a 25-character display name (68 bytes with framing) did not, and that registration left no trace.
+  `patches/pico-fido/0004-multikey-wcid-event-size.patch` uses the 255 bytes the length field allows, writes the fixed-size fields first
+  and cuts the text fields to the room left. Firmware built before this patch drops events whose text is long.
+- **Queued events.** An unread event waits in the key until a host reads the endpoint, so the first reads of a new session can return events
+  from before it started, and their time is unknown (hosts mark them "earlier"). Observed on hardware: `multikey device watch` printed
+  three queued events on its first run and none on the second (`docs/hw-reports/2026-11-23-build-info-and-passkey-events.md`).
+- **One reader at a time.** A single program can hold the interface: `multikey device watch` and the web page cannot run together.
+- **Who can read them.** Any local program that can open the WinUSB interface (and any page the user lets claim the device in the
+  browser). No PIN or button is needed: this is upstream behavior and `docs/SECURITY.md` says what it means.
 
 ## SSH and Git signing (procedure)
 

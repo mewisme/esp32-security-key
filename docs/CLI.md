@@ -13,6 +13,8 @@
 | Command | Reads / changes | `--json` | Needs |
 |---|---|---|---|
 | `device list` | reads (enumeration only) | yes | - |
+| `device build [--manifest FILE]` | reads what firmware the key runs (INS 07; read-only) and optionally checks it against a release manifest | yes | PC/SC |
+| `device watch [--usb VID:PID] [--count N] [--timeout S]` | reads passkey activity pushed by the key (one JSON object per line with `--json`) | yes | USB (the vendor interface) |
 | `device info` / `status` / `version` | reads (GetInfo, SELECT, GET_INFO, PIN retries) | yes | - |
 | `device show` | reads the device name | no | PC/SC |
 | `device rename NAME [--reenumerate]` / `reset-name` / `reenumerate` | changes the USB name (button; MKAUTH PIN once enrolled) | no | PC/SC |
@@ -79,8 +81,38 @@ and no-echo FIDO PIN prompts were only unit-tested (the hardware runs used `--ye
 
 ## `device version`
 
-Reports the tool version, the MKAUTH protocol version byte, the CTAP `firmwareVersion` from GetInfo and the USB identity. That
-`firmwareVersion` is the upstream pico-fido core version; **the firmware has no MultiKeys build identifier** and the tool says so.
+Reports the tool version, the MKAUTH protocol version byte, the firmware build the key reports about itself (see `device build`), the CTAP
+`firmwareVersion` from GetInfo and the USB identity. That `firmwareVersion` is the upstream pico-fido core version, not the MultiKeys
+version. A key whose firmware was built before the BUILD_INFO command (INS 07) cannot report its build: the tool says so and why
+(`firmware_error` in `--json`) instead of guessing.
+
+## `device build`
+
+`multikey device build [--manifest FILE] [--json]` asks the key what it is running (MKAUTH INS 07, read-only, no button, no PIN): the
+project and version, the ESP-IDF version, the source commit (12 hex digits, `+dirty` when the tree had uncommitted changes), the SHA-256
+of the app image as flashed, the flash size it was built for and the chip reports, the chip and its revision, whether flash encryption
+and Secure Boot are on, why and how long ago this boot started, and the partition it runs from. The MAC address and serial number are
+not read.
+
+`--manifest` takes a release's `firmware-manifest.json` (`gh release download vX.Y.Z -p firmware-manifest.json`) and says whether the
+running image is exactly the app image of one of its builds. A match proves the key runs that published image; no match means a local,
+modified or other release's image (it is not proof of tampering). The output ends with the matched release and build, or with
+"NOT in <file>".
+
+## `device watch`
+
+`multikey device watch [--usb VID:PID] [--count N] [--timeout SECONDS] [--json]` prints passkey activity as the key reports it: every
+registration (`passkey CREATED (ES256) for github.com as alice [user present, user verified]`), sign-in, and BOOT-button wait, and
+every failure with its CTAP2 error (`FAILED signing in on example.org: no credentials (0x2e)`). With `--json` it prints one JSON object
+per line (`op`, `result`, `rp_id`, `user_name`, `algorithm_name`, `user_present`, `user_verified`, `error_name`, `waiting_for`, `time_utc`,
+`backlog`).
+
+It claims the key's vendor-class (WinUSB) interface directly, so it needs no PC/SC and no HID rights, but only one program can hold the
+interface: close the web page "Your key" first. On Linux the process needs access to the USB device (a udev rule for `303a:4002`).
+Events the key had queued before the command started arrive first and are marked `earlier` (`backlog: true`) because their time is
+unknown; everything after the first quiet half second is stamped with the time it was read (UTC). Text from a site is printed with
+control and direction-override characters replaced. The events are described in `docs/PROTOCOLS.md` ("Live events") and what they expose
+in `docs/SECURITY.md`.
 
 ## Exit codes
 

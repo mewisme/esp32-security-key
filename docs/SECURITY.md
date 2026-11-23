@@ -109,6 +109,29 @@ can and cannot do:
   credentials, VID/PID or the AAGUID. For a schema-1 release (v0.2.0) the page does not attempt a rename and says it is not
   available.
 
+### What the key reports about itself (build info and passkey events)
+
+Two read-only channels, both on the vendor interface the web installer already uses (`docs/PROTOCOLS.md`, INS 07 and "Live events"):
+
+- **Build info (MKAUTH INS 07).** Name, version, source commit, SHA-256 of the running image, chip, security flags, reset reason, uptime
+  and the running partition. It needs no button and no PIN, and it writes nothing. It leaves out the MAC address, the serial number and
+  the MKAUTH `device_id`, so it does not identify one key among others. Anyone who can open the interface learns which release or local
+  build you run, which tells an attacker which known bugs to try; that is the same information a USB descriptor and a firmware
+  download page already give for a published release.
+- **Passkey events.** For every registration, sign-in and BOOT wait the key pushes the relying party id, the account name the site chose,
+  the algorithm, the authenticator-data flags (button pressed, user verified) and the CTAP2 error of a failure. The user-verified flag is
+  what the firmware tells the site, not proof that a PIN was typed: on the test board events with that flag set were seen for a
+  registration and a sign-in started by a page that asked for `userVerification: "discouraged"`, and whether that key had a FIDO PIN was not
+  checked in that run. This is upstream
+  pico-fido behavior, not something this repository added, and it is **not gated by a PIN or a button**: any local program that can
+  claim the key's WinUSB interface (the command `multikey device watch` does, without administrator rights on Windows) and any page the
+  user lets claim it in the browser sees which sites you sign in to, while it listens. The browser asks for the device first
+  (WebUSB permission), and a page that holds the interface releases it when it stops. Treat it like the screen of the machine the key is
+  plugged into: the key does not make this worse, but it does not hide it either. Events that nobody read wait in the key (a few of
+  them), so a program that connects later can read the last events that happened before it started.
+- **Nothing here is written.** Neither channel can change the key. `multikey device build --manifest` and the web page only compare
+  a hash with the published manifests; a match proves the key runs that published image, no match is not proof of tampering.
+
 ### CI caches
 
 Caches only speed builds up; a release never uses one. Pull requests and `main` restore the ESP-IDF ccache

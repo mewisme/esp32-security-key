@@ -58,7 +58,9 @@ later on the First use page. Tested on real hardware on one board (Windows/Chrom
 the key ([installer report](docs/hw-reports/2026-11-23-web-installer.md),
 [naming report](docs/hw-reports/2026-11-23-profiles-and-personalization.md)). The site is available in English and Vietnamese and
 also has a Passkey lab (`/passkeys`) that registers a test passkey on the key; the lab is tested with a virtual authenticator only, not yet on
-real hardware.
+real hardware. A "Your key" page (`/key`) reads which firmware the key runs and whether it is a published release image, and lists the passkey
+activity the key reports; the first part needs firmware built with the `BUILD_INFO` command (not in v0.3.0). It was run once against a real key
+(a local build; [report](docs/hw-reports/2026-11-23-build-info-and-passkey-events.md)), and `multikey device watch` is its command-line counterpart.
 
 ### PowerShell (developers, the verified method)
 
@@ -99,6 +101,8 @@ Releases, or build it with `cd host && cargo build --release`.
 
 ```text
 multikey device list | info | status | version      # inventory and identity, add --json for scripts
+multikey device build [--manifest firmware-manifest.json]   # what firmware runs on the key, and is it a published image
+multikey device watch                               # passkey activity as the key reports it (sites, accounts, errors)
 multikey fido info | pin status                      # read-only
 multikey fido pin set | change                       # FIDO PIN (set is irreversible without authenticatorReset)
 multikey fido credentials list | delete --id HEX
