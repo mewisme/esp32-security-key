@@ -26,7 +26,7 @@ index d3e2ceb..4eaa6ce 100644
  };
 -#define URL  "www.picokeys.com"
 +#if CONFIG_MULTIKEY_WEBUSB_LANDING_ENABLED
-+/* MultiKey: WebUSB landing page. The Kconfig value is a full https:// URL; the descriptor carries the
++/* MultiKeys: WebUSB landing page. The Kconfig value is a full https:// URL; the descriptor carries the
 +   scheme as bScheme=1 and only the remainder as bytes, so it is assembled once at boot. CMake validates
 +   the URL (https, printable ASCII, 1..200 characters after the scheme). */
 +#ifndef CONFIG_MULTIKEY_WEBUSB_LANDING_URL

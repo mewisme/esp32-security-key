@@ -1,4 +1,4 @@
-"""Fixtures for the hardware-free MultiKey FIDO2 UV tests.
+"""Fixtures for the hardware-free MultiKeys FIDO2 UV tests.
 
 The emulator (pico-fido built with ENABLE_EMULATION=1) is started by tools/run_emulation_tests.sh,
 which exports EMU_BIN (binary) and EMU_RUNDIR (cwd; the flash image is ``memory.flash`` in there).

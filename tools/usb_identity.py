@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only USB identity report for the MultiKey device on Windows (no elevation, no writes, no device commands).
+"""Read-only USB identity report for the MultiKeys device on Windows (no elevation, no writes, no device commands).
 
   python tools/usb_identity.py [--vid 303A] [--pid 4002] [--expect-product "MultiKeys Security Key"]
                                [--expect-manufacturer MultiKeys] [--json]

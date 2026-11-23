@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One interactive hardware test session for the MultiKey key, meant to run in its own visible (elevated) window.
+"""One interactive hardware test session for the MultiKeys key, meant to run in its own visible (elevated) window.
 
   tools\\run_hw_session.ps1                 # opens the elevated window for you and runs everything
   .\\.venv\\Scripts\\python tools\\hw_session.py [--phases A B C D] [--name "Mew Key Test 2"]
@@ -100,7 +100,7 @@ def main() -> int:
     ap.add_argument("--default-name", default="MultiKeys Security Key")
     args = ap.parse_args()
     LOG.write_text("", encoding="utf-8")
-    say(c("1", "MultiKey hardware session"))
+    say(c("1", "MultiKeys hardware session"))
     say("Keep this window in front. The board should be plugged in and running the firmware (not in download mode).")
     if not Path(MK).exists():
         sys.exit(f"missing {MK}: run `cd host && cargo build`")

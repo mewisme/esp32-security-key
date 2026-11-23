@@ -14,7 +14,7 @@ index 7caa61a..2201fad 100644
 -            : false
 -#endif
 -        );
-+        /* MultiKey: a credential's stored "no button" property (settable through authenticatorConfig) is ignored:
++        /* MultiKeys: a credential's stored "no button" property (settable through authenticatorConfig) is ignored:
 +         * physical presence is always required when the request asks for user presence. */
 +        bool require_button = numberOfCredentials > 0;
  
@@ -29,7 +29,7 @@ index 589acf4..ae0e033 100644
              }
          }
 +        else if (!(flags & FIDO2_AUT_FLAG_UP)) {
-+            /* MultiKey: upstream set the UP flag here WITHOUT collecting presence when the platform sent no
++            /* MultiKeys: upstream set the UP flag here WITHOUT collecting presence when the platform sent no
 +             * pinUvAuthParam (the normal case for a key with no PIN). CTAP 2.1 6.1.2 step 14 requires a
 +             * user-presence gesture whenever the "up" option is true or absent. */
 +            if (check_user_presence() == false) {

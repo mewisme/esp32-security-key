@@ -1,5 +1,5 @@
 #!/bin/sh
-# SSH security-key smoke test for the MultiKey FIDO2 image.
+# SSH security-key smoke test for the MultiKeys FIDO2 image.
 # Status: Implemented; NOT run against hardware (pending hardware). Needs a plugged-in key, button presses,
 # and (for verify-required) the device PIN typed by you at ssh-keygen's prompt. Does not modify any git/ssh config.
 # Usage: tools/ssh_smoke.sh --yes

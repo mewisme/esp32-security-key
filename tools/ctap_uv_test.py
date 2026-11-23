@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Hardware test of the FIDO2 user-presence / user-verification policy of the MultiKey key (touch-only use).
+"""Hardware test of the FIDO2 user-presence / user-verification policy of the MultiKeys key (touch-only use).
 
   .\\tools\\run_elevated.ps1 tools\\ctap_uv_test.py                      # PIN-less device: everything that is safe
   .\\tools\\run_elevated.ps1 tools\\ctap_uv_test.py --only info raw      # no touch needed at all
@@ -78,7 +78,7 @@ def flags_text(flags: int) -> str:
 
 def make_options(uv, rk=ResidentKeyRequirement.DISCOURAGED):
     return PublicKeyCredentialCreationOptions(
-        rp=PublicKeyCredentialRpEntity(id=RP_ID, name="MultiKey UV test"),
+        rp=PublicKeyCredentialRpEntity(id=RP_ID, name="MultiKeys UV test"),
         user=PublicKeyCredentialUserEntity(id=b"uv-test", name="uv-test", display_name="uv-test"),
         challenge=os.urandom(32),
         pub_key_cred_params=[PublicKeyCredentialParameters(type="public-key", alg=-7)],

@@ -20,7 +20,7 @@ index 056ef01..6ddc855 100644
 -        tusb_cfg.string_descriptor[i+6] = tmps[i];
 -    }
 -    tusb_cfg.string_descriptor_count = 6 + itf_desc_count;
-+    multikey_usb_strings_init(); /* MultiKey: product/interface strings from Kconfig or the stored device name */
++    multikey_usb_strings_init(); /* MultiKeys: product/interface strings from Kconfig or the stored device name */
      tusb_cfg.configuration_descriptor = desc_config;
  
      tinyusb_driver_install(&tusb_cfg);
@@ -33,7 +33,7 @@ index 6854f0a..f8fb15c 100644
  extern uint8_t ITF_TOTAL;
  
 +#ifdef ESP_PLATFORM
-+/* MultiKey device name (USB product string): see usb_descriptors.c. */
++/* MultiKeys device name (USB product string): see usb_descriptors.c. */
 +#define MULTIKEY_EF_DEVICE_NAME 0xBC01 /* neighbour of the MKAUTH record 0xBC00; not cleared by authenticatorReset */
 +#define MULTIKEY_NAME_MAX 31           /* esp_tinyusb string descriptor buffer */
 +extern bool multikey_name_valid(const uint8_t *name, size_t len);
@@ -55,8 +55,8 @@ index 249d635..d3e2ceb 100644
  char const *string_desc_arr [] = {
      (const char[]) { 0x09, 0x04 }, // 0: is supported language is English (0x0409)
  #if defined(ESP_PLATFORM)
--    "MultiKey (dev)",                    // 1: Manufacturer (not the upstream author's name; override for distribution)
--    "ESP32-S3 MultiKey",                 // 2: Product
+-    "MultiKeys (dev)",                    // 1: Manufacturer (not the upstream author's name; override for distribution)
+-    "ESP32-S3 MultiKeys",                 // 2: Product
 +    CONFIG_MULTIKEY_USB_MANUFACTURER,    // 1: Manufacturer (Kconfig)
 +    CONFIG_MULTIKEY_USB_PRODUCT_NAME,    // 2: Product (Kconfig default; replaced at runtime by multikey_usb_strings_refresh())
  #else
@@ -68,7 +68,7 @@ index 249d635..d3e2ceb 100644
  };
 +
 +/*
-+ * MultiKey USB identity.
++ * MultiKeys USB identity.
 + *
 + * esp_tinyusb stores the POINTERS of tusb_cfg.string_descriptor and converts them byte for byte to
 + * UTF-16, so the buffers below must stay valid forever, may be rewritten in place, and only ASCII is

@@ -1,4 +1,4 @@
-# ESP32-S3 MultiKey
+# ESP32-S3 MultiKeys
 
 Open-source USB security key firmware for the ESP32-S3 (target board: generic **ESP32-S3 N16R8** devkit, 16 MB flash,
 native USB OTG), plus Rust host tools.

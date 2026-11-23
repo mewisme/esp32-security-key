@@ -28,7 +28,7 @@ pub struct Device<T: Transport> {
 
 impl Device<PcscTransport> {
     /// Open a reader by name (exact or substring, case-insensitive); `None` picks the first
-    /// reader whose name contains "MultiKey" or "ESP32".
+    /// reader whose name contains "MultiKeys" or "ESP32".
     pub fn open(reader: Option<&str>) -> Result<Self> {
         Ok(Self::new(PcscTransport::open(reader)?))
     }

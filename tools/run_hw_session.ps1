@@ -9,6 +9,6 @@ param([Parameter(ValueFromRemainingArguments = $true)][string[]]$SessionArgs)
 $root = Split-Path -Parent $PSScriptRoot
 $python = Join-Path $root '.venv\Scripts\python.exe'
 if (-not (Test-Path $python)) { throw "Missing $python (python -m venv .venv ; .\.venv\Scripts\python -m pip install -r tools\requirements.txt pyscard)" }
-$cmd = "`$Host.UI.RawUI.WindowTitle = 'MultiKey hardware session'; Set-Location '$root'; & '$python' -u tools\hw_session.py $($SessionArgs -join ' ')"
+$cmd = "`$Host.UI.RawUI.WindowTitle = 'MultiKeys hardware session'; Set-Location '$root'; & '$python' -u tools\hw_session.py $($SessionArgs -join ' ')"
 Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-NoExit', '-Command', $cmd
 Write-Host 'Session window opened (accept the UAC prompt). Follow the banners in that window.'

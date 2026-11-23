@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""authenticatorReset for the connected MultiKey (DESTRUCTIVE: deletes every credential and the FIDO PIN).
+"""authenticatorReset for the connected MultiKeys (DESTRUCTIVE: deletes every credential and the FIDO PIN).
 
   .\\tools\\run_elevated.ps1 tools\\ctap_reset.py --yes-wipe-device
 

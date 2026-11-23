@@ -7,7 +7,7 @@ index 0a0a48c..580aa78 100644
  int cbor_get_assertion(const uint8_t *data, size_t len, bool next);
  
 +#ifdef CONFIG_MULTIKEY_AAGUID
-+/* MultiKey: project development AAGUID from Kconfig (32 hex digits, validated at configure time). The
++/* MultiKeys: project development AAGUID from Kconfig (32 hex digits, validated at configure time). The
 + * string literal is indexed in a constant initializer, which GCC folds at compile time. */
 +#define MK_HEXV(c) ((uint8_t)(((c) >= 'a') ? ((c) - 'a' + 10) : (((c) >= 'A') ? ((c) - 'A' + 10) : ((c) - '0'))))
 +#define MK_HEXB(s, i) ((uint8_t)((MK_HEXV((s)[2 * (i)]) << 4) | MK_HEXV((s)[2 * (i) + 1])))
@@ -34,7 +34,7 @@ index 93120fd..b22ac4e 100644
      mbedtls_x509write_crt_set_version(&ctx, MBEDTLS_X509_CRT_VERSION_3);
      mbedtls_x509write_crt_set_validity(&ctx, "20220901000000", "20720831235959");
 +#ifdef CONFIG_MULTIKEY_AAGUID
-+    /* MultiKey: attestation certificates of NEW devices carry this project's development identity, not
++    /* MultiKeys: attestation certificates of NEW devices carry this project's development identity, not
 +     * the upstream author's. A certificate that already exists in flash is never replaced. */
 +    mbedtls_x509write_crt_set_issuer_name(&ctx, "O=MultiKeys development,CN=MultiKeys Dev Attestation");
 +    mbedtls_x509write_crt_set_subject_name(&ctx, "O=MultiKeys development,CN=MultiKeys Dev Attestation");

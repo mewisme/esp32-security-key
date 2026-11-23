@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""FIDO2/U2F smoke test for the connected MultiKey device (python-fido2 2.x).
+"""FIDO2/U2F smoke test for the connected MultiKeys device (python-fido2 2.x).
 
 Results are valid ONLY for the connected device/firmware at the time of the run. This script does not
 prove CTAP2.1 compliance or FIDO conformance; it exercises a handful of commands and checks signatures.
@@ -22,9 +22,9 @@ from fido2.hid import CAPABILITY, CtapHidDevice
 from fido2.webauthn import AuthenticatorData
 
 RP_ID = "multikey.test"
-RP = {"id": RP_ID, "name": "MultiKey smoke test"}
+RP = {"id": RP_ID, "name": "MultiKeys smoke test"}
 HEADER = f"""\
-=== MultiKey CTAP smoke test ({datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')}) ===
+=== MultiKeys CTAP smoke test ({datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')}) ===
 Results below are valid ONLY for the device that is connected right now. This run does NOT prove CTAP2.1
 support or FIDO conformance. A human must paste this output into docs/hw-reports/<date>-ctap.md together with
 board, IDF version and firmware commit. Credentials are created only for rpId '{RP_ID}'.
@@ -100,7 +100,7 @@ def roundtrip(ctap, alg, pin, created):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="MultiKey FIDO2/U2F smoke test (needs hardware).")
+    ap = argparse.ArgumentParser(description="MultiKeys FIDO2/U2F smoke test (needs hardware).")
     ap.add_argument("--pin", help="device PIN (used for PIN-protected steps; if the device has no PIN, it is SET to this value)")
     ap.add_argument("--reset", action="store_true", help="run authenticatorReset first (wipes ALL credentials and PIN)")
     ap.add_argument("--yes-wipe-device", action="store_true", help="required together with --reset")

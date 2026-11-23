@@ -31,7 +31,7 @@ With several keys attached, `device`, `fido` and `mkauth` commands refuse to gue
 --device N (see `multikey device list`), --reader TEXT or --hid-path PATH.";
 
 #[derive(Parser)]
-#[command(name = "multikey", version, about = "MultiKey host tool", after_help = EXIT_HELP)]
+#[command(name = "multikey", version, about = "MultiKeys host tool", after_help = EXIT_HELP)]
 struct Cli {
     /// Machine-readable JSON on stdout (read-only commands only).
     #[arg(long, global = true)]

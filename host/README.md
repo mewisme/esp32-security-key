@@ -1,4 +1,4 @@
-# MultiKey host tools (Rust)
+# MultiKeys host tools (Rust)
 
 Crates:
 - `multikey-proto` — MKAUTH v1 APDUs, parsers, transcript, P-256 verification. No I/O.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check the WebUSB landing page / BOS descriptors of the MultiKey firmware.
+"""Check the WebUSB landing page / BOS descriptors of the MultiKeys firmware.
 
   python tools/check_usb_descriptors.py [--sdkconfig sdkconfig.fido-dev.generated]   # static, no hardware
   python tools/check_usb_descriptors.py --live [--vid 303A] [--pid 4002]              # read-only USB requests

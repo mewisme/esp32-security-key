@@ -1,5 +1,5 @@
 #
-# ESP32-S3 MultiKey firmware: ESP-IDF project root.
+# ESP32-S3 MultiKeys firmware: ESP-IDF project root.
 #
 # Layout mirrors upstream Pico Keys projects (pico-keys-sdk at ./pico-keys-sdk,
 # applications at ./pico-fido and ./pico-openpgp, all pinned git submodules) so the

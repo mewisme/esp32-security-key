@@ -24,12 +24,12 @@ esp_tinyusb converts string descriptors byte for byte (`_desc_str[1+i] = str[i]`
 rejected: by the Rust CLI (`NameError::NotPrintableAscii`), by the firmware (`multikey_name_valid`, status `6A80`) and by the
 build for the Kconfig strings (`components/multikey_platform/CMakeLists.txt`).
 
-## Configurable defaults (Kconfig, menu "MultiKey board and USB identity")
+## Configurable defaults (Kconfig, menu "MultiKeys board and USB identity")
 
 `CONFIG_MULTIKEY_USB_MANUFACTURER`, `CONFIG_MULTIKEY_USB_PRODUCT_NAME`, `CONFIG_MULTIKEY_USB_CUSTOM_NAME_ENABLED` (y), and
 `CONFIG_MULTIKEY_AAGUID`. The host tool finds the key by `multikey` or `esp32` in the reader name; the manufacturer is part of the
 reader name and a rename does not change it, so renaming never hides the device from `multikey`. If you change the manufacturer
-to something without "MultiKey", pass `--reader`.
+to something without "MultiKeys", pass `--reader`.
 
 ## Renaming at run time
 

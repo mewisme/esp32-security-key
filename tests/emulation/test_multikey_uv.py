@@ -1,4 +1,4 @@
-"""MultiKey FIDO2 user-verification behaviour, run against pico-fido's emulation build.
+"""MultiKeys FIDO2 user-verification behaviour, run against pico-fido's emulation build.
 
 Source of truth is the patched pico-fido/pico-keys-sdk tree (see tools/run_emulation_tests.sh for the
 build). UP is always satisfied in emulation, so these tests pin down UV / PIN semantics only.

@@ -1,4 +1,4 @@
-menu "MultiKey board and USB identity"
+menu "MultiKeys board and USB identity"
 
     config MULTIKEY_BUTTON_GPIO
         int "User-presence button GPIO number"
@@ -97,7 +97,7 @@ menu "MultiKey board and USB identity"
             layer converts string descriptors byte-for-byte, so non-ASCII text is not supported).
             Windows and pcsc-lite prefix the smart-card reader name with this string and the host
             tool `multikey` finds the device by "multikey" in the reader name, so keep it containing
-            "MultiKey" unless you always pass --reader.
+            "MultiKeys" unless you always pass --reader.
 
     config MULTIKEY_USB_PRODUCT_NAME
         string "USB product name (default device name)"
@@ -159,7 +159,7 @@ menu "MultiKey board and USB identity"
 
 endmenu
 
-menu "MultiKey irreversible hardware operations"
+menu "MultiKeys irreversible hardware operations"
 
     config MULTIKEY_ALLOW_EFUSE_PROVISIONING
         bool "Allow the firmware to burn a random master key (MKEK) into eFuse KEY3/KEY4 on first boot"
@@ -173,7 +173,7 @@ menu "MultiKey irreversible hardware operations"
 
 endmenu
 
-menu "MultiKey FIDO user verification defaults"
+menu "MultiKeys FIDO user verification defaults"
 
     config MULTIKEY_FIDO_MAKECRED_UV_NOT_REQUIRED
         bool "Advertise makeCredUvNotRqd on devices whose options were never set (touch-only creation)"

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Interactive physical user-presence test for the MultiKey FIDO2 key. Needs hardware and a human at the board.
+"""Interactive physical user-presence test for the MultiKeys FIDO2 key. Needs hardware and a human at the board.
 
   .\\.venv\\Scripts\\python tools\\ctap_up_test.py            (elevated PowerShell on Windows)
 
@@ -21,7 +21,7 @@ from fido2.ctap import CtapError
 from fido2.ctap2 import Ctap2
 from fido2.hid import CtapHidDevice
 
-RP = {"id": "multikey.test", "name": "MultiKey test"}
+RP = {"id": "multikey.test", "name": "MultiKeys test"}
 PARAMS = [{"type": "public-key", "alg": -7}]
 REFUSED = {CtapError.ERR.USER_ACTION_TIMEOUT, CtapError.ERR.OPERATION_DENIED, CtapError.ERR.ACTION_TIMEOUT,
            CtapError.ERR.TIMEOUT}

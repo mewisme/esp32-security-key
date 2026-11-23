@@ -378,7 +378,7 @@ def run_flash(args: argparse.Namespace) -> int:
         if run(["git", "submodule", "update", "--init", "pico-keys-sdk", "pico-fido"], cwd=ROOT).returncode != 0:
             raise Stop(EXIT_PREREQ, "git submodule update failed")
     if run([py, str(ROOT / "tools" / "apply_patches.py")], cwd=ROOT).returncode != 0:
-        raise Stop(EXIT_PREREQ, "applying the MultiKey patches failed")
+        raise Stop(EXIT_PREREQ, "applying the MultiKeys patches failed")
 
     step(4, total, "device detection")
     deadline = time.time() + args.wait

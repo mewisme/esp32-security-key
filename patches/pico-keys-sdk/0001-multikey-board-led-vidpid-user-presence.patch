@@ -39,7 +39,7 @@ index 96cf21a..370340b 100644
      }
      bool pressed = picok_board_button_read();
 +    if (!async_button_armed) {
-+        /* MultiKey: a button that was already down when the request started (or is held down) does not
++        /* MultiKeys: a button that was already down when the request started (or is held down) does not
 +         * count. The line must be seen released first, then pressed, then released. */
 +        if (!pressed) {
 +            async_button_armed = true;
@@ -55,7 +55,7 @@ index 96cf21a..370340b 100644
         is commissioned. */
 -#ifndef ENABLE_EMULATION
 +#ifdef ESP_PLATFORM
-+    /* MultiKey: physical user presence is never optional. Upstream returns 0 here unless a "UP button"
++    /* MultiKeys: physical user presence is never optional. Upstream returns 0 here unless a "UP button"
 +     * timeout was commissioned into the phy config, and 0 makes every presence check succeed
 +     * immediately. The timeout comes from Kconfig and cannot be lowered or disabled from the host. */
 +    return (CONFIG_MULTIKEY_UP_TIMEOUT_MS + 999u) / 1000u;
@@ -73,9 +73,9 @@ index f7ca1c9..0f86116 100644
  #if defined(ESP_PLATFORM)
 -#define BOOT_PIN GPIO_NUM_0
 +#include "sdkconfig.h"
-+/* MultiKey: the user-presence button GPIO is board specific and has no default. */
++/* MultiKeys: the user-presence button GPIO is board specific and has no default. */
 +#if !defined(CONFIG_MULTIKEY_BUTTON_GPIO)
-+#error "CONFIG_MULTIKEY_BUTTON_GPIO is not defined: MultiKey Kconfig (components/multikey_platform) missing."
++#error "CONFIG_MULTIKEY_BUTTON_GPIO is not defined: MultiKeys Kconfig (components/multikey_platform) missing."
 +#endif
 +#if CONFIG_MULTIKEY_BUTTON_GPIO < 0 && !defined(CONFIG_MULTIKEY_ALLOW_UNSET_PINS_FOR_CI)
 +#error "MULTIKEY_BUTTON_GPIO is unset. Set it in menuconfig or sdkconfig.board (see docs/HARDWARE.md)."
@@ -106,7 +106,7 @@ index 145cafb..f95c3ed 100644
 -    #else
 -        #define NEOPIXEL_PIN GPIO_NUM_27
 -    #endif
-+    /* MultiKey: LED type and pin come from Kconfig. TYPE_NONE (default) keeps the dummy driver. */
++    /* MultiKeys: LED type and pin come from Kconfig. TYPE_NONE (default) keeps the dummy driver. */
 +    #if !defined(CONFIG_MULTIKEY_LED_TYPE_NONE)
 +        #if CONFIG_MULTIKEY_LED_GPIO < 0 && !defined(CONFIG_MULTIKEY_ALLOW_UNSET_PINS_FOR_CI)
 +            #error "MULTIKEY_LED_GPIO is unset. Set it, or select MULTIKEY_LED_TYPE_NONE (see docs/HARDWARE.md)."
@@ -128,7 +128,7 @@ index 145cafb..f95c3ed 100644
      phy_data.led_driver = phy_data.led_driver_present ? phy_data.led_driver : PHY_LED_DRIVER_PICO;
      phy_data.led_gpio = phy_data.led_gpio_present ? phy_data.led_gpio : PICO_DEFAULT_LED_PIN;
  #endif
-+#if !(defined(ESP_PLATFORM) && defined(CONFIG_MULTIKEY_LED_TYPE_NONE)) /* MultiKey: no LED, ignore stored driver */
++#if !(defined(ESP_PLATFORM) && defined(CONFIG_MULTIKEY_LED_TYPE_NONE)) /* MultiKeys: no LED, ignore stored driver */
      if (phy_data.led_driver_present) {
          switch (phy_data.led_driver) {
              case PHY_LED_DRIVER_PICO:
@@ -220,7 +220,7 @@ index b6b8c61..249d635 100644
  #include "serial.h"
  
 +#if defined(ESP_PLATFORM) && defined(CONFIG_MULTIKEY_USB_VID)
-+/* MultiKey: VID/PID come from Kconfig (development placeholder defaults, see docs/HARDWARE.md). */
++/* MultiKeys: VID/PID come from Kconfig (development placeholder defaults, see docs/HARDWARE.md). */
 +#undef USB_VID
 +#undef USB_PID
 +#define USB_VID   CONFIG_MULTIKEY_USB_VID
@@ -235,8 +235,8 @@ index b6b8c61..249d635 100644
  char const *string_desc_arr [] = {
      (const char[]) { 0x09, 0x04 }, // 0: is supported language is English (0x0409)
 +#if defined(ESP_PLATFORM)
-+    "MultiKey (dev)",                    // 1: Manufacturer (not the upstream author's name; override for distribution)
-+    "ESP32-S3 MultiKey",                 // 2: Product
++    "MultiKeys (dev)",                    // 1: Manufacturer (not the upstream author's name; override for distribution)
++    "ESP32-S3 MultiKeys",                 // 2: Product
 +#else
      "Pol Henarejos",                     // 1: Manufacturer
      "Pico Key",                       // 2: Product

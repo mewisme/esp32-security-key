@@ -6,12 +6,12 @@ index e75ade7..3404382 100644
  }
  
  int otp_platform_enable_secure_boot(uint8_t bootkey, bool secure_lock) {
-+    /* MultiKey: this path burns Secure Boot digests and JTAG fuses bound to the UPSTREAM project's
++    /* MultiKeys: this path burns Secure Boot digests and JTAG fuses bound to the UPSTREAM project's
 +     * boot key digest, triggered from the USB rescue interface. It is disabled: production hardening
 +     * uses ESP-IDF's own Secure Boot v2 flow with the operator's key (docs/PROVISIONING.md). */
 +    (void)bootkey;
 +    (void)secure_lock;
-+    printf("Secure boot provisioning through the rescue interface is disabled in MultiKey builds.\n");
++    printf("Secure boot provisioning through the rescue interface is disabled in MultiKeys builds.\n");
 +    return ESP_ERR_NOT_SUPPORTED;
 +}
 +
@@ -25,7 +25,7 @@ index e75ade7..3404382 100644
  }
  
 -void otp_platform_init(const uint8_t **otp_key_1_out, const uint8_t **otp_key_2_out) {
-+/* MultiKey: upstream silently burns random MKEK keys into eFuse blocks KEY3/KEY4 on first boot.
++/* MultiKeys: upstream silently burns random MKEK keys into eFuse blocks KEY3/KEY4 on first boot.
 + * That is irreversible, so the code that does it is compiled in ONLY when the operator enables
 + * CONFIG_MULTIKEY_ALLOW_EFUSE_PROVISIONING (default off; see docs/PROVISIONING.md). Without it this
 + * function only reads eFuse blocks that are already programmed. */

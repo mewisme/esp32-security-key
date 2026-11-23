@@ -44,7 +44,7 @@ pub struct PcscTransport {
 
 impl PcscTransport {
     /// Connect to `reader` if given (exact or case-insensitive substring), else to the first
-    /// reader whose name contains "MultiKey" or "ESP32".
+    /// reader whose name contains "MultiKeys" or "ESP32".
     pub fn open(reader: Option<&str>) -> Result<Self> {
         let ctx = establish()?;
         let readers = match ctx.list_readers_owned() {
@@ -87,10 +87,10 @@ mod tests {
 
     #[test]
     fn reader_matching() {
-        assert!(matches_reader("Espressif MultiKey 0", None));
+        assert!(matches_reader("Espressif MultiKeys 0", None));
         assert!(matches_reader("Some ESP32-S3 CCID", None));
         assert!(!matches_reader("Yubico YubiKey", None));
         assert!(matches_reader("Yubico YubiKey", Some("yubikey")));
-        assert!(!matches_reader("Espressif MultiKey 0", Some("other")));
+        assert!(!matches_reader("Espressif MultiKeys 0", Some("other")));
     }
 }

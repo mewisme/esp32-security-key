@@ -1,5 +1,5 @@
 <#
-SSH security-key smoke test for the MultiKey FIDO2 image (Windows PowerShell / pwsh).
+SSH security-key smoke test for the MultiKeys FIDO2 image (Windows PowerShell / pwsh).
 Status: Implemented; NOT run against hardware (pending hardware). Needs a plugged-in key, button presses and the
 device PIN typed at ssh-keygen's prompt. Windows may require an elevated shell for the WebAuthn path
 (unverified). Changes no git/ssh config.
