@@ -8,14 +8,16 @@ board's BOOT button. It is open source and builds on the [Pico Keys](https://git
 
 ## Supported hardware
 
-- An **ESP32-S3 board with 16 MB flash**. The metal module on the board is usually marked **N16R8** (N16 = 16 MB flash).
+- An **ESP32-S3 board with 4, 8 or 16 MB quad-SPI flash**. The metal module on the board is usually marked **N4**, **N8** or
+  **N16** (the number is the flash in MB), for example **N16R8**. Only the N16R8 has been tested; 4 and 8 MB builds exist and
+  pass every check but have not been run on a board. Octal-flash modules (such as N16R8V) are not supported.
 - A USB connector wired to the chip itself, usually labelled **USB** or **OTG**. Many boards have a second connector labelled
   UART or COM; that one can install firmware but the finished key does not work on it.
 - A **BOOT** button. It becomes the key's touch button. The firmware has no status light.
 - A USB cable that carries data (many cables only carry power).
 
 Tested board types and what is not supported: see the compatibility section on
-[multikeys.mewis.me](https://multikeys.mewis.me/#compatibility).
+[multikeys.mewis.me](https://multikeys.mewis.me/#compatibility) and [docs/HARDWARE.md](docs/HARDWARE.md).
 
 ## Read this first
 
@@ -30,8 +32,10 @@ Tested board types and what is not supported: see the compatibility section on
 
 **[Install MultiKeys → multikeys.mewis.me](https://multikeys.mewis.me)** — web installer for desktop Chrome/Edge — launching
 soon (the site is not live yet). Tested once on real hardware: one board, Windows/Chrome, updating an existing install
-([report](docs/hw-reports/2026-11-23-web-installer.md)). It checks your board, downloads the firmware from the official
-release, verifies it, and shows exactly what it will write before writing anything.
+([report](docs/hw-reports/2026-11-23-web-installer.md)). It reads your board's chip and flash size, picks the 4, 8 or 16 MB
+firmware for it, downloads the firmware from the official release, verifies it, and shows exactly what it will write before
+writing anything. Before you start you can choose a name for your key (for example "Mew's Security Key"); it is applied
+after the flash is verified, needs a BOOT button press, and can be changed later on the First use page.
 
 ### Developer: PowerShell (the verified method)
 
@@ -86,8 +90,10 @@ Manual commands, Linux/macOS, the OpenPGP image and recovering a board that has 
 [GitHub Releases](https://github.com/mewisme/esp32-security-key/releases):
 
 - **v0.1.0**: host tools only (`multikey` for Windows and Linux, the Linux PAM module). No firmware.
-- **v0.2.0 and later**: the same host tools plus prebuilt FIDO2 firmware for ESP32-S3 N16R8 boards and a
+- **v0.2.0**: the same host tools plus prebuilt FIDO2 firmware for 16 MB ESP32-S3 boards (N16R8) and a
   `firmware-manifest.json` with checksums, used by the web installer.
+- **Later releases** carry one firmware zip per flash size (4, 8 and 16 MB; only the 16 MB build is hardware verified) in the
+  same manifest format (schema 2).
 
 Asset list, checksums and how releases are built: [docs/RELEASES.md](docs/RELEASES.md).
 
@@ -115,7 +121,8 @@ Prerequisite: ESP-IDF v5.5.6 activated (`idf.py` on PATH), see [docs/DEVELOPMENT
 
 ```
 python tools/build.py dev --ci-pins          # compile check; the image refuses to be usable
-python tools/build.py dev                    # real build, needs sdkconfig.board with your GPIOs
+python tools/build.py dev                    # real build (16 MB flash), needs sdkconfig.board with your GPIOs
+python tools/build.py dev --hw esp32s3-4mb --board esp32s3-boot-button --clean   # 4 MB flash: build-fido-dev-4mb (also esp32s3-8mb)
 python tools/build.py dev --release          # firmware version without the -dev suffix (release packaging)
 python tools/build.py prod --app openpgp
 cd host && cargo test --locked
@@ -144,8 +151,8 @@ Reference, exit codes and the Windows elevation rule: [docs/CLI.md](docs/CLI.md)
 
 ### Hardware configuration
 
-No GPIO is assumed by the firmware sources. The BOOT-button board profile is `boards/esp32s3-n16r8-boot-button.board` (copied to
-`sdkconfig.board` by the flash script); other boards set `CONFIG_MULTIKEY_BUTTON_GPIO` and `CONFIG_MULTIKEY_LED_GPIO`
+No GPIO is assumed by the firmware sources. The BOOT-button board profile is `boards/esp32s3-boot-button.board` (copied to
+`sdkconfig.board` by the flash script, or layered with `build.py --board esp32s3-boot-button`); other boards set `CONFIG_MULTIKEY_BUTTON_GPIO` and `CONFIG_MULTIKEY_LED_GPIO`
 ([docs/HARDWARE.md](docs/HARDWARE.md)); the build fails while they are unset. The default USB VID/PID is a development
 placeholder. USB names and the development AAGUID: [docs/USB_IDENTITY.md](docs/USB_IDENTITY.md). First manual hardware run:
 [docs/FIRST_RUN_WINDOWS.md](docs/FIRST_RUN_WINDOWS.md).
@@ -155,10 +162,11 @@ placeholder. USB names and the development AAGUID: [docs/USB_IDENTITY.md](docs/U
 ## Architecture and security
 
 [ARCHITECTURE](docs/ARCHITECTURE.md) · [SECURITY](docs/SECURITY.md) · [HARDWARE](docs/HARDWARE.md) ·
-[PROTOCOLS](docs/PROTOCOLS.md) · [DEVELOPMENT](docs/DEVELOPMENT.md) · [TESTING](docs/TESTING.md) ·
-[PROVISIONING](docs/PROVISIONING.md) · [ROADMAP](docs/ROADMAP.md) · [RELEASES](docs/RELEASES.md) ·
-[FLASHING_ADVANCED](docs/FLASHING_ADVANCED.md) · [BEGINNER_UX_AUDIT](docs/BEGINNER_UX_AUDIT.md) ·
-[DEPENDENCIES](docs/DEPENDENCIES.md) · [ADR-0001](docs/ADR-0001-foundation.md) · [ADR-0002](docs/ADR-0002-separate-images.md)
+[HARDWARE_PROFILES](docs/HARDWARE_PROFILES.md) · [PROTOCOLS](docs/PROTOCOLS.md) · [DEVELOPMENT](docs/DEVELOPMENT.md) ·
+[TESTING](docs/TESTING.md) · [PROVISIONING](docs/PROVISIONING.md) · [ROADMAP](docs/ROADMAP.md) · [RELEASES](docs/RELEASES.md) ·
+[CI_PERFORMANCE](docs/CI_PERFORMANCE.md) · [FLASHING_ADVANCED](docs/FLASHING_ADVANCED.md) ·
+[BEGINNER_UX_AUDIT](docs/BEGINNER_UX_AUDIT.md) · [DEPENDENCIES](docs/DEPENDENCIES.md) · [ADR-0001](docs/ADR-0001-foundation.md) ·
+[ADR-0002](docs/ADR-0002-separate-images.md)
 
 Status matrix of every feature: [docs/ROADMAP.md](docs/ROADMAP.md). Hardware test reports: [docs/hw-reports/](docs/hw-reports/).
 

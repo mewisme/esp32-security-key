@@ -82,6 +82,38 @@ what it guarantees:
 The installer is unit- and e2e-tested against a simulated board and was run once on real hardware (one board, update path,
 `docs/hw-reports/2026-11-23-web-installer.md`); see `docs/ROADMAP.md`.
 
+### Renaming the key from the browser (WebUSB management)
+
+After a verified flash the installer can give the key a USB product name (and First use can change it later). What that channel
+can and cannot do:
+
+- **Channel.** MKAUTH over the WebCCID interface (a vendor-class interface that runs the same CCID parser; Chrome's WebUSB
+  refuses the smart-card interface). The page sends SELECT, GET_INFO and INS 06 GET/SET/CLEAR only: no enrolment, revocation,
+  challenge or credential operation exists in the web code (`web/src/lib/device/`).
+- **BOOT press, always.** SET and CLEAR need a button press inside 15 s (`6300` otherwise) and, once MKAUTH is enrolled, the
+  management PIN. The page cannot skip either; it can only wait and report.
+- **The PIN is not stored.** It is typed into a password field, sent as one APDU and cleared from the component's state when
+  sent. It is never written to `sessionStorage` (the saved installer choices are the release tag, the image and the requested
+  name), never logged and never part of an error text. A wrong PIN costs one of the key's 8 tries; the page shows the tries the
+  key reports and never retries a PIN by itself. A blocked applet cannot be recovered from the browser.
+- **No binary is modified.** The firmware that was verified is written unchanged; the name is applied afterwards through the
+  management channel and lives in its own file on the key (`docs/PROTOCOLS.md`, INS 06). Nothing patches an image.
+- **Verified, not assumed.** After the key re-enumerates the page reads the stored name (GET) and the USB product string again; it
+  says "Applied and verified" only when both equal the request and no re-enumeration is pending. Otherwise it says the name was
+  not confirmed and points to First use.
+- **A label only.** As in the threat table, a rename can mislead a human about which key is which; it cannot change keys,
+  credentials, VID/PID or the AAGUID. For a schema-1 release (v0.2.0) the page does not attempt a rename and says it is not
+  available.
+
+### CI caches
+
+Caches only speed builds up; a release never uses one. Pull requests and `main` restore the ESP-IDF ccache
+(`ccache-ci-<app>-<profile>-idf5.5.6-<sha>`, `ccache-release-<hw>-idf5.5.6-<sha>`) and the Rust build cache; **only runs on `main`
+save them**, a pull request's cache is scoped to that pull request by GitHub, and a tag run restores and saves nothing and
+compiles from scratch. `tests/release/test_workflows.py` fails if a cache step in the `build` or `firmware` job of `release.yml`
+can run for a tag or if a cache is saved from anywhere but `main`. Cache entries are not signed: the boundary is who may write them,
+not their content.
+
 ## Rules enforced in the repository
 
 - **User presence is real and not configurable.** Upstream pico-keys-sdk returns a button timeout of 0 unless one was

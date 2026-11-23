@@ -88,14 +88,19 @@ The firmware version in the app descriptor comes from `[workspace.package].versi
 runs):
 
 ```
-python tools/package_firmware.py package --build-dir build-fido-dev --sdkconfig sdkconfig.fido-dev.generated \
-    --app fido --board esp32s3-n16r8-boot-button --version 0.2.0 --commit <40-hex sha> --out dist-fw --source-date-epoch N
+python tools/build.py dev --app fido --hw esp32s3-8mb --board esp32s3-boot-button --clean --release   # one build per flash size
+python tools/package_firmware.py package --build-dir build-fido-dev-8mb --sdkconfig sdkconfig.fido-dev-8mb.generated \
+    --app fido --hw esp32s3-8mb --version 0.2.0 --commit <40-hex sha> --out dist-fw --source-date-epoch N
 python tools/package_firmware.py manifest --entries 'dist-fw/*.entry.json' --version 0.2.0 --tag v0.2.0 --commit <sha> \
-    --out dist-fw/firmware-manifest.json
+    --out dist-fw/firmware-manifest.json --require-release-profiles
 python tools/package_firmware.py verify dist-fw/multikey-firmware-*.zip --manifest dist-fw/firmware-manifest.json
 ```
 
-Use `--clean` when switching between board profiles or `--ci-pins`: an existing build keeps its generated sdkconfig.
+Each hardware profile (`esp32s3-4mb`, `esp32s3-8mb`, `esp32s3-16mb`, [HARDWARE_PROFILES](HARDWARE_PROFILES.md)) has its own
+build directory and generated sdkconfig (`build-fido-dev-4mb`, `build-fido-dev-8mb`, and `build-fido-dev` for the default
+16 MB profile). `--board NAME` layers `boards/NAME.board` instead of the git-ignored root `sdkconfig.board`; `--clean`
+removes the build directory and its generated sdkconfig. Use it when switching board profiles or `--ci-pins`: an existing
+build keeps its generated sdkconfig, and `build.py` refuses (exit 2) a generated sdkconfig that selects another flash size.
 
 ## Web installer
 

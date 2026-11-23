@@ -20,7 +20,7 @@ COM6 below is the port seen on the tested board; use yours. All commands run in 
 Set-Location I:\Project\esp32\security-key
 . C:\esp\v5.5.6\export.ps1                      # activates ESP-IDF v5.5.6 in this session
 git submodule update --init
-Copy-Item boards\esp32s3-n16r8-boot-button.board sdkconfig.board
+Copy-Item boards\esp32s3-boot-button.board sdkconfig.board
 python tools\build.py dev --clean               # real pins, NOT --ci-pins
 python tools\check_no_irreversible.py fido-dev  # must print PASS
 ```

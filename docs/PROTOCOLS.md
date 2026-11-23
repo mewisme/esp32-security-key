@@ -52,6 +52,7 @@ All commands use `CLA=0x80`. `P1=P2=0x00` except INS `06` (P1 = operation, P2 = 
   reboot and a firmware update on hardware; that it also survives MKAUTH REVOKE and FIDO `authenticatorReset` follows from the code
   (`cmd_revoke` deletes only `0xBC00`; `fido_reset_should_clear` does not list prefix `0xBC`) and was not run. Details: `docs/USB_IDENTITY.md`.
 - Short APDU, Lc ≤ 1+63+31 = 95. Hosts send Le=0x00 on GET/SET/CLEAR and no Le on REENUM.
+- The web installer sends the same APDUs (SELECT, GET_INFO, INS 06 GET/SET/CLEAR with P2 = 1) over the WebCCID interface: the second, vendor-class (0xFF, two bulk endpoints, WinUSB-bound) interface runs the same CCID parser as the smart-card interface, which Chrome's WebUSB refuses to claim (`web/src/lib/device/{mkauth,webccid}.ts`).
 
 ## SSH and Git signing (procedure)
 

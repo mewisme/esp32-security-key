@@ -3,7 +3,7 @@
 Status vocabulary (same as ROADMAP.md): Implemented / Build verified / Unit tested / Integration tested /
 Hardware verified / Blocked / Not implemented. Nothing below is recorded as Hardware verified until a human
 pastes a real report into `docs/hw-reports/`. Reports so far: `2026-11-23-read-only-probe.md`, `2026-11-23-first-run.md`,
-`2026-11-23-uv-and-identity.md` (one board, Windows 11).
+`2026-11-23-uv-and-identity.md`, `2026-11-23-management-cli-and-webusb.md`, `2026-11-23-web-installer.md` (one board, Windows 11).
 
 ## Test levels
 
@@ -25,6 +25,9 @@ pastes a real report into `docs/hw-reports/`. Reports so far: `2026-11-23-read-o
 | USB strings per interface | `python tools/usb_identity.py --expect-product "<name>"` | Windows; built `multikey` CLI optional | yes | see docs/hw-reports |
 | MKAUTH device name, device-side validation | `.venv\Scripts\python tools\mkauth_name_test.py --nobutton` | `pip install pyscard`; PC/SC | yes (no press needed) | see docs/hw-reports |
 | Rename flow incl. re-enumeration and replug | `python tools/name_flow_test.py` | built `multikey` CLI; unenrolled MKAUTH | yes (2 presses, 1 replug) | see docs/hw-reports |
+| Firmware per hardware profile | `python tools/build.py dev --hw esp32s3-4mb --board esp32s3-boot-button --clean` (also `esp32s3-8mb`, `esp32s3-16mb`) | ESP-IDF v5.5.6 exported; submodules + patches applied | no | Build verified (image header flash-size bytes `2f`/`3f`/`4f` checked, see HARDWARE_PROFILES.md); hardware verified for 16 MB only |
+| Web installer logic and UI | `cd web && pnpm test` / `pnpm test:e2e` | `pnpm install`; Playwright chromium for e2e | no | Unit tested; Integration tested with a simulated board and key |
+| Rename from the browser (WebCCID) against a real key | web installer or First use page, desktop Chrome/Edge | key with a native USB port; BOOT press (15 s) | yes | pending hardware |
 
 `ctap_smoke.py --reset --yes-wipe-device` runs authenticatorReset (erases all credentials and the PIN). It is
 off by default. The script only deletes credentials it created itself for rpId `multikey.test`.
@@ -83,5 +86,9 @@ credentials survive reboot. Status: pending hardware.
   flows run against `MockAuthenticator`, including assertions that no PIN appears in any output. The real HID path of
   `ctap-hid-fido2` has no emulator coverage here (pico-fido's emulation speaks a virtual transport, not HID): `fido *` against a real key
   is a hardware test and is only partly done (see ROADMAP).
-- `python -m unittest discover tests/flash` and `tests/release`: flash safety rules, descriptor tool, deterministic packaging.
+- `python -m unittest discover tests/flash` (75 tests: flash safety rules, hardware profiles, descriptor tool) and `tests/release` (50
+  tests: deterministic packaging, manifest schema 2, workflow guards).
+- `cd web && pnpm lint && pnpm test && pnpm build`: eslint, 159 unit tests (manifest v1/v2, profile selection, installer state machine,
+  MKAUTH APDUs, WebCCID framing, renaming orchestration), production build and the check that no test double is in the bundle.
+  `pnpm test:e2e` runs 39 Playwright tests against a simulated board and a simulated key (`web/README.md`); they are not hardware tests.
 - `.github/workflows/release.yml` verifies the packaged artifact itself (version output, help, static CRT, PAM symbols/load/fail-closed).

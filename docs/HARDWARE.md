@@ -1,12 +1,13 @@
 # Hardware
 
-Target: generic **ESP32-S3 N16R8** devkit (16 MB quad flash, 8 MB octal PSRAM). The firmware uses the chip's **native USB
+Target: ESP32-S3 devkits with **4, 8 or 16 MB quad-SPI flash** ([HARDWARE_PROFILES.md](HARDWARE_PROFILES.md)). Hardware
+verification so far is one **ESP32-S3 N16R8** board (16 MB quad flash, 8 MB octal PSRAM). The firmware uses the chip's **native USB
 OTG** (GPIO19 = D-, GPIO20 = D+) for the FIDO HID and CCID interfaces. Nothing about the board's connectors, LEDs or buttons
 is assumed beyond what is listed under "Verify physically".
 
 ## First hardware setup (simplest path): BOOT button, no LED, no extra parts
 
-`boards/esp32s3-n16r8-boot-button.board` selects:
+`boards/esp32s3-boot-button.board` (any ESP32-S3 devkit with the standard BOOT button; used by every flash profile) selects:
 
 ```
 CONFIG_MULTIKEY_BUTTON_GPIO=0          # the onboard BOOT button
@@ -43,7 +44,8 @@ download mode instead of booting the firmware. After boot it is an ordinary GPIO
    your board has only a bridge port, GPIO19/20 are not on a connector and FIDO over USB needs wiring to them.
    `Get-PnpDevice -Class Ports` after plugging each connector shows which one is a bridge (CP210x / CH340 / etc.) and which
    is "USB Serial Device" with VID 303A (the ROM's USB-Serial-JTAG while in download mode).
-3. **Flash and PSRAM size.** `esptool flash_id` should report 16 MB; `chip_id`/boot log should show the ESP32-S3 revision. The
+3. **Flash and PSRAM size.** `esptool flash_id` should report 4, 8 or 16 MB, the profile you build or install (the flash script and
+   the web installer refuse any other size); `chip_id`/boot log should show the ESP32-S3 revision. The
    firmware keeps PSRAM disabled (key material never goes to external RAM), so PSRAM is simply unused.
 4. **Console.** The firmware console is UART0 (GPIO43/44), reachable through the bridge port only on boards wired that way.
    No console is available on the native USB port while the firmware uses it for FIDO.
@@ -66,17 +68,25 @@ With an LED type selected the build fails while `MULTIKEY_LED_GPIO` is -1. With 
 
 ## Compatibility levels
 
-Same rows as the web installer's board step (`web/src/lib/compatibility/boards.ts`). The installer also checks chip and flash
-size electronically before writing.
+Same rows, in the same order, as the home page's table (`web/src/lib/compatibility/matrix.ts`). The installer also checks chip,
+flash type (quad or octal) and flash size electronically before writing; profiles and their evidence:
+[HARDWARE_PROFILES.md](HARDWARE_PROFILES.md).
 
-| Board | Level | Why |
+| Hardware | Level | Detail |
 |---|---|---|
-| ESP32-S3 N16R8 devkit with two USB ports and a BOOT button | Tested | firmware hardware verified on this board type with the developer script |
-| Other ESP32-S3 board with 16 MB flash, native USB and BOOT on GPIO0 | Expected to work | same chip, flash size and button wiring; not tested |
-| ESP32-S3 with 4 or 8 MB flash | Not supported | the partition layout needs 16 MB |
-| ESP32, ESP32-S2, ESP32-C3, ESP32-C6, ESP32-H2 | Not supported | MultiKeys runs on the ESP32-S3 only |
-| Board without a native USB connector (USB-to-serial chip only) | Not supported | the key needs the chip's own USB (GPIO19/20) |
-| Not sure | Checked during install | read the module marking (N16 = 16 MB); the installer stops on a wrong chip or flash size |
+| ESP32-S3 N16R8 | Hardware verified | 16 MB quad flash, 8 MB PSRAM (unused) |
+| Other ESP32-S3 with 16 MB quad flash | Expected compatible | native USB connector and a BOOT button on GPIO0 |
+| ESP32-S3 with 8 MB quad flash (N8, N8R2, N8R8) | Build verified | builds and passes every image check; not run on a board yet |
+| ESP32-S3 with 4 MB quad flash (N4, N4R2) | Build verified | builds and passes every image check; not run on a board yet |
+| ESP32-S3 with 2 MB flash | Unsupported | does not fit the 3 MB storage layout |
+| Octal-flash modules (ESP32-S3-WROOM-2, e.g. N16R8V, N32R8V) | Unsupported | only quad-SPI flash is supported |
+| ESP32, ESP32-S2, -C3, -C6, -H2 | Unsupported | MultiKeys only runs on the ESP32-S3 |
+| Boards without a native USB connector | Unsupported | the key talks to the computer through the chip's own USB |
+
+Hardware verified = ran on that board type with a report in `docs/hw-reports/`. Build verified = the firmware for that flash size
+builds, packages and passes the image checks, but nobody has run it on such a board. Expected compatible = same build as a
+hardware-verified profile on a board that is not the tested one. Installing on anything that is not hardware verified needs an
+extra acknowledgement in the web installer.
 
 ## Limits you should know
 
