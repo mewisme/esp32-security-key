@@ -24,6 +24,8 @@ on:
       - 'pico-keys-sdk'
       - 'pico-fido'
       - 'packaging/**'
+      - 'install.sh'
+      - 'install.ps1'
       - 'tests/release/**'
       - 'LICENSE'
       - '.github/workflows/release.yml'

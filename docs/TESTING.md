@@ -87,8 +87,9 @@ credentials survive reboot. Status: pending hardware.
   flows run against `MockAuthenticator`, including assertions that no PIN appears in any output. The real HID path of
   `ctap-hid-fido2` has no emulator coverage here (pico-fido's emulation speaks a virtual transport, not HID): `fido *` against a real key
   is a hardware test and is only partly done (see ROADMAP).
-- `python -m unittest discover tests/flash` (75 tests: flash safety rules, hardware profiles, descriptor tool) and `tests/release` (50
-  tests: deterministic packaging, manifest schema 2, workflow guards).
+- `python -m unittest discover tests/flash` (75 tests: flash safety rules, hardware profiles, descriptor tool) and `tests/release` (60
+  tests: deterministic packaging, manifest schema 2, workflow guards, `install.sh`/`install.ps1` against a fake release; the shell
+  tests run on Linux, the PowerShell tests on Windows).
 - `cd web && pnpm lint && pnpm test && pnpm build`: eslint, 174 unit tests (manifest v1/v2, profile selection, installer state machine,
   MKAUTH APDUs, WebCCID framing, renaming orchestration including a silent or slow key, locale detection), production build and the check
   that no test double is in the bundle. `pnpm test:e2e` runs 47 Playwright tests against a simulated board and a simulated key, in English

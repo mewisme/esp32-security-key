@@ -60,6 +60,50 @@ legacy build). `firmware.json` inside a legacy zip is still compared with the en
 `update.data_preserving_from` (0.2.0 for now) is the oldest installed version whose stored data this firmware declares it can
 use; the web installer treats anything else as an unverified update and asks for an acknowledgement.
 
+## Install script
+
+`install.ps1` (Windows) and `install.sh` (Linux) in the repository root install the host tool from a release. The short URLs
+`https://get.mewis.me/esp32-security-key.ps1` and `https://get.mewis.me/esp32-security-key.sh` serve them.
+
+```powershell
+irm https://get.mewis.me/esp32-security-key.ps1 | iex
+& ([scriptblock]::Create((irm https://get.mewis.me/esp32-security-key.ps1))) --version v0.2.0
+& ([scriptblock]::Create((irm https://get.mewis.me/esp32-security-key.ps1))) --uninstall
+```
+```sh
+curl -fsSL https://get.mewis.me/esp32-security-key.sh | sh
+curl -fsSL https://get.mewis.me/esp32-security-key.sh | sh -s -- --pam         # also pam_multikey.so (needs root)
+curl -fsSL https://get.mewis.me/esp32-security-key.sh | sh -s -- --uninstall   # with --pam: the module too
+```
+
+Both take GitHub's *latest* release (pre-releases are skipped; `--version` or `MULTIKEY_VERSION` pins one, 0.1.0 and later),
+download its `SHA256SUMS` and the archive for the platform (table above), refuse to install when the archive is not listed or its
+SHA-256 differs, copy `multikey` and the notices, and run `multikey --version`. The checksum has the limit stated under *Verify a
+download*. They never talk to the key, flash anything or write the trust store.
+
+| | Windows | Linux |
+|---|---|---|
+| Program | `%LOCALAPPDATA%\Programs\MultiKeys\bin\multikey.exe`, added to the user PATH (`--no-modify-path` skips it; uninstall removes the entry only if the installer added it) | `~/.local/bin/multikey` (`/usr/local/bin` as root); a hint when that is not on PATH |
+| `LICENSE`, `THIRD_PARTY_LICENSES.txt` | `%LOCALAPPDATA%\Programs\MultiKeys\share` | `~/.local/share/multikey` (`/usr/local/share/multikey` as root) |
+| Needs | Windows x64, Windows PowerShell 5.1 or PowerShell 7 | x86_64, glibc 2.35 or newer (built on Ubuntu 22.04), `curl`, `tar`, `install` |
+
+`--pam` (Linux only) also installs `pam_multikey.so` into the directory that holds `pam_unix.so` (`/lib/x86_64-linux-gnu/security` on
+Debian and Ubuntu), through `sudo` when that directory is not writable. The file is staged in that directory and renamed, so replacing a
+module that is in use is one step. **The module is not enabled**: `/etc/pam.d` is only read, to decide an uninstall, and never written
+([LINUX_PAM](LINUX_PAM.md)). `--uninstall --pam` refuses, and removes nothing, while a service file there still names the module,
+because a PAM line without its module can break logins. The trust store (`/etc/multikey/trusted.toml`,
+`%ProgramData%\MultiKeys\trusted.toml`) is never removed.
+
+Environment variables: `MULTIKEY_VERSION`, `MULTIKEY_INSTALL_DIR`, `MULTIKEY_SHARE_DIR`, `MULTIKEY_BASE_URL` (download base, default
+`https://github.com/mewisme/esp32-security-key/releases/download`; the scripts read `<base>/<tag>/<asset>`), `MULTIKEY_NO_MODIFY_PATH`
+(Windows), `MULTIKEY_PAM_DIR` and `MULTIKEY_PAM_CONF_DIR` (Linux; the default is `/etc/pam.d`). `sh -s -- --help` prints the Linux options.
+
+`tests/release/test_install_scripts.py` runs both scripts against a fake release built by `tools/package_release.py` (checksum refusal,
+the opt-in PAM module, the uninstall guard); the shell tests need Linux, the PowerShell tests Windows. Outside the suite the scripts were
+run against the published v0.1.0, v0.2.0 and v0.3.0 assets on Windows 11 (Windows PowerShell 5.1 and PowerShell 7, PATH entry added and
+removed) and on Ubuntu 24.04 in WSL (root and normal user; the `sudo` path through a stub, not a password prompt). Not run: macOS (refused),
+other distributions, ARM.
+
 ## Verify a download
 
 ```powershell

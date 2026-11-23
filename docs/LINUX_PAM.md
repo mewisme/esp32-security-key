@@ -8,6 +8,18 @@ the trust store, asks the device for a challenge response (the user presses the 
 against the stored public key and device id. **No PIN is used or prompted.** Presence of the key plus a button press
 is the whole check.
 
+## Install the prebuilt module
+
+```sh
+curl -fsSL https://get.mewis.me/esp32-security-key.sh | sh -s -- --pam
+```
+
+installs `multikey` and, from the same release, `pam_multikey.so` (both checked against `SHA256SUMS`), the module into the directory
+that holds `pam_unix.so`, through `sudo` when needed. At run time it needs `libpam0g`, `libpcsclite1` and a running `pcscd`.
+**It does not enable the module**: nothing in `/etc/pam.d` is changed. Continue with *Enrol*, *Test first, safely* and *Safe rollout
+rules* below. `sh -s -- --uninstall --pam` removes the module again but refuses while a service file still names it; all options are in
+[RELEASES.md](RELEASES.md#install-script).
+
 ## Build
 
 On Linux with `libpam0g-dev` and `libpcsclite-dev` (Debian/Ubuntu names) and `pcscd` running:

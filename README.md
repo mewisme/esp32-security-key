@@ -137,8 +137,21 @@ boot (unlike upstream).
 
 ### Host tool
 
-`multikey` (prebuilt archives in [GitHub Releases](https://github.com/mewisme/esp32-security-key/releases), or
-`cd host && cargo build --release`):
+Install the prebuilt `multikey` (Windows x64, Linux x86_64) with the installer script. It takes the latest
+[release](https://github.com/mewisme/esp32-security-key/releases), checks it against the release's `SHA256SUMS`, installs it for
+your user and never touches the key:
+
+```powershell
+irm https://get.mewis.me/esp32-security-key.ps1 | iex
+```
+
+```sh
+curl -fsSL https://get.mewis.me/esp32-security-key.sh | sh
+curl -fsSL https://get.mewis.me/esp32-security-key.sh | sh -s -- --pam   # Linux: also the PAM module (needs root; not enabled)
+```
+
+Pinning a version, uninstalling and every option: [docs/RELEASES.md](docs/RELEASES.md#install-script). Or take the archive from
+GitHub Releases, or build it with `cd host && cargo build --release`. What the tool does:
 
 ```
 multikey device list | info | status | version      # inventory and identity, add --json for scripts

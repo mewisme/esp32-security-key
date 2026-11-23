@@ -60,6 +60,8 @@ jobs:
               - 'tests/**'
               - 'boards/**'
               - 'packaging/**'
+              - 'install.sh'
+              - 'install.ps1'
               - 'partitions*.csv'
               - 'sdkconfig.*'
               - '.github/workflows/*.yml'
