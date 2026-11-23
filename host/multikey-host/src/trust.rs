@@ -89,16 +89,44 @@ pub struct TrustStore {
     keys: Vec<KeyEntry>,
 }
 
-/// `/etc/multikey/trusted.toml` on Unix, `%ProgramData%\MultiKey\trusted.toml` on Windows.
+/// `/etc/multikey/trusted.toml` on Unix, `%ProgramData%\MultiKeys\trusted.toml` on Windows.
+///
+/// Windows fallback: tools up to 0.1.0 used `%ProgramData%\MultiKey\trusted.toml`. When only that legacy file
+/// exists it keeps being used (read and written), so an existing enrollment is never lost or split across two
+/// files. Nothing is moved automatically: the folder's permissions protect the store and a move could change them.
 pub fn default_trust_store_path() -> PathBuf {
     #[cfg(windows)]
     {
-        let base = std::env::var_os("ProgramData").unwrap_or_else(|| r"C:\ProgramData".into());
-        PathBuf::from(base).join("MultiKey").join("trusted.toml")
+        let base = PathBuf::from(
+            std::env::var_os("ProgramData").unwrap_or_else(|| r"C:\ProgramData".into()),
+        );
+        let current = base.join("MultiKeys").join("trusted.toml");
+        let legacy = base.join("MultiKey").join("trusted.toml");
+        choose_store_path(
+            current.clone(),
+            legacy.clone(),
+            current.exists(),
+            legacy.exists(),
+        )
     }
     #[cfg(not(windows))]
     {
         PathBuf::from("/etc/multikey/trusted.toml")
+    }
+}
+
+/// The current path, unless only the legacy file exists.
+#[cfg_attr(not(any(windows, test)), allow(dead_code))]
+fn choose_store_path(
+    current: PathBuf,
+    legacy: PathBuf,
+    current_exists: bool,
+    legacy_exists: bool,
+) -> PathBuf {
+    if legacy_exists && !current_exists {
+        legacy
+    } else {
+        current
     }
 }
 
@@ -189,6 +217,28 @@ mod tests {
         let mut pk = [7u8; PUBKEY_LEN];
         pk[0] = 4;
         KeyEntry::new(user, &pk, &[9u8; DEVICE_ID_LEN])
+    }
+
+    #[test]
+    fn legacy_store_used_only_when_it_alone_exists() {
+        let cur = || PathBuf::from("MultiKeys/trusted.toml");
+        let old = || PathBuf::from("MultiKey/trusted.toml");
+        assert_eq!(
+            choose_store_path(cur(), old(), false, false),
+            cur(),
+            "fresh install"
+        );
+        assert_eq!(choose_store_path(cur(), old(), true, false), cur());
+        assert_eq!(
+            choose_store_path(cur(), old(), false, true),
+            old(),
+            "existing 0.1.0 enrollment keeps working"
+        );
+        assert_eq!(
+            choose_store_path(cur(), old(), true, true),
+            cur(),
+            "new location wins when both exist"
+        );
     }
 
     #[test]

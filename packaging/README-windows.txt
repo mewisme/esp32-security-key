@@ -1,7 +1,8 @@
 multikey - host tool for MultiKeys security keys (Windows x86_64)
 
 multikey.exe is a single self-contained program. There is no installer and nothing is written outside the
-folder you put it in, except the trust store (only when you use `mkauth enroll`) at %APPDATA%\multikey.
+folder you put it in, except the trust store (only when you use `mkauth enroll`) at
+%ProgramData%\MultiKeys\trusted.toml (0.1.0 used %ProgramData%\MultiKey; that file is still used if it is the only one).
 
 Verify the download (SHA256SUMS is a separate release asset):
     Get-FileHash -Algorithm SHA256 .\multikey-v<version>-windows-x86_64.zip
@@ -23,6 +24,6 @@ Two different PINs exist and they are unrelated:
 
 Not FIDO certified. The key firmware is a development build; do not use it to protect real accounts.
 
-Uninstall: delete the folder (and %APPDATA%\multikey if you used mkauth enroll).
+Uninstall: delete the folder (and %ProgramData%\MultiKeys or %ProgramData%\MultiKey if you used mkauth enroll).
 License: GNU AGPL-3.0-or-later (LICENSE). Third-party crates: THIRD_PARTY_LICENSES.txt.
 Source: https://github.com/mewisme/esp32-security-key

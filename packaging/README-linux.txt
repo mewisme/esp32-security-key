@@ -25,6 +25,6 @@ Two different PINs exist and they are unrelated:
 
 Not FIDO certified. The key firmware is a development build; do not use it to protect real accounts.
 
-Uninstall: delete the binary (and ~/.config/multikey if you used mkauth enroll).
+Uninstall: delete the binary (and /etc/multikey/trusted.toml if you used mkauth enroll).
 License: GNU AGPL-3.0-or-later (LICENSE). Third-party crates: THIRD_PARTY_LICENSES.txt.
 Source: https://github.com/mewisme/esp32-security-key

@@ -17,7 +17,7 @@ host library only (mock device); Credential Provider **Not implemented**.
 
 The MKAUTH applet is reached through the CCID interface of the `fido` image. Windows exposes it through winscard
 (`SCardTransmit`); `multikey-host` uses the `pcsc` crate, which links winscard on Windows, so `multikey enroll|auth|status`
-work from scripts and services in the same way as on Linux. Trust store: `%ProgramData%\MultiKey\trusted.toml`
+work from scripts and services in the same way as on Linux. Trust store: `%ProgramData%\MultiKeys\trusted.toml` (tools up to 0.1.0 used `%ProgramData%\MultiKey\trusted.toml`; if only that file exists it is still used)
 (restrict its ACL to Administrators/SYSTEM write). Whether the Windows smart-card stack accepts the CCID descriptors of
 this device is pending hardware.
 

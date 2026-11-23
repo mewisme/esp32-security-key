@@ -18,7 +18,7 @@ cargo test --locked
 Linux needs `libpcsclite-dev` and `libudev-dev` to build (the HID transport links libudev) and `libpcsclite1`, `libudev1` and `pcscd` at runtime; Windows uses winscard.
 
 ## Trust store
-Default `/etc/multikey/trusted.toml` (Linux), `%ProgramData%\MultiKey\trusted.toml` (Windows); override with `--trust-store`.
+Default `/etc/multikey/trusted.toml` (Linux), `%ProgramData%\MultiKeys\trusted.toml` (Windows) (tools up to 0.1.0 used `%ProgramData%\MultiKey\trusted.toml`; if only that file exists it is still used); override with `--trust-store`.
 Keep it writable by root/Administrators only.
 
 ```toml
