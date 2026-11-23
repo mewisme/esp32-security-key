@@ -64,7 +64,7 @@ activity the key reports; the first part needs firmware with the `BUILD_INFO` co
 
 The installer checks a download against the SHA-256 values of the release's manifest. It can also verify a signature of that manifest, but
 no release is signed yet (no signing key exists), so releases are shown as "Not authenticated":
-[docs/RELEASE_SIGNING.md](docs/RELEASE_SIGNING.md). The CTAPHID cancel and FIDO UV fixes in the firmware patches are emulation tested only and
+[docs/RELEASE_SIGNING.md](docs/RELEASE_SIGNING.md). The CTAPHID cancel fix was verified on one board (three cases); the FIDO UV fixes are emulation tested only and
 not yet hardware verified ([docs/SECURITY.md](docs/SECURITY.md)).
 
 ### PowerShell (developers, the verified method)
