@@ -59,8 +59,8 @@ the key ([installer report](docs/hw-reports/2026-11-23-web-installer.md),
 [naming report](docs/hw-reports/2026-11-23-profiles-and-personalization.md)). The site is available in English and Vietnamese and
 also has a Passkey lab (`/passkeys`) that registers a test passkey on the key; the lab is tested with a virtual authenticator only, not yet on
 real hardware. A "Your key" page (`/key`) reads which firmware the key runs and whether it is a published release image, and lists the passkey
-activity the key reports; the first part needs firmware built with the `BUILD_INFO` command (not in v0.3.0). It was run once against a real key
-(a local build; [report](docs/hw-reports/2026-11-23-build-info-and-passkey-events.md)), and `multikey device watch` is its command-line counterpart.
+activity the key reports; the first part needs firmware with the `BUILD_INFO` command (v0.3.1 and later; a v0.3.0 key says it cannot report). It was run once against a real key
+(a local build of the same sources; [report](docs/hw-reports/2026-11-23-build-info-and-passkey-events.md)), and `multikey device watch` is its command-line counterpart.
 
 ### PowerShell (developers, the verified method)
 
