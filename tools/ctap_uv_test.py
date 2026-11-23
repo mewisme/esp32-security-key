@@ -393,10 +393,11 @@ DEFAULT_GROUPS = ["info", "raw", "nopin", "timeout", "cancel"]
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--only", nargs="+", choices=list(GROUPS), help=f"groups to run (default: {' '.join(DEFAULT_GROUPS)})")
-    ap.add_argument("--pin", help="EXISTING PIN, only for group 'pin'")
+    ap.add_argument("--pin", help="EXISTING PIN, only for group 'pin' (or set MULTIKEY_TEST_PIN)")
     ap.add_argument("--yes", action="store_true", help="do not wait for Enter before starting")
     ap.add_argument("--expect-aaguid", default=DEFAULT_AAGUID, help="expected AAGUID hex (default: project development value)")
     args = ap.parse_args()
+    args.pin = args.pin or os.environ.get("MULTIKEY_TEST_PIN")  # keeps the PIN off the command line
     devs = list(CtapHidDevice.list_devices())
     if not devs:
         sys.exit("No CTAPHID device found. On Windows run from an elevated PowerShell (tools\\run_elevated.ps1); "
