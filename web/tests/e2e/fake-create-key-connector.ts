@@ -3,6 +3,7 @@
 import type { KeyConnection, KeyConnector } from "@/lib/device/key-connector";
 import { validateDeviceName } from "@/lib/device/device-name";
 import { getInfoApdu, nameGetApdu, selectApdu } from "@/lib/device/mkauth";
+import { NoAnswerError } from "@/lib/device/webccid";
 import { FirmwareError } from "@/lib/errors/firmware-error";
 import { readScenario } from "./scenario";
 
@@ -39,10 +40,26 @@ const sw = (data: number[], code: number) => Uint8Array.from([...data, code >> 8
 const same = (a: Uint8Array, b: Uint8Array) => a.length === b.length && a.every((v, i) => v === b[i]);
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
+// Commands left to drop after the simulated restart (scenario key.silentAfterRestart).
+let silent = 0;
+
+/** The key re-enumerated: the host now sees the stored name, and the first reads may go unanswered. */
+function restart() {
+  const s = keyState();
+  s.enumerated = s.name;
+  silent = readScenario().key?.silentAfterRestart ?? 0;
+}
+
 async function handle(apdu: Uint8Array): Promise<Uint8Array> {
   const k = readScenario().key ?? {};
   const s = keyState();
-  if (same(apdu, selectApdu())) return sw([...new TextEncoder().encode("MKAUTH 1")], 0x9000);
+  if (same(apdu, selectApdu())) {
+    if (silent > 0) {
+      silent -= 1;
+      throw new NoAnswerError("the simulated key dropped the command");
+    }
+    return sw([...new TextEncoder().encode("MKAUTH 1")], 0x9000);
+  }
   if (same(apdu, getInfoApdu())) {
     const info = [0x01, k.enrolledPin !== undefined ? 1 : 0, 0, ...new Array<number>(16).fill(0xab)];
     if (k.enrolledPin !== undefined) info.push(...new Array<number>(65).fill(0x04));
@@ -83,6 +100,10 @@ async function handle(apdu: Uint8Array): Promise<Uint8Array> {
     s.custom = false;
     window.__keyWrites.push({ op: "clear" });
   }
+  if (k.dropWriteAnswer) {
+    restart();
+    throw new NoAnswerError("the simulated key's answer was lost");
+  }
   return sw([], 0x9000);
 }
 
@@ -102,8 +123,7 @@ class FakeKeyConnection implements KeyConnection {
       throw new FirmwareError("name-not-verified", "the simulated key did not come back");
     }
     await sleep(200);
-    const s = keyState();
-    s.enumerated = s.name;
+    restart();
   }
 
   async close() {}

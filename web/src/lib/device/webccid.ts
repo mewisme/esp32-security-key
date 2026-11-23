@@ -29,9 +29,22 @@ function withTimeout<T>(p: Promise<T>, ms: number, onTimeout: () => Error): Prom
   });
 }
 
+/**
+ * The key did not answer in time. It is not the key saying "button not pressed" (that is its status word 6300): the
+ * command can be dropped, for instance while the computer's smart-card stack probes the other interface. Shown to the
+ * user as "can't reach the key's management interface"; the rename flow catches it to read the name back instead.
+ */
+export class NoAnswerError extends FirmwareError {
+  constructor(detail: string) {
+    super("name-transport-unavailable", detail);
+    this.name = "NoAnswerError";
+  }
+}
+
 export class WebCcid {
   private seq = 0;
   private buf = new Uint8Array(0);
+  private abandoned = false;
 
   private constructor(
     private readonly device: USBDevice,
@@ -66,8 +79,15 @@ export class WebCcid {
     return ccid;
   }
 
+  /**
+   * One APDU. A timeout means "no answer" (not "the button was not pressed": that is the key's own status word 6300). The
+   * abandoned exchange stops reading, otherwise it would swallow the next answer; the connection must then be reopened.
+   */
   async transmit(apdu: Uint8Array, timeoutMs: number): Promise<Uint8Array> {
-    return withTimeout(this.exchange(XFR_BLOCK, apdu), timeoutMs, () => new FirmwareError("name-button-timeout", `no answer within ${timeoutMs} ms`));
+    return withTimeout(this.exchange(XFR_BLOCK, apdu), timeoutMs, () => {
+      this.abandoned = true;
+      return new NoAnswerError(`no answer within ${timeoutMs} ms`);
+    });
   }
 
   async close(): Promise<void> {
@@ -105,6 +125,7 @@ export class WebCcid {
           return msg;
         }
       }
+      if (this.abandoned) throw new NoAnswerError("exchange abandoned after a timeout");
       const r = await this.device.transferIn(this.epIn, 1024);
       if (r.status !== "ok" || !r.data) throw new FirmwareError("name-failed", `USB transfer ${r.status}`);
       const chunk = new Uint8Array(r.data.buffer, r.data.byteOffset, r.data.byteLength);

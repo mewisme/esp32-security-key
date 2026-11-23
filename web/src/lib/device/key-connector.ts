@@ -2,7 +2,7 @@
 // (WebCCID). Re-enumeration after a rename is awaited through navigator.usb connect/disconnect events.
 import { FirmwareError } from "../errors/firmware-error";
 import type { DeviceCheck } from "../flashing/machine";
-import { WebCcid } from "./webccid";
+import { NoAnswerError, WebCcid } from "./webccid";
 
 export interface KeyConnection {
   identity(): Promise<DeviceCheck>;
@@ -50,8 +50,15 @@ class WebUsbKeyConnection implements KeyConnection {
   }
 
   async transmit(apdu: Uint8Array, timeoutMs: number): Promise<Uint8Array> {
-    this.ccid ??= await WebCcid.open(this.device);
-    return this.ccid.transmit(apdu, timeoutMs);
+    this.ccid ??= await this.openCcid();
+    try {
+      return await this.ccid.transmit(apdu, timeoutMs);
+    } catch (e) {
+      // The key stopped answering (it can drop a command while another interface is probing it): the abandoned exchange
+      // must not keep reading, so the next call starts over with a fresh claim of the interface.
+      if (e instanceof NoAnswerError) await this.closeCcid();
+      throw e;
+    }
   }
 
   async waitForReenumeration(timeoutMs: number): Promise<void> {
@@ -106,6 +113,19 @@ class WebUsbKeyConnection implements KeyConnection {
     const c = this.ccid;
     this.ccid = null;
     await c?.close();
+  }
+
+  private async openCcid(): Promise<WebCcid> {
+    try {
+      return await WebCcid.open(this.device);
+    } catch (e) {
+      // After a USB re-enumeration the device object held here can be stale: use the one the browser knows now.
+      const list = await navigator.usb.getDevices().catch(() => [] as USBDevice[]);
+      const current = list.find((d) => d.serialNumber === this.device.serialNumber);
+      if (!current || current === this.device) throw e;
+      this.device = current;
+      return WebCcid.open(this.device);
+    }
   }
 }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { FirmwareError } from "@/lib/errors/firmware-error";
-import { WebCcid } from "@/lib/device/webccid";
+import { NoAnswerError, WebCcid } from "@/lib/device/webccid";
 
 type Reply = Uint8Array | "hang" | ((out: Uint8Array[]) => Uint8Array);
 
@@ -103,7 +103,7 @@ describe("WebCcid", () => {
     expect(f.dev.claimInterface).not.toHaveBeenCalled();
   });
 
-  it("rejects name-button-timeout when the key stays silent", async () => {
+  it("rejects NoAnswerError, never a button timeout, when the key stays silent", async () => {
     vi.useFakeTimers();
     try {
       const f = fakeDevice({ replies: [atr, "hang"] });
@@ -112,7 +112,29 @@ describe("WebCcid", () => {
       const assertion = expect(p).rejects.toBeInstanceOf(FirmwareError);
       await vi.advanceTimersByTimeAsync(25000);
       await assertion;
-      await expect(p).rejects.toMatchObject({ code: "name-button-timeout" });
+      await expect(p).rejects.toMatchObject({ code: "name-transport-unavailable" });
+      await expect(p).rejects.toBeInstanceOf(NoAnswerError);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("an abandoned exchange stops reading, so it cannot swallow the answer of the next one", async () => {
+    vi.useFakeTimers();
+    try {
+      const f = fakeDevice({ replies: [atr] });
+      const c = await WebCcid.open(f.usb);
+      let release: (reply: unknown) => void = () => {};
+      f.dev.transferIn.mockImplementationOnce((() => new Promise((resolve) => (release = resolve))) as never);
+      const p = c.transmit(Uint8Array.from([1]), 1000);
+      const assertion = expect(p).rejects.toBeInstanceOf(NoAnswerError);
+      await vi.advanceTimersByTimeAsync(1000);
+      await assertion;
+      const reads = f.dev.transferIn.mock.calls.length;
+      const lateTimeExtension = msg(0x80, 1, [], 0x80);
+      release({ status: "ok", data: new DataView(lateTimeExtension.buffer) });
+      await vi.advanceTimersByTimeAsync(10);
+      expect(f.dev.transferIn.mock.calls.length).toBe(reads);
     } finally {
       vi.useRealTimers();
     }

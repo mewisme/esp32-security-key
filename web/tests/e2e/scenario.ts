@@ -17,7 +17,18 @@ export interface Scenario {
   device?: "blank" | "fido-0.1.0-dev" | "fido-0.2.0" | "foreign";
   disconnectAt?: number;
   checker?: "ok" | "throw";
-  key?: { name?: string; custom?: boolean; renameSupported?: boolean; enrolledPin?: string; button?: "press" | "timeout"; reenumerate?: "ok" | "never" };
+  key?: {
+    name?: string;
+    custom?: boolean;
+    renameSupported?: boolean;
+    enrolledPin?: string;
+    button?: "press" | "timeout";
+    reenumerate?: "ok" | "never";
+    /** Reads the key leaves unanswered right after it restarted (the firmware drops a command while Windows probes it). */
+    silentAfterRestart?: number;
+    /** The write is applied, the key restarts, but its answer never reaches the page. */
+    dropWriteAnswer?: boolean;
+  };
 }
 
 export const SCENARIO_KEY = "multikeys-e2e-scenario";

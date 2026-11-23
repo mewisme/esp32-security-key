@@ -53,6 +53,14 @@ All commands use `CLA=0x80`. `P1=P2=0x00` except INS `06` (P1 = operation, P2 = 
   (`cmd_revoke` deletes only `0xBC00`; `fido_reset_should_clear` does not list prefix `0xBC`) and was not run. Details: `docs/USB_IDENTITY.md`.
 - Short APDU, Lc ≤ 1+63+31 = 95. Hosts send Le=0x00 on GET/SET/CLEAR and no Le on REENUM.
 - The web installer sends the same APDUs (SELECT, GET_INFO, INS 06 GET/SET/CLEAR with P2 = 1) over the WebCCID interface: the second, vendor-class (0xFF, two bulk endpoints, WinUSB-bound) interface runs the same CCID parser as the smart-card interface, which Chrome's WebUSB refuses to claim (`web/src/lib/device/{mkauth,webccid}.ts`).
+- **Timing on the WebCCID interface (observed, Windows 11, Chrome, one board):** after the key restarts its USB connection the first command can go
+  unanswered. A SELECT sent 1 ms after Chrome's `connect` event got no answer in 5 s (IccPowerOn, answered by the USB task, did work); the same
+  sequence sent a second later was answered in about 10 ms, and over libusb (with a 1 s pause) every answer arrived in 10 ms. Likely cause
+  (read from `pico-keys-sdk/src/usb/usb.c`, **not confirmed by a trace**): the card core serves one interface at a time and `card_start` calls
+  `card_exit`, which flushes queued commands, when another interface (here Windows' own smart-card stack probing the CCID interface right after
+  enumeration) sends a command. The page therefore waits 1 s after the key is back and reads on a fresh claim, up to 6 times; the key's
+  `6300` (button not pressed) is shown as such only when the key says it. With no BOOT press (libusb probe) the key answers `6300` after
+  exactly 15.03 s, sends a time-extension frame every 1.51 s, and one extra vendor frame (`0x7F`, payload `03 00 03`) when the wait starts.
 
 ## SSH and Git signing (procedure)
 

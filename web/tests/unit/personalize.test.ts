@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { FirmwareError } from "@/lib/errors/firmware-error";
 import type { KeyConnection } from "@/lib/device/key-connector";
-import { applyNameRequest, type NameStatus } from "@/lib/device/personalize";
+import { applyNameRequest, type NameStatus, type Timing } from "@/lib/device/personalize";
+import { NoAnswerError } from "@/lib/device/webccid";
 
 const enc = (s: string) => new TextEncoder().encode(s);
 const sw = (data: number[], code: number) => Uint8Array.from([...data, code >> 8, code & 0xff]);
@@ -12,10 +13,13 @@ const DEFAULT = "MultiKeys Security Key";
 const PIN = "246810";
 
 interface Opts {
-  responses: Uint8Array[];
+  /** Answers in order; "silent" is a command the key never answers. */
+  responses: (Uint8Array | "silent")[];
   reenum?: "ok" | "timeout";
   product?: string;
 }
+
+const NO_WAIT: Timing = { settleMs: 0, initialAttempts: 3, restartAttempts: 6, readTimeoutMs: 1, pauseMs: 0 };
 
 function fake(o: Opts) {
   const sent: Uint8Array[] = [];
@@ -28,6 +32,7 @@ function fake(o: Opts) {
       sent.push(apdu);
       const r = queue.shift();
       if (!r) throw new Error("unexpected transmit");
+      if (r === "silent") throw new NoAnswerError("silent");
       return r;
     },
     async waitForReenumeration() {
@@ -41,7 +46,7 @@ function fake(o: Opts) {
 async function run(o: Opts, req: Parameters<typeof applyNameRequest>[1], pin: string | null = null) {
   const f = fake(o);
   const statuses: NameStatus[] = [];
-  const out = await applyNameRequest(f.conn, req, DEFAULT, pin, (s) => statuses.push(s));
+  const out = await applyNameRequest(f.conn, req, DEFAULT, pin, (s) => statuses.push(s), NO_WAIT);
   return { ...f, out, statuses };
 }
 
@@ -75,7 +80,7 @@ describe("applyNameRequest", () => {
   it("writes, re-enumerates and verifies; PIN only in the SET APDU", async () => {
     const r = await run({ responses: [SELECT, nameResp(4, DEFAULT), info(true), ok, SELECT, nameResp(5, "Mew")], product: "Mew" }, custom, PIN);
     expect(r.out).toEqual({ status: "verified", name: "Mew" });
-    expect(r.statuses).toEqual(["connecting", "press-button", "reconnecting"]);
+    expect(r.statuses).toEqual(["connecting", "press-button", "reconnecting", "connecting"]);
     const pin = enc(PIN).join(",");
     const holders = r.sent.map((a, i) => [i, a.join(",").includes(pin)] as const).filter(([, h]) => h).map(([i]) => i);
     expect(holders).toEqual([3]);
@@ -130,5 +135,30 @@ describe("applyNameRequest", () => {
   it("turns unexpected exceptions into failed/name-failed", async () => {
     const r = await run({ responses: [] }, custom);
     expect(r.out).toMatchObject({ status: "failed", error: "name-failed" });
+  });
+
+  it("reads again, on a fresh claim, while a restarted key stays silent", async () => {
+    const r = await run({ responses: [SELECT, nameResp(4, DEFAULT), info(false), ok, "silent", "silent", SELECT, nameResp(5, "Mew")], product: "Mew" }, custom);
+    expect(r.out).toEqual({ status: "verified", name: "Mew" });
+    expect(r.statuses).toEqual(["connecting", "press-button", "reconnecting", "connecting"]);
+    expect(r.sent).toHaveLength(8);
+  });
+
+  it("reports the name as not confirmed, not a missed button, when the key never answers after accepting it", async () => {
+    const r = await run({ responses: [SELECT, nameResp(4, DEFAULT), info(false), ok, ...new Array<"silent">(6).fill("silent")], product: "Mew" }, custom);
+    expect(r.out).toMatchObject({ status: "unverified", error: "name-not-verified" });
+  });
+
+  it("checks the name when the write itself got no answer: verified if it changed, no answer if it did not", async () => {
+    const changed = await run({ responses: [SELECT, nameResp(4, DEFAULT), info(false), "silent", SELECT, nameResp(5, "Mew")], product: "Mew" }, custom);
+    expect(changed.out).toEqual({ status: "verified", name: "Mew" });
+    const unchanged = await run({ responses: [SELECT, nameResp(4, DEFAULT), info(false), "silent", SELECT, nameResp(4, DEFAULT)], product: DEFAULT }, custom);
+    expect(unchanged.out).toMatchObject({ status: "failed", error: "name-transport-unavailable" });
+  });
+
+  it("repeats a dropped first read before anything is written", async () => {
+    const r = await run({ responses: ["silent", SELECT, nameResp(5, "Mew")] }, custom);
+    expect(r.out).toEqual({ status: "verified", name: "Mew" });
+    expect(r.sent).toHaveLength(3);
   });
 });

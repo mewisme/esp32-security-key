@@ -295,6 +295,22 @@ test("V: a legacy release cannot rename, and does not try", async ({ page }) => 
   expect(await keyWrites(page)).toEqual([]);
 });
 
+test("W: a key that stays silent for its first reads after restarting is waited for, then verified", async ({ page }) => {
+  await setup(page, { device: "blank", key: { silentAfterRestart: 2 } });
+  await installWithName(page, NAME);
+  await page.getByRole("button", { name: "Check my key" }).click();
+  await expect(page.getByText(`Applied and verified: ${NAME}`)).toBeVisible({ timeout: 15000 });
+  expect(await keyWrites(page)).toEqual([{ op: "set", name: NAME }]);
+});
+
+test("X: a write whose answer is lost is still verified when the key reports the new name", async ({ page }) => {
+  await setup(page, { device: "blank", key: { dropWriteAnswer: true } });
+  await installWithName(page, NAME);
+  await page.getByRole("button", { name: "Check my key" }).click();
+  await expect(page.getByText(`Applied and verified: ${NAME}`)).toBeVisible({ timeout: 15000 });
+  await expect(page.getByText("The BOOT button wasn't pressed in time")).toHaveCount(0);
+});
+
 test("checksum mismatch stops with no way to continue", async ({ page }) => {
   await setup(page, { device: "blank" }, { corruptZip: true });
   await toChooser(page);
