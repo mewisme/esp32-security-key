@@ -198,7 +198,7 @@ export function flashReducer(s: FlashState, e: FlashEvent): FlashState {
     case "checking-flash-safety":
       if (e.type !== "SAFETY_DECIDED") return s;
       if (!e.decision.allowed) {
-        const code = e.decision.reason === "storage-unverified" ? "storage-unverified" : "storage-incompatible";
+        const code = "storage-incompatible";
         return { ...s, phase: "failed", decision: e.decision, error: { code, message: e.decision.reason, phase: s.phase } };
       }
       return { ...s, phase: "awaiting-confirmation", decision: e.decision };

@@ -133,14 +133,6 @@ const errors = {
     what: "The board runs MultiKeys with a different storage layout. Installing would destroy its stored keys, so the installer stops.",
     next: ["Keep using the firmware that is on the board, or ask for help on GitHub before changing anything."],
   },
-  "storage-unverified": {
-    title: "The stored keys can't be shown to work with this release",
-    what: "The installed MultiKeys firmware is older than the oldest version this release can read, newer than this release, or has no readable version, so the installer can't show that this release can use the keys it stored. Nothing was written.",
-    next: [
-      "Keep using the firmware that is on the board.",
-      "To install anyway you would have to erase and reinstall the key yourself with the developer method from the README. That erases the keys stored on it.",
-    ],
-  },
   "device-disconnected": {
     title: "The board was disconnected",
     what: "The connection to the board was lost before anything was written.",
@@ -224,6 +216,8 @@ const risk: Record<Exclude<InstallMode, "blocked">, (from: string) => string> = 
   "first-install": () => "The board's flash is empty, so there is nothing to lose.",
   update: (from) =>
     `Your keys are stored in an area the installer does not write. This release declares it can read data from version ${from} and later.`,
+  "update-forced": (from) =>
+    `Warning: the installed firmware is outside the range this release declares it can read (from version ${from}). The installer rewrites the bootloader, partition table and app but not the storage area (part0). The keys stored there may stop working or be lost. Back up first.`,
   "switch-image": () =>
     "The board runs the other MultiKeys firmware. The storage area is not written, but its contents belong to the other firmware and will not be usable.",
   "replace-compatible-layout": () =>
@@ -491,6 +485,7 @@ export const en = {
       modes: {
         "first-install": "First installation",
         update: "Update",
+        "update-forced": "Forced update (outside the declared range)",
         "switch-image": "Switch to a different MultiKeys firmware",
         "replace-compatible-layout": "Replace the firmware on this board",
         repurpose: "Repurpose this board",
@@ -533,10 +528,13 @@ export const en = {
             "I understand the OpenPGP firmware is experimental, has not been tested on hardware, and is not suitable for keys I rely on.",
           "replace-layout": "I understand the firmware currently on this board will be replaced.",
           "untested-hardware": "I understand this board type hasn't been tested with MultiKeys",
+          "force-storage":
+            "I understand this release is not shown to read the keys stored on this board. The keys are not erased by the installer, but they may become unusable or be lost, and the old firmware may not return them. I have backed up what I need.",
         } satisfies Record<Exclude<AckId, TypedAckId>, string>,
         typedLabels: {
           "repurpose-typed": "Type REPURPOSE to confirm that the nvs and part0 areas will be erased",
           "switch-image-typed": "Type SWITCH to confirm that you are changing between the FIDO2 and OpenPGP firmware",
+          "force-typed": "Type FORCE to confirm that you are installing over keys this release is not known to read",
         } satisfies Record<TypedAckId, string>,
       },
     },

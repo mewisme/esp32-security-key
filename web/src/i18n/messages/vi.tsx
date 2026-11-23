@@ -120,14 +120,6 @@ const errors: Messages["errors"] = {
     what: "Bo mạch đang chạy MultiKeys với cách bố trí vùng lưu trữ khác. Cài đặt sẽ phá hủy các khóa đã lưu, nên trình cài đặt dừng lại.",
     next: ["Tiếp tục dùng firmware đang có trên bo mạch, hoặc nhờ trợ giúp trên GitHub trước khi thay đổi bất cứ điều gì."],
   },
-  "storage-unverified": {
-    title: "Không chứng minh được các khóa đã lưu dùng được với bản phát hành này",
-    what: "Firmware MultiKeys đang cài cũ hơn phiên bản cũ nhất mà bản phát hành này đọc được, mới hơn bản phát hành này, hoặc không có phiên bản đọc được, nên trình cài đặt không chứng minh được bản này dùng được các khóa đã lưu. Chưa ghi gì.",
-    next: [
-      "Tiếp tục dùng firmware đang có trên bo mạch.",
-      "Muốn cài vẫn phải tự xóa và cài lại khóa bằng cách dành cho nhà phát triển trong README. Cách đó xóa các khóa đang lưu trên khóa này.",
-    ],
-  },
   "device-disconnected": {
     title: "Bo mạch đã bị ngắt kết nối",
     what: "Kết nối với bo mạch bị mất trước khi có gì được ghi.",
@@ -212,6 +204,8 @@ const risk: Messages["install"]["review"]["data"]["risk"] = {
   "first-install": () => "Bộ nhớ flash của bo mạch đang trống, nên không có gì để mất.",
   update: (from) =>
     `Các khóa của bạn nằm trong vùng mà trình cài đặt không ghi. Bản phát hành này khai báo có thể đọc dữ liệu từ phiên bản ${from} trở lên.`,
+  "update-forced": (from) =>
+    `Cảnh báo: firmware đang cài nằm ngoài phạm vi mà bản phát hành này khai báo là đọc được (từ phiên bản ${from}). Trình cài đặt ghi lại bootloader, bảng phân vùng và app nhưng không ghi vùng lưu trữ (part0). Các khóa lưu ở đó có thể ngừng hoạt động hoặc bị mất. Hãy sao lưu trước.`,
   "switch-image": () =>
     "Bo mạch đang chạy firmware MultiKeys khác. Vùng lưu trữ không bị ghi, nhưng nội dung trong đó thuộc về firmware kia và sẽ không dùng được.",
   "replace-compatible-layout": () =>
@@ -477,6 +471,7 @@ export const vi: Messages = {
       modes: {
         "first-install": "Cài đặt lần đầu",
         update: "Cập nhật",
+        "update-forced": "Cập nhật cưỡng ép (ngoài phạm vi đã khai báo)",
         "switch-image": "Chuyển sang firmware MultiKeys khác",
         "replace-compatible-layout": "Thay thế firmware trên bo mạch này",
         repurpose: "Tái sử dụng bo mạch này",
@@ -518,10 +513,13 @@ export const vi: Messages = {
             "Tôi hiểu firmware OpenPGP còn thử nghiệm, chưa được thử trên phần cứng và không phù hợp cho các khóa tôi tin cậy.",
           "replace-layout": "Tôi hiểu firmware hiện có trên bo mạch này sẽ bị thay thế.",
           "untested-hardware": "Tôi hiểu loại bo mạch này chưa được thử với MultiKeys",
+          "force-storage":
+            "Tôi hiểu bản phát hành này không được chứng minh là đọc được các khóa đang lưu trên bo mạch. Trình cài đặt không xóa các khóa, nhưng chúng có thể không dùng được hoặc bị mất, và firmware cũ có thể không trả lại. Tôi đã sao lưu những gì cần.",
         },
         typedLabels: {
           "repurpose-typed": "Nhập REPURPOSE để xác nhận các vùng nvs và part0 sẽ bị xóa",
           "switch-image-typed": "Nhập SWITCH để xác nhận bạn đang chuyển giữa firmware FIDO2 và OpenPGP",
+          "force-typed": "Nhập FORCE để xác nhận bạn cài đè lên các khóa mà bản phát hành này không được biết là đọc được",
         },
       },
     },

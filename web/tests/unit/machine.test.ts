@@ -95,12 +95,6 @@ describe("flashReducer", () => {
     expect(s.error?.code).toBe("storage-incompatible");
   });
 
-  it("an installed version that is not shown compatible fails with storage-unverified", () => {
-    const s = run([...TO_CONFIRM.slice(0, -1), { type: "SAFETY_DECIDED", decision: { ...decision([]), mode: "blocked", allowed: false, reason: "storage-unverified" } }]);
-    expect(s.phase).toBe("failed");
-    expect(s.error?.code).toBe("storage-unverified");
-  });
-
   it("RETRY after a connection failure returns to device selection, keeps the release and clears the attempt", () => {
     const failed = run([...TO_CONFIRM.slice(0, 8), { type: "FAIL", code: "wrong-flash-size", message: "" }]);
     const s = run([{ type: "RETRY" }], failed);

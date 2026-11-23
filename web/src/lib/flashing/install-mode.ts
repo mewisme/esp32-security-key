@@ -1,6 +1,7 @@
 // Every data-safety decision of the web installer lives here. Rules (docs/SECURITY.md, "Web installer trust model"):
 //  1. blank flash                                  -> first-install
-//  2. matching layout, same MultiKeys image        -> update (declared compatible) or blocked (storage-unverified)
+//  2. matching layout, same MultiKeys image        -> update (declared compatible) or update-forced (outside the range:
+//     allowed only with the force-storage tick and FORCE typed; part0 is still never written)
 //  3. matching layout, the other MultiKeys image   -> switch-image
 //  4. matching layout, no / non-MultiKeys app      -> replace-compatible-layout
 //  5. foreign layout, no MultiKeys app             -> repurpose (clears nvs + part0 first, typed confirmation)
@@ -19,6 +20,7 @@ import type { TableResult } from "./partition-table";
 export type InstallMode =
   | "first-install"
   | "update"
+  | "update-forced"
   | "switch-image"
   | "replace-compatible-layout"
   | "repurpose"
@@ -31,10 +33,12 @@ export type AckId =
   | "switch-image-typed"
   | "replace-layout"
   | "repurpose-typed"
+  | "force-storage"
+  | "force-typed"
   | "untested-hardware";
 
 /** Acknowledgements the person gives by typing a word instead of ticking a box, with the word to type. */
-export const TYPED_ACKS = { "repurpose-typed": "REPURPOSE", "switch-image-typed": "SWITCH" } as const;
+export const TYPED_ACKS = { "repurpose-typed": "REPURPOSE", "switch-image-typed": "SWITCH", "force-typed": "FORCE" } as const;
 export type TypedAckId = keyof typeof TYPED_ACKS;
 
 export interface Write {
@@ -88,14 +92,15 @@ export function decideInstallMode(input: {
           reason: `installed ${app.version} is within the declared data-compatible range ${build.update.data_preserving_from}..${build.version}`,
         };
       }
-      // Not shown compatible (older than the declared range, newer than this release, or not a version): nothing is
-      // written. The application-only update page covers the compatible case; there is no bypass.
+      // Not shown compatible (older than the declared range, newer than this release, or not a version). The
+      // application-only update page refuses these. Here the person can force it: the three images are rewritten, the
+      // storage area (part0) is not, and the keys in it may be unreadable afterwards.
       return {
-        mode: "blocked",
-        allowed: false,
-        acks: [],
-        writes: [],
-        reason: "storage-unverified",
+        mode: "update-forced",
+        allowed: true,
+        acks: acks("dev-firmware", "force-storage", "force-typed"),
+        writes: images,
+        reason: `installed ${app.version ?? "an unreadable version"} is outside the declared data-compatible range ${build.update.data_preserving_from}..${build.version}`,
       };
     }
     if (runsMultiKeys) {

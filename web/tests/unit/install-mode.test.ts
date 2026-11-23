@@ -30,9 +30,12 @@ describe("decideInstallMode", () => {
     ["0.1.0-dev (older than the declared data-compatible range)", "0.1.0-dev"],
     ["0.3.0 (newer than this release: a downgrade)", "0.3.0"],
     ["1.89 (not a version number)", "1.89"],
-  ])("match + %s -> blocked storage-unverified, nothing written, no bypass", (_label, version) => {
+  ])("match + %s -> update-forced: three images, never a protected region, needs the tick and FORCE typed", (_label, version) => {
     const d = decide({ table: T("match"), app: app(version) });
-    expect(d).toMatchObject({ mode: "blocked", allowed: false, reason: "storage-unverified", acks: [], writes: [] });
+    expect(d).toMatchObject({ mode: "update-forced", allowed: true });
+    expect(d.acks).toEqual(["dev-firmware", "force-storage", "force-typed"]);
+    expect(d.writes.map((w) => w.offset)).toEqual([0, 0x8000, 0x20000]);
+    expect(d.writes.some(touchesProtected)).toBe(false);
   });
 
   it("match + openpgp -> switch-image, which also needs SWITCH typed", () => {

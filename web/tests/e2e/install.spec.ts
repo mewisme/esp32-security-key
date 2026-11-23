@@ -39,15 +39,20 @@ test("A: first install on a blank board, key detected", async ({ page }) => {
   }
 });
 
-test("B: board running 0.1.0-dev is refused: its stored keys are not shown to work, nothing is written", async ({ page }) => {
+test("B: board running 0.1.0-dev is offered a forced update that needs FORCE typed, writes only the three images", async ({ page }) => {
   await setup(page, { device: "fido-0.1.0-dev" });
   await toChooser(page);
-  const panel = page.getByTestId("error-panel");
-  await expect(panel).toHaveAttribute("data-error-code", "storage-unverified");
-  await expect(panel).toContainText("Nothing was written");
-  await expect(page.getByRole("button", { name: "Install firmware" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Try again" })).toHaveCount(0);
-  expect(await flashWrites(page)).toEqual([]);
+  await expect(page.getByTestId("install-mode")).toHaveText("Forced update (outside the declared range)");
+  await expect(page.getByTestId("error-panel")).toHaveCount(0);
+  const install = page.getByRole("button", { name: "Install firmware" });
+  await ackAll(page);
+  await expect(install).toBeDisabled();
+  await page.getByLabel(/Type FORCE/).fill("force");
+  await expect(install).toBeDisabled();
+  await page.getByLabel(/Type FORCE/).fill("FORCE");
+  await install.click();
+  await expect(page.getByRole("button", { name: "Check my key" })).toBeVisible();
+  expect(await flashWrites(page)).toEqual([0, 0x8000, 0x20000]);
 });
 
 test("C: another chip stops before anything is written", async ({ page }) => {

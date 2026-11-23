@@ -140,8 +140,8 @@ export function ReviewStage({ inst, headingRef }: { inst: Installer; headingRef:
         </Alert>
       )}
 
-      <Alert variant={decision.mode === "repurpose" ? "destructive" : "default"}>
-        {decision.mode === "repurpose" ? <ShieldAlert aria-hidden /> : <Info aria-hidden />}
+      <Alert variant={decision.mode === "repurpose" || decision.mode === "update-forced" ? "destructive" : "default"}>
+        {decision.mode === "repurpose" || decision.mode === "update-forced" ? <ShieldAlert aria-hidden /> : <Info aria-hidden />}
         <AlertTitle>{t.install.review.data.title}</AlertTitle>
         <AlertDescription>
           <p>

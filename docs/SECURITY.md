@@ -71,8 +71,10 @@ what it guarantees:
   0x20000 (the same allowlist `tools/flash_dev.py` enforces). A manifest whose images overlap `nvs`, `phy_init` or `part0`, or
   that lists other offsets, is rejected (`manifest-invalid`, no override).
 - **Existing data.** Before writing, the installer reads the board's partition table and app descriptor (read-only) and picks
-  an install mode. A matching layout keeps `part0` (credentials) and `nvs` untouched; an installed version outside the
-  release's declared data-compatible range is refused (`storage-unverified`), and switching between the FIDO and OpenPGP images
+  an install mode. A matching layout keeps `part0` (credentials) and `nvs` untouched. An installed version outside the
+  release's declared data-compatible range gets mode `update-forced` instead of an error: the three images are rewritten, `part0`
+  is still not written, but the keys in it may become unusable. It needs the `force-storage` tick and the word `FORCE` typed.
+  Switching between the FIDO and OpenPGP images
   and replacing non-MultiKeys firmware each need an
   explicit acknowledgement. A switch between the two images additionally needs the word `SWITCH` typed, because both images
   read the same `part0` in different formats: nothing is erased, but the other image's keys and credentials stop being usable.

@@ -61,8 +61,8 @@ says `hardware-verified`, else `build-verified`) and marked `legacy` (the instal
 legacy build). `firmware.json` inside a legacy zip is still compared with the entry as it was published.
 
 `update.data_preserving_from` (0.2.0 for now) is the oldest installed version whose stored data this firmware declares it can
-use. The web installer refuses a matching-layout key running anything outside that range (`storage-unverified`): there is no
-acknowledgement that bypasses it.
+use. The Install wizard offers a matching-layout key running anything outside that range only as `update-forced` (tick plus
+`FORCE` typed; `part0` is still not written, but its keys may become unreadable); the Update page refuses it.
 
 `update.app_only` (`true` from the first release that carries it; absent in v0.2.0 to v0.3.2) states that the release's app image
 may replace the one on a compatible key without rewriting the bootloader or the partition table. `tools/package_firmware.py`
