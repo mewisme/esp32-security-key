@@ -62,6 +62,11 @@ real hardware. A "Your key" page (`/key`) reads which firmware the key runs and 
 activity the key reports; the first part needs firmware with the `BUILD_INFO` command (v0.3.1 and later; a v0.3.0 key says it cannot report). It was run once against a real key
 (a local build of the same sources; [report](docs/hw-reports/2026-11-23-build-info-and-passkey-events.md)), and `multikey device watch` is its command-line counterpart.
 
+The installer checks a download against the SHA-256 values of the release's manifest. It can also verify a signature of that manifest, but
+no release is signed yet (no signing key exists), so releases are shown as "Not authenticated":
+[docs/RELEASE_SIGNING.md](docs/RELEASE_SIGNING.md). The CTAPHID cancel and FIDO UV fixes in the firmware patches are emulation tested only and
+not yet hardware verified ([docs/SECURITY.md](docs/SECURITY.md)).
+
 ### PowerShell (developers, the verified method)
 
 Prerequisites, once: [ESP-IDF v5.5.6 for Windows](https://docs.espressif.com/projects/esp-idf/en/v5.5.6/esp32s3/get-started/windows-setup.html),

@@ -57,7 +57,7 @@ Tag `local` is accepted only by the dev server (`import.meta.env.DEV`); producti
 | Route | Behaviour |
 |---|---|
 | `GET /api/releases` | releases from GitHub's `releases.atom` feed (drafts never appear; the REST API is avoided because unauthenticated calls from Workers' shared IPs are rate-limited) whose `firmware-manifest.json` exists (HEAD check, newest 10); cached 5 min |
-| `GET /api/firmware/:tag/:asset` | proxies `releases/download/:tag/:asset`; `tag` must be `vX.Y.Z[-pre]`, `asset` must be `firmware-manifest.json`, `SHA256SUMS` or `multikey-firmware-v<tag version>-esp32s3-<4mb\|8mb\|16mb>-<fido\|openpgp>-dev.zip` (`n16r8` instead of the size only for the v0.2.0 assets published before the profiles); max 16 MiB; cached immutable |
+| `GET /api/firmware/:tag/:asset` | proxies `releases/download/:tag/:asset`; `tag` must be `vX.Y.Z[-pre]`, `asset` must be `firmware-manifest.json`, `firmware-manifest.json.sig`, `SHA256SUMS` or `multikey-firmware-v<tag version>-esp32s3-<4mb\|8mb\|16mb>-<fido\|openpgp>-dev.zip` (`n16r8` instead of the size only for the v0.2.0 assets published before the profiles); max 16 MiB; cached immutable; the cache key is the origin plus the validated path, so a query string never creates another entry |
 | other `/api/*` | 404 (`405` for methods other than GET and HEAD) |
 
 GitHub release downloads have no CORS headers, hence the proxy. The Worker holds no secrets or tokens and builds upstream
@@ -102,11 +102,17 @@ fallback; `public/_headers` sets CSP (`connect-src 'self'`), `Permissions-Policy
   same family within the declared data-compatible range (no downgrades, no override). The hook re-decides on the open
   connection right before the write, keeps `multikeys-pending-update` in `localStorage` until the flash MD5 matches, and after
   the replug reports what could be checked (`update-report.ts`); FIDO credentials and the PIN are never read. It is not atomic
-  and not hardware verified: see `docs/SECURITY.md`.
+  and not hardware verified: see `docs/SECURITY.md`. `update-pending.ts` holds the interrupted-write record (version 2: release,
+  image, application SHA-256 and the ROM-mode MAC; an older record is never used to repair), `partition-table.ts` the strict
+  table check (`protectedCompatible` for a full install, `matchesLayoutExactly` for this update), shared test vectors with
+  `tools/flash_dev.py` in `tests/vectors/partition_tables.json`.
+- `src/lib/firmware/signature.ts` and `release-keys.ts`: verification of a detached Ed25519 signature of the manifest against
+  keys built into the site (`docs/RELEASE_SIGNING.md`). The key list is empty: no release is signed yet, so every release is
+  shown as "Not authenticated".
 - `src/lib/flashing/driver.ts`: `FlashDriver` interface; `esptool-driver.ts` implements it with esptool-js and also reads the
   flash type (quad/octal) from eFuse `EFUSE_RD_REPEAT_DATA3_REG` bit 9 on the ESP32-S3.
 - `src/lib/compatibility/profiles.ts`: `selectProfile(chip, builds, image)` picks the build by exact flash size and says how well
-  that board is known to work (`hardware-verified`, `expected-compatible`, `build-verified`); `matrix.ts` is the table on the home
+  that board is known to work (`reference-config` = same flash size and PSRAM as the hardware-tested N16R8, which is not proof of identity; `expected-compatible`; `build-verified`). It refuses a flash interface that is octal or could not be read (`unknown-flash-mode`); `matrix.ts` is the table on the home
   page (same rows as `docs/HARDWARE.md`; the words of both are in `src/i18n/messages`). The hardware profiles themselves are in `tools/flash_policy.json`
   (`src/lib/firmware/policy.ts`), shared with the Python tools.
 - `src/lib/firmware/manifest.ts` validates `firmware-manifest.json`: schema 2 (`profile_id` per build) and, through an explicit
@@ -175,7 +181,7 @@ uses only 100, 150, 200 or 300 ms, never `transition-all`, and has a reduced-mot
 ## Staging, production and the custom domain
 
 1. `pnpm exec wrangler login` (once, by the account owner). All deploys so far ran locally with that OAuth login: no GitHub
-   environment (`cloudflare-staging`, `cloudflare-production`) exists yet, so the manual CI deploy job below cannot run.
+   environment (`staging`, `production`) exists yet, so the manual CI deploy jobs below cannot run.
 2. `pnpm run deploy:staging` → `multikeys-web-staging.<subdomain>.workers.dev`; check `/api/releases` and `/install`. Staging sets
    `routes: []` in `wrangler.jsonc`, so it can never take the custom domain over (the Vite-generated config of each environment
    was checked).
@@ -195,5 +201,6 @@ bundle holds no test double: `multikeys-e2e-scenario`, `FakeDriver`, `FakeKeyCon
 pull requests, both only when they touch `web/**`, `tools/flash_policy.json` or the workflow itself (the browser is installed with
 `playwright install --with-deps chromium` on every run; a browser cache was measured and gave no reliable gain,
 `docs/CI_PERFORMANCE.md`); it deploys only from a manual `workflow_dispatch` with
-`deploy: staging|production`, using the `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` secrets of the `cloudflare-<target>`
-environment.
+`deploy: staging|production`, using the `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` secrets of the `staging` or `production`
+GitHub Environment. Production also needs `main` and the typed confirmation `deploy-production`; required reviewers, the
+branch rule and the token scope are settings, listed in `docs/DEPLOYMENT.md`.

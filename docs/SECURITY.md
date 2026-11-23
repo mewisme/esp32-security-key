@@ -53,7 +53,8 @@ README makes the same distinction for chips without OTP secrets.
 | Weak RNG | The SDK RNG (hardware RNG based) is used everywhere; entropy quality with Wi-Fi/BT off was not assessed. |
 | Debug/UART output | Dev builds log at INFO; prod at WARN. UART logging is not disabled in prod. |
 | Device renaming | The name is a label. Changing it needs a BOOT press and, once MKAUTH is enrolled, the MKAUTH PIN; an unenrolled key has no PIN, so a press is the only check and malware that can reach the key can rename it after a press (spoofing a different label to a human, nothing more: keys, credentials, VID/PID and AAGUID cannot change through it, and the CLI/host find the key by the manufacturer string, which a rename does not change). `MULTIKEY_USB_CUSTOM_NAME_ENABLED=n` removes the feature. |
-| FIDO UV policy | The UV flag is set only after a verified PIN token. With a PIN set, `docs/FIDO_UV.md` lists upstream gaps found by the emulation tests: getAssertion ignores alwaysUv; a locked key returns a signature that does not verify instead of an error (cause not analysed; no key exposure was observed, none was looked for beyond the failed verification); toggling alwaysUv off leaves makeCredUvNotRqd cleared. Not patched. |
+| FIDO UV policy | The UV flag is set only after a verified PIN token. The three upstream gaps listed in `docs/FIDO_UV.md` (getAssertion ignoring alwaysUv; a locked key answering with a decoy credential and a 0x0B-byte signature; alwaysUv off not restoring makeCredUvNotRqd) are fixed by `patches/pico-fido/0005`, with passing emulation tests. **Emulation tested and build verified only, not hardware verified.** A key that already did an alwaysUv on/off round trip on an older build has lost the makeCredUvNotRqd flag and does not get it back. |
+| CTAPHID_CANCEL | A request sent right after a cancel on the same channel used to receive the cancelled job's stale result. Fixed by `patches/pico-keys-sdk/0005` (request generation, one `KEEPALIVE_CANCEL`) and `patches/pico-fido/0006`; 12 emulation tests, **not hardware verified** (`docs/hw-procedures/cancel.md`). A client that does not wait for the cancel answer can briefly see `CHANNEL_BUSY`. |
 | Authenticator identity | AAGUID is a development value (`docs/USB_IDENTITY.md`). The per-device attestation certificate makes `direct` attestation device-identifying (upstream design); RPs that ask for `none` get nothing. |
 
 ## Web installer trust model
@@ -64,9 +65,13 @@ what it guarantees:
 - **Source of the firmware.** The page fetches `firmware-manifest.json` and the firmware zip from the GitHub release through
   the site's own Worker (GitHub serves release assets without CORS headers). The Worker only accepts a release tag and one of
   three asset name patterns, holds no tokens and talks to GitHub over HTTPS.
-- **Integrity, not authenticity.** The manifest lists SHA-256 for the zip and each image; the installer checks the zip, every
-  image and the embedded `firmware.json` before writing. The manifest comes from the same release, so this detects corrupted
-  or truncated downloads, not a compromised repository, release or Worker. Nothing is signed.
+- **Integrity, and authenticity only where a release is signed.** The manifest lists SHA-256 for the zip and each image; the
+  installer checks the zip, every image and the embedded `firmware.json` before writing. The manifest comes from the same
+  release, so on its own this detects corrupted or truncated downloads, not a compromised repository, release or Worker.
+  The site can verify a detached Ed25519 signature of the manifest against public keys built into the site
+  (`web/src/lib/firmware/release-keys.ts`, `docs/RELEASE_SIGNING.md`). **No release is signed and no signing key exists yet**, so
+  every release is shown as "Not authenticated" and nothing is called authenticated. A release with an invalid, mismatched or
+  unknown-key signature is refused.
 - **What may be written.** Only the regions in `tools/flash_policy.json`: bootloader 0x0, partition table 0x8000, app
   0x20000 (the same allowlist `tools/flash_dev.py` enforces). A manifest whose images overlap `nvs`, `phy_init` or `part0`, or
   that lists other offsets, is rejected (`manifest-invalid`, no override).
@@ -93,8 +98,10 @@ A separate page replaces only the app image on a key that already runs MultiKeys
 - **One write.** The single region written is the app image at `0x20000`, inside the `factory` partition. It never writes the
   bootloader, the partition table, `nvs`, `phy_init` or `part0`, never erases anything, never fills, never touches eFuses.
   `web/src/lib/flashing/app-update.ts` returns at most that one write and a unit test checks it for every allowed decision.
-- **What it requires.** The release declares `update.app_only`; the device partition table equals the release layout and has
-  `factory` at the app offset with room for the image; the bootloader and the new app are for the same flash size; the installed
+- **What it requires.** The release declares `update.app_only`; the device partition table equals the release layout entry for entry (every
+  partition's name, type, subtype, offset and size, no extra partition, a valid checksum entry, no overlap, nothing outside the
+  flash) and has `factory` at the app offset with room for the image; a table that only keeps `nvs`, `phy_init` and `part0` in
+  place is *compatible for a full install* but not exact, so the application-only update refuses it; the bootloader and the new app are for the same flash size; the installed
   app is a MultiKeys image of the same family at a version from `update.data_preserving_from` up to the new one (no downgrade);
   the flash content is not already the new image. Anything not shown compatible is refused with the reason, and nothing is
   written. There is no override and no automatic fallback to the installer.
@@ -109,8 +116,14 @@ A separate page replaces only the app image on a key that already runs MultiKeys
 - **Not atomic.** A single slot is written: an interrupted write leaves the key unable to start until the update is run again
   from download mode. It is not an OTA update, has no rollback and no A/B slots. The browser records the started write
   (`localStorage`, `multikeys-pending-update`) until the flash MD5 matches; only with that record, and only for the same build,
-  does the page offer a typed-`REPAIR` rewrite of an application whose descriptor is unreadable. Without it such a key is
-  refused as unknown.
+  does the page offer a typed-`REPAIR` rewrite of an application whose descriptor is unreadable. The record names the release
+  tag, the image family and profile, the application SHA-256 and the ROM-mode MAC address of the chip the write started on, and
+  is used only when all of them equal what is connected now and it is less than 7 days old. A record from an older page, a stale
+  one, one for another release or image, for another MAC, or made or checked without a readable MAC is refused
+  (`recovery-unverified`) and the person is pointed to the installer (which keeps `part0` when the partition table is intact) or
+  offered to discard it. A MAC address is not a secret and the running firmware's WebUSB identity is not linked to it, so this
+  shows "the same chip as when the write started" as far as a MAC does, not that the chip is the one that was inspected. Without
+  a record the key is refused as unknown.
 - **Storage compatibility is declared, not detected.** The key's file system has no version marker. Compatibility rests on
   `update.data_preserving_from` (release process: `docs/RELEASES.md`) and on code inspection that nothing in the stored formats
   changed since 0.2.0; it has not been tested across versions on hardware.

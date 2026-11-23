@@ -85,8 +85,10 @@ flash type (quad or octal) and flash size electronically before writing; profile
 
 Hardware verified = ran on that board type with a report in `docs/hw-reports/`. Build verified = the firmware for that flash size
 builds, packages and passes the image checks, but nobody has run it on such a board. Expected compatible = same build as a
-hardware-verified profile on a board that is not the tested one. Installing on anything that is not hardware verified needs an
-extra acknowledgement in the web installer.
+hardware-verified profile on a board that is not the tested one. The web installer cannot tell the tested N16R8 from another
+board: a connected board that reports the same flash size and PSRAM is labelled "Same configuration as the hardware-verified
+N16R8", never "Hardware verified", and every board needs the "this exact board hasn't been tested" acknowledgement. A board whose
+flash interface (quad or octal) cannot be read is refused.
 
 ## Limits you should know
 

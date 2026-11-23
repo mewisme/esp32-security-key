@@ -124,8 +124,10 @@ sha256sum -c SHA256SUMS --ignore-missing
 unzip multikey-firmware-v0.3.0-esp32s3-4mb-fido-dev.zip && (cd multikey-firmware-v0.3.0-esp32s3-4mb-fido-dev && sha256sum -c SHA256SUMS)
 ```
 
-No signature is published; the checksum file and the manifest live next to the assets in the same release and therefore
-protect against corruption, not against a compromised repository or release.
+No signature is published yet; the checksum file and the manifest live next to the assets in the same release and therefore
+protect against corruption, not against a compromised repository or release. The web installer can verify a detached Ed25519
+signature of the manifest (`firmware-manifest.json.sig`), but no key exists and the release workflow does not sign: see
+[RELEASE_SIGNING.md](RELEASE_SIGNING.md).
 
 ## Cutting a release
 
