@@ -127,7 +127,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libpcsclite-dev libpcsclite1 pcscd
+          sudo apt-get install -y libpcsclite-dev libudev-dev libpcsclite1 pcscd
           if [[ "${{ matrix.kind }}" == "pam" ]]; then sudo apt-get install -y libpam0g-dev pamtester; fi
       - name: Format, lint, test
         working-directory: host

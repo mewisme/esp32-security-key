@@ -94,5 +94,5 @@ issue documented in `docs/FIDO_UV.md`.
 | OS | Supported | Notes |
 |---|---|---|
 | Windows 10/11 x86_64 | yes (prebuilt, statically linked CRT) | winscard for PC/SC; elevation for FIDO HID |
-| Linux x86_64 | yes (prebuilt, built on Ubuntu 22.04) | `libpcsclite1` + `pcscd`; hidraw permissions |
+| Linux x86_64 | yes (prebuilt, built on Ubuntu 22.04) | `libpcsclite1`, `libudev1`, `pcscd`; hidraw permissions |
 | Linux ARM64, Windows ARM64, macOS | not built, not claimed | `cargo build` may work; untested |

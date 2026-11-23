@@ -1,6 +1,7 @@
 multikey - host tool for MultiKeys security keys (Linux x86_64)
 
-Requirements: libpcsclite1 and a running pcscd (Debian/Ubuntu: sudo apt install libpcsclite1 pcscd).
+Requirements: libpcsclite1, libudev1 and a running pcscd (Debian/Ubuntu: sudo apt install libpcsclite1 libudev1 pcscd;
+libudev1 is already present on desktop systems).
 Built on Ubuntu 22.04 (glibc 2.35); older distributions may not run it.
 
 Verify the download (SHA256SUMS is a separate release asset):

@@ -68,7 +68,7 @@ jobs:
           components: clippy, rustfmt
       - name: 'Linux: PC/SC headers'
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libpcsclite-dev
+        run: sudo apt-get update && sudo apt-get install -y libpcsclite-dev libudev-dev
       - run: cargo fmt --check
         working-directory: host
       - run: cargo clippy --all-targets --locked -- -D warnings
@@ -103,7 +103,7 @@ jobs:
         shell: pwsh
         run: |
           foreach ($extra in @(@(), @('-App', 'openpgp'))) {
-            $out = & ./tools/flash-dev.ps1 -DryRun -IdfPath C:\nonexistent @extra 2>&1 | Out-String
+            $out = & ./tools/flash-dev.ps1 -DryRun -IdfPath C:\nonexistent @extra *>&1 | Out-String
             if ($LASTEXITCODE -ne 2) { Write-Error "expected exit 2, got $LASTEXITCODE"; exit 1 }
             if ($out -notmatch 'ESP-IDF v5\.5\.x not found\. One-time setup: install ESP-IDF v5\.5\.6') { Write-Error "message missing: $out"; exit 1 }
           }

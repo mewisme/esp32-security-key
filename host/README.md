@@ -15,7 +15,7 @@ cargo clippy --all-targets --locked -- -D warnings
 cargo test --locked
 ```
 
-Linux needs `libpcsclite-dev` to build and `pcscd` at runtime; Windows uses winscard.
+Linux needs `libpcsclite-dev` and `libudev-dev` to build (the HID transport links libudev) and `libpcsclite1`, `libudev1` and `pcscd` at runtime; Windows uses winscard.
 
 ## Trust store
 Default `/etc/multikey/trusted.toml` (Linux), `%ProgramData%\MultiKey\trusted.toml` (Windows); override with `--trust-store`.
