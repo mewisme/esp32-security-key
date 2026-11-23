@@ -1,7 +1,13 @@
 # Flashing: how the script works, and the manual commands
 
-The one-command path is `.\tools\flash-dev.ps1` (see the README). This page explains what it checks, lists the
-equivalent manual commands (also for Linux/macOS) and says what it deliberately cannot do.
+There are three ways to install MultiKeys:
+
+1. **Web installer** (beginners): https://multikeys.mewis.me in desktop Chrome/Edge flashes the prebuilt release firmware
+   (from v0.2.0) with the same write allowlist as the script. Not yet hardware verified; see `docs/ROADMAP.md`.
+2. **Developer script** (verified): `.\tools\flash-dev.ps1`, described below.
+3. **Manual** ESP-IDF/esptool commands, below; also for Linux/macOS and the OpenPGP image.
+
+This page explains what the script checks, lists the equivalent manual commands and says what it deliberately cannot do.
 
 ## What `flash-dev.ps1` does
 
@@ -65,6 +71,29 @@ Use the port you actually have (`Get-PnpDevice -Class Ports -PresentOnly`; nativ
 Linux / macOS (not hardware verified by this project): activate ESP-IDF v5.5.6 (`. ~/esp/v5.5.6/export.sh`), run the same
 `tools/build.py dev` steps, then `cd build-fido-dev && python -m esptool --chip esp32s3 -p /dev/ttyACMn -b 460800
 --before default_reset --after watchdog_reset write_flash @flash_args`. The device node differs per system; check `dmesg`.
+
+## Prebuilt release firmware without the web installer
+
+Each firmware zip from GitHub Releases (`multikey-firmware-v<ver>-esp32s3-n16r8-fido-dev.zip`) contains a `README.txt` with
+the exact command, e.g.
+`python -m esptool --chip esp32s3 -p PORT write_flash 0x0 bootloader.bin 0x8000 partition-table.bin 0x20000 multikey-fido.bin`.
+Check `sha256sum -c SHA256SUMS` inside the folder first. Never add an erase option.
+
+## Recovering a board that has other firmware on it
+
+`flash-dev.ps1` refuses a board whose partition table is neither blank nor the MultiKeys layout (typical for factory demo,
+MicroPython or Arduino firmware), because it cannot know what that firmware stored. Options:
+
+- **Web installer, "Repurpose this board"**: offered when the layout is foreign and no MultiKeys app is on the board. After
+  you type `REPURPOSE` it fills `nvs` (0x11000, 24 KiB) and `part0` (0x200000, 1 MiB) with 0xFF and then writes the three
+  MultiKeys images. Nothing else is erased.
+- **Manually**, if you accept losing everything the old firmware stored:
+  `python -m esptool --chip esp32s3 -p PORT erase_region 0x11000 0x6000` and
+  `python -m esptool --chip esp32s3 -p PORT erase_region 0x200000 0x100000`, then flash as above. The script never runs these
+  for you.
+
+A board whose foreign layout still runs MultiKeys (an incompatible earlier layout) is refused by both tools; ask for help
+before erasing anything there, because `part0` holds its credentials.
 
 ## Download mode
 

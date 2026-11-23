@@ -11,6 +11,7 @@ Manual install (advanced; needs Python and esptool):
   1. Put the board in download mode: unplug it, hold BOOT, plug the USB/OTG connector in, release BOOT.
   2. From this folder run (replace PORT with the serial port, e.g. COM5 or /dev/ttyACM0):
        {command}
+  3. Unplug the board and plug it back in without holding BOOT. It now appears as a security key.
 
 This writes only the bootloader, the partition table and the app. It never erases the whole chip; your stored
 credentials (the "part0" area) are left in place. Never add an erase option to the command above.

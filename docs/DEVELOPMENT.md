@@ -19,13 +19,15 @@
 | `components/multikey_auth` | MKAUTH applet (fido image) |
 | `CMakeLists.txt` | selects `MULTIKEY_APP=fido|openpgp` and `MULTIKEY_PROFILE=dev|prod`, lists upstream sources |
 | `host/` | Rust workspace (see `host/README.md`) |
-| `tools/` | build, patching, smoke tests, read-only provisioning check |
+| `tools/` | build, patching, firmware packaging, smoke tests, read-only provisioning check; `flash_policy.json` is the write allowlist shared with the web installer |
+| `web/` | web installer and site (React/Vite/Cloudflare Workers, see `web/README.md`) |
 
 ## Build
 
 ```
 python tools/build.py dev --ci-pins                       # compile check, pins unset, image unusable
-python tools/build.py dev                                 # needs sdkconfig.board
+python tools/build.py dev                                 # needs sdkconfig.board; app version "<host version>-dev"
+python tools/build.py dev --release                       # app version = host/Cargo.toml version (release packaging)
 python tools/build.py prod --app openpgp
 python tools/build.py prod --harden --signing-key K.pem --i-understand-irreversible   # see PROVISIONING.md
 ```
@@ -76,5 +78,32 @@ The firmware itself has no on-target unit tests; hardware procedures are in TEST
 
 ```
 python -m unittest discover tests/flash      # flash_dev.py safety logic, USB descriptor tool
-python -m unittest discover tests/release    # archives, notices, PE import checker
+python -m unittest discover tests/release    # archives, notices, PE import checker, firmware packaging, workflow invariants (needs PyYAML)
 ```
+
+## Firmware packaging
+
+The firmware version in the app descriptor comes from `[workspace.package].version` in `host/Cargo.toml` (CMake
+`PROJECT_VER`), with a `-dev` suffix unless `build.py --release`. Release packaging (what `.github/workflows/release.yml`
+runs):
+
+```
+python tools/package_firmware.py package --build-dir build-fido-dev --sdkconfig sdkconfig.fido-dev.generated \
+    --app fido --board esp32s3-n16r8-boot-button --version 0.2.0 --commit <40-hex sha> --out dist-fw --source-date-epoch N
+python tools/package_firmware.py manifest --entries 'dist-fw/*.entry.json' --version 0.2.0 --tag v0.2.0 --commit <sha> \
+    --out dist-fw/firmware-manifest.json
+python tools/package_firmware.py verify dist-fw/multikey-firmware-*.zip --manifest dist-fw/firmware-manifest.json
+```
+
+Use `--clean` when switching between board profiles or `--ci-pins`: an existing build keeps its generated sdkconfig.
+
+## Web installer
+
+```
+cd web
+pnpm install
+pnpm dev                                     # MULTIKEYS_LOCAL_FIRMWARE=<dir> serves a locally packaged firmware as "local"
+pnpm typecheck && pnpm lint && pnpm test && pnpm test:e2e && pnpm build
+```
+
+Deployment, Worker routes and the e2e fake board: `web/README.md`.

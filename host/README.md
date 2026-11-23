@@ -1,5 +1,9 @@
 # MultiKeys host tools (Rust)
 
+Prebuilt `multikey` archives for Windows and Linux and the PAM module are on
+[GitHub Releases](https://github.com/mewisme/esp32-security-key/releases) (from v0.2.0 next to the prebuilt firmware; install
+firmware from the browser at https://multikeys.mewis.me). Build from source as below.
+
 Crates:
 - `multikey-proto` — MKAUTH v1 APDUs, parsers, transcript, P-256 verification. No I/O.
 - `multikey-fido` — FIDO2 management (GetInfo, PIN, credential management) over USB HID via `ctap-hid-fido2` (pinned `=3.6.1`), behind an `Authenticator` trait with a mock.

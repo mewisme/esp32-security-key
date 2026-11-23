@@ -55,6 +55,32 @@ README makes the same distinction for chips without OTP secrets.
 | FIDO UV policy | The UV flag is set only after a verified PIN token. With a PIN set, `docs/FIDO_UV.md` lists upstream gaps found by the emulation tests: getAssertion ignores alwaysUv; a locked key returns a signature that does not verify instead of an error (cause not analysed; no key exposure was observed, none was looked for beyond the failed verification); toggling alwaysUv off leaves makeCredUvNotRqd cleared. Not patched. |
 | Authenticator identity | AAGUID is a development value (`docs/USB_IDENTITY.md`). The per-device attestation certificate makes `direct` attestation device-identifying (upstream design); RPs that ask for `none` get nothing. |
 
+## Web installer trust model
+
+The web installer (`web/`, https://multikeys.mewis.me) flashes prebuilt firmware from the browser. What it relies on and
+what it guarantees:
+
+- **Source of the firmware.** The page fetches `firmware-manifest.json` and the firmware zip from the GitHub release through
+  the site's own Worker (GitHub serves release assets without CORS headers). The Worker only accepts a release tag and one of
+  three asset name patterns, holds no tokens and talks to GitHub over HTTPS.
+- **Integrity, not authenticity.** The manifest lists SHA-256 for the zip and each image; the installer checks the zip, every
+  image and the embedded `firmware.json` before writing. The manifest comes from the same release, so this detects corrupted
+  or truncated downloads, not a compromised repository, release or Worker. Nothing is signed.
+- **What may be written.** Only the regions in `tools/flash_policy.json`: bootloader 0x0, partition table 0x8000, app
+  0x20000 (the same allowlist `tools/flash_dev.py` enforces). A manifest whose images overlap `nvs`, `phy_init` or `part0`, or
+  that lists other offsets, is rejected (`manifest-invalid`, no override).
+- **Existing data.** Before writing, the installer reads the board's partition table and app descriptor (read-only) and picks
+  an install mode. A matching layout keeps `part0` (credentials) and `nvs` untouched; updates outside the release's declared
+  data-compatible range, switching between the FIDO and OpenPGP images and replacing non-MultiKeys firmware each need an
+  explicit acknowledgement. A foreign layout without MultiKeys on it can be repurposed only after typing `REPURPOSE`: the
+  installer then writes 0xFF over `nvs` and `part0` (the previous firmware's data) before writing MultiKeys. A foreign layout
+  with MultiKeys on it is refused (`storage-incompatible`). An unreadable table stops the install (`unsafe-layout`).
+- **Never.** Full-chip erase, eFuse writes, Secure Boot/flash-encryption changes, PIN or credential operations.
+- **After writing.** Each written region is read back (MD5 from the chip) before the installer reports success; detecting the
+  running key afterwards is optional and only reads USB descriptors.
+
+The installer has been unit- and e2e-tested against a simulated board only; see `docs/ROADMAP.md` for its hardware status.
+
 ## Rules enforced in the repository
 
 - **User presence is real and not configurable.** Upstream pico-keys-sdk returns a button timeout of 0 unless one was

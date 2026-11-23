@@ -46,6 +46,15 @@ GitHub release downloads have no CORS headers, hence the proxy. The Worker holds
 URLs only from the two validated path segments (`worker/routes.ts`, unit-tested). Everything else is static assets with an SPA
 fallback; `public/_headers` sets CSP (`connect-src 'self'`), `Permissions-Policy: serial=(self), usb=(self)` and friends.
 
+## Known limitations
+
+- Not yet run against real hardware. In particular esptool-js only offers an RTS `hard_reset` after writing; on the native
+  USB port the developer script needed `--after watchdog_reset` because `hard_reset` left the chip in download mode
+  (`docs/FLASHING_ADVANCED.md`). If that happens here, the reconnect step's replug instruction applies; no watchdog-reset
+  workaround is implemented without a hardware test.
+- The WebUSB key check may not be able to open the device on Windows (HID/CCID drivers hold the interfaces); it then reports
+  the landing page as "not checked". `python tools/check_usb_descriptors.py --live` is the check of record.
+
 ## Trust model
 
 - The browser downloads firmware through the Worker, which fetches it over HTTPS from the GitHub release.

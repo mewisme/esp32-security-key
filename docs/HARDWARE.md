@@ -64,6 +64,20 @@ CONFIG_MULTIKEY_LED_ACTIVE_LOW=y        # plain LED only, if lit when LOW
 
 With an LED type selected the build fails while `MULTIKEY_LED_GPIO` is -1. With the button unset the build always fails.
 
+## Compatibility levels
+
+Same rows as the web installer's board step (`web/src/lib/compatibility/boards.ts`). The installer also checks chip and flash
+size electronically before writing.
+
+| Board | Level | Why |
+|---|---|---|
+| ESP32-S3 N16R8 devkit with two USB ports and a BOOT button | Tested | firmware hardware verified on this board type with the developer script |
+| Other ESP32-S3 board with 16 MB flash, native USB and BOOT on GPIO0 | Expected to work | same chip, flash size and button wiring; not tested |
+| ESP32-S3 with 4 or 8 MB flash | Not supported | the partition layout needs 16 MB |
+| ESP32, ESP32-S2, ESP32-C3, ESP32-C6, ESP32-H2 | Not supported | MultiKeys runs on the ESP32-S3 only |
+| Board without a native USB connector (USB-to-serial chip only) | Not supported | the key needs the chip's own USB (GPIO19/20) |
+| Not sure | Checked during install | read the module marking (N16 = 16 MB); the installer stops on a wrong chip or flash size |
+
 ## Limits you should know
 
 - The ESP32-S3 is **not a secure element**. Keys are decrypted in internal RAM while in use. Flash encryption and Secure Boot
