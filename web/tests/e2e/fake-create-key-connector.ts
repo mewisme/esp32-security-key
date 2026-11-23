@@ -198,6 +198,7 @@ export class FakeKeyConnector implements KeyConnector {
   }
 
   async connect(): Promise<KeyConnection> {
+    Reflect.set(window, "__keyConnects", (Number(Reflect.get(window, "__keyConnects")) || 0) + 1);
     // The browser's device chooser was dismissed.
     if (readScenario().chooser === "cancel") throw Object.assign(new Error("No device selected."), { name: "NotFoundError" });
     return new FakeKeyConnection();

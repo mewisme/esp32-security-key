@@ -30,19 +30,60 @@ test("language toggle switches the page to Vietnamese and remembers it", async (
   await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Install" })).toBeVisible();
 });
 
-async function expectNoHorizontalScroll(page: Page, width: number) {
-  await page.setViewportSize({ width, height: 900 });
-  await setup(page, {});
-  for (const path of ["/", "/install", "/first-use", "/passkeys", "/key", "/help", "/releases", "/nope"]) {
-    await page.goto(path);
-    await page.waitForLoadState("networkidle");
-    const [scrollWidth, innerWidth] = await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]);
-    expect(scrollWidth, path).toBeLessThanOrEqual(innerWidth!);
-  }
+const ROUTES = ["/", "/install", "/update", "/first-use", "/passkeys", "/key", "/help", "/releases", "/nope"];
+
+/**
+ * The page fits its width, its heading is visible and on top, and nothing in the page body sticks out of the
+ * screen (content inside a box that scrolls on purpose, such as the stepper row, is exempt).
+ */
+async function expectLayoutHolds(page: Page, path: string) {
+  await page.goto(path);
+  await page.waitForLoadState("networkidle");
+  const report = await page.evaluate(() => {
+    const width = window.innerWidth;
+    const scrolls = (el: Element) => {
+      for (let p: Element | null = el.parentElement; p; p = p.parentElement) {
+        const o = getComputedStyle(p).overflowX;
+        if (o === "auto" || o === "scroll" || o === "hidden" || o === "clip") return true;
+      }
+      return false;
+    };
+    const stuckOut: string[] = [];
+    for (const el of document.querySelectorAll("body *")) {
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) continue;
+      if ((r.right > width + 1 || r.left < -1) && !scrolls(el)) stuckOut.push(`${el.tagName.toLowerCase()}.${String(el.className).slice(0, 40)} ${Math.round(r.left)}..${Math.round(r.right)}`);
+    }
+    const h1 = document.querySelector("h1");
+    let covered = true;
+    if (h1) {
+      const r = h1.getBoundingClientRect();
+      const top = document.elementFromPoint(r.left + Math.min(r.width, 40) / 2, r.top + r.height / 2);
+      covered = !(top && h1.contains(top));
+    }
+    return { scrollWidth: document.documentElement.scrollWidth, width, stuckOut: stuckOut.slice(0, 5), hasH1: !!h1, covered };
+  });
+  expect(report.scrollWidth, `${path} page width`).toBeLessThanOrEqual(report.width);
+  expect(report.stuckOut, `${path} elements outside the screen`).toEqual([]);
+  expect(report.hasH1, `${path} has a heading`).toBe(true);
+  expect(report.covered, `${path} heading is covered`).toBe(false);
 }
 
-for (const width of [375, 768]) {
-  test(`${width}px wide: no page has horizontal scroll`, ({ page }) => expectNoHorizontalScroll(page, width));
+for (const locale of ["en-US", "vi-VN"] as const) {
+  test.describe(`layout in ${locale}`, () => {
+    test.use({ locale });
+    for (const scheme of ["light", "dark"] as const) {
+      for (const width of [360, 375, 768, 1280, 1440]) {
+        test(`${scheme}, ${width}px: every page fits and shows its heading`, async ({ page }) => {
+          test.setTimeout(60_000);
+          await page.emulateMedia({ colorScheme: scheme });
+          await page.setViewportSize({ width, height: 900 });
+          await setup(page, {});
+          for (const path of ROUTES) await expectLayoutHolds(page, path);
+        });
+      }
+    }
+  });
 }
 
 test("the site header links to every page and marks the current one", async ({ page }) => {
@@ -145,8 +186,4 @@ test.describe("Vietnamese browser", () => {
     await expect(page.locator("#unknown-flash-size")).toBeInViewport();
     await expect(page.locator("#unknown-flash-size")).toContainText("Không đọc được dung lượng flash");
   });
-
-  for (const width of [375, 768]) {
-    test(`${width}px wide: no page has horizontal scroll`, ({ page }) => expectNoHorizontalScroll(page, width));
-  }
 });

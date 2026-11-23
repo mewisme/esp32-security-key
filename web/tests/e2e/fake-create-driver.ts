@@ -43,6 +43,7 @@ class FakeDriver implements FlashDriver {
   }
 
   async requestPort(): Promise<PortInfo> {
+    Reflect.set(window, "__portRequests", (Number(Reflect.get(window, "__portRequests")) || 0) + 1);
     await sleep(20);
     if (this.s.chooser === "cancel") throw Object.assign(new Error("No port selected by the user."), { name: "NotFoundError" });
     return this.s.port === "uart" ? { usbVendorId: 0x10c4, usbProductId: 0xea60 } : { usbVendorId: 0x303a, usbProductId: 0x1001 };
