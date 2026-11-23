@@ -657,7 +657,7 @@ checksum = "68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a"
 
 [[package]]
 name = "multikey-cli"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "clap",
  "hex",
@@ -673,7 +673,7 @@ dependencies = [
 
 [[package]]
 name = "multikey-fido"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "ctap-hid-fido2",
  "libc",
@@ -684,7 +684,7 @@ dependencies = [
 
 [[package]]
 name = "multikey-host"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "getrandom 0.2.17",
  "hex",
@@ -700,7 +700,7 @@ dependencies = [
 
 [[package]]
 name = "multikey-pam"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "multikey-host",
  "multikey-proto",
@@ -708,7 +708,7 @@ dependencies = [
 
 [[package]]
 name = "multikey-proto"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "hex",
  "multikey-proto",
