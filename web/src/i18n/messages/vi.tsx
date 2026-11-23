@@ -605,7 +605,7 @@ export const vi: Messages = {
       outdated: "Firmware này cũ hơn v0.3.1 nên không báo cáo được bản dựng. Phiên bản sẽ được đọc ở chế độ nạp.",
     },
     check: {
-      description: "Bản phát hành mới nhất có khai báo cập nhật chỉ-ứng-dụng cho firmware này.",
+      description: "Chọn phiên bản để cập nhật. Chỉ liệt kê các bản mới hơn bản trên khóa; bản ngay sau đó được chọn trước.",
       loading: "Đang tải danh sách bản phát hành…",
       installed: "Đang cài",
       offered: "Đề xuất",
@@ -613,11 +613,12 @@ export const vi: Messages = {
       versionLine: (title: string, version: string, tag: string) => `${title}, phiên bản ${version} (${tag})`,
       upToDate: { title: "Đã là bản mới nhất", text: "Ứng dụng trên khóa giống từng byte với bản phát hành mới nhất. Không cần cập nhật." },
       unsupported: {
-        title: "Bản mới nhất không có cập nhật chỉ-ứng-dụng",
+        title: "Bản này không có cập nhật chỉ-ứng-dụng",
         text: (tag: string) =>
           `Bản ${tag} được phát hành trước khi có cập nhật chỉ-ứng-dụng, nên không khai báo rằng cập nhật này an toàn. Trình cài đặt vẫn cập nhật được khóa; nó ghi cả bootloader và bảng phân vùng và giữ nguyên part0.`,
       },
       noRelease: "Không có bản phát hành nào có bản dựng cho firmware này.",
+      nothingNewer: "Không có bản phát hành nào mới hơn phiên bản trên khóa.",
       useInstaller: "Mở trình cài đặt",
     },
     review: {

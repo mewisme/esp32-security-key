@@ -106,12 +106,33 @@ test("a key that already runs the newest image is told so, without a download-mo
   expect(await flashWrites(page)).toEqual([]);
 });
 
+test("the check step lists only releases newer than the key, selects the one right after it, and a pick is what gets offered", async ({ page }) => {
+  await setupUpdate(page, running());
+  const older = await makeFirmware({ appOnly: true, version: "0.3.2", tag: "v0.3.2" });
+  const same = await makeFirmware({ appOnly: true, version: "0.3.1", tag: "v0.3.1" });
+  const summary = (tag: string, at: string) => ({ tag, name: `MultiKeys ${tag}`, prerelease: false, published_at: at, html_url: "https://example.invalid/notes" });
+  await page.route("**/api/releases", (r) =>
+    r.fulfill({ json: [summary(TAG, "2026-11-24T00:00:00Z"), summary("v0.3.2", "2026-11-23T00:00:00Z"), summary("v0.3.1", "2026-11-22T00:00:00Z")] }),
+  );
+  await page.route("**/api/firmware/v0.3.2/firmware-manifest.json", (r) => r.fulfill({ json: older.manifest }));
+  await page.route("**/api/firmware/v0.3.1/firmware-manifest.json", (r) => r.fulfill({ json: same.manifest }));
+  await page.goto("/update");
+  await page.getByRole("button", { name: "Choose key" }).click();
+  await next(page).click();
+  await expect(page.getByText(/version 0\.3\.2 \(v0\.3\.2\)/)).toBeVisible();
+  await page.getByRole("combobox", { name: "Choose another version" }).click();
+  await expect(page.getByRole("option")).toHaveCount(2);
+  await expect(page.getByRole("option", { name: /v0\.3\.1/ })).toHaveCount(0);
+  await page.getByRole("option", { name: /v0\.3\.3/ }).click();
+  await expect(page.getByText(/version 0\.3\.3 \(v0\.3\.3\)/)).toBeVisible();
+});
+
 test("a release without update.app_only is never offered: the installer is the way forward", async ({ page }) => {
   await setupUpdate(page, running(), { appOnly: false });
   await page.goto("/update");
   await page.getByRole("button", { name: "Choose key" }).click();
   await next(page).click();
-  await expect(page.getByText("The newest release has no application-only update")).toBeVisible();
+  await expect(page.getByText("This release has no application-only update")).toBeVisible();
   await expect(page.getByRole("link", { name: "Open the installer" })).toBeVisible();
   await expect(next(page)).toHaveCount(0);
   expect(await flashWrites(page)).toEqual([]);

@@ -22,7 +22,7 @@ import type { Phase } from "@/lib/flashing/machine";
 import { md5Hex } from "@/lib/flashing/md5";
 import { clearPending, loadPending, savePending } from "@/lib/flashing/update-pending";
 import { buildReport, type UpdateReport } from "@/lib/flashing/update-report";
-import { findUpdateTarget, type UpdateTarget } from "@/lib/flashing/update-target";
+import { defaultUpdateTarget, findUpdateTarget, listUpdateTargets, targetByTag, type UpdateTarget } from "@/lib/flashing/update-target";
 import { SERIAL_FILTERS } from "@/hooks/useInstaller";
 import type { UpdateStep } from "@/lib/update-steps";
 
@@ -75,6 +75,8 @@ export interface UpdateState {
   /** Stage of the choosing phase. */
   stage: "connecting" | "downloading" | "reading" | null;
   target: { release: UpdateTarget["release"]; build: Build; profile: HardwareProfile; support: Support } | null;
+  /** The release the person picked on the check step; null until they pick one. */
+  selectedTag: string | null;
   decision: AppUpdateDecision | null;
   download: { received: number; total: number } | null;
   progress: { written: number; total: number } | null;
@@ -92,6 +94,7 @@ const initial = (): UpdateState => ({
   inspectNote: null,
   stage: null,
   target: null,
+  selectedTag: null,
   decision: null,
   download: null,
   progress: null,
@@ -132,6 +135,7 @@ export interface UpdaterActions {
   skipVerify(): void;
   reset(): Promise<void>;
   loadCatalog(): void;
+  setRelease(tag: string): void;
 }
 
 export interface Updater {
@@ -140,6 +144,10 @@ export interface Updater {
   catalog: CatalogState;
   /** The build the check step offers, from the inspected key's family (fido when nothing was inspected). */
   latest: UpdateTarget | null;
+  /** What the person may pick: releases newer than the installed version, newest first. */
+  offers: UpdateTarget[];
+  /** The chosen release, or the one right after the installed version when nothing was chosen. */
+  selected: UpdateTarget | null;
   actions: UpdaterActions;
 }
 
@@ -216,6 +224,16 @@ export function useUpdater(): Updater {
     () => (catalog.status === "ready" ? findUpdateTarget(catalog.catalog, baselineImage, baseline?.flashSize ?? null) : null),
     [baseline?.flashSize, baselineImage, catalog],
   );
+  const installedVersion = baseline?.version ?? null;
+  const offers = useMemo(
+    () => (catalog.status === "ready" ? listUpdateTargets(catalog.catalog, baselineImage, baseline?.flashSize ?? null, installedVersion) : []),
+    [baseline?.flashSize, baselineImage, catalog, installedVersion],
+  );
+  const selected = useMemo(
+    () => offers.find((o) => o.release.tag === state.selectedTag) ?? defaultUpdateTarget(offers, installedVersion, latest),
+    [installedVersion, latest, offers, state.selectedTag],
+  );
+  const setRelease = useCallback((tag: string) => patch({ selectedTag: tag }), [patch]);
 
   const inspect = useCallback(async () => {
     const connector = createKeyConnector();
@@ -287,7 +305,8 @@ export function useUpdater(): Updater {
       const installed = parseAppDescriptor(await d.readFlash(policy.app_descriptor.offset - 0x20, policy.app_descriptor.read_length));
       const image = imageOf(installed?.project_name) ?? baselineImage;
       phase = "validating-compatibility";
-      const offered = findUpdateTarget(catalog.catalog, image, chip.flashSize);
+      const wanted = selected ? targetByTag(catalog.catalog, selected.release.tag, image, chip.flashSize) : null;
+      const offered = wanted ?? findUpdateTarget(catalog.catalog, image, chip.flashSize);
       if (!offered) throw new FirmwareError("profile-not-in-release", `no ${image} build in any release`);
       const picked = selectProfile(chip, offered.release.manifest.builds, image);
       if (!picked.ok) throw new FirmwareError(picked.code, picked.detail);
@@ -318,7 +337,7 @@ export function useUpdater(): Updater {
       fail(err, phase, "choosing");
       await closeDriver();
     }
-  }, [baselineImage, catalog, closeDriver, fail, patch, readDevice, state.baseline, state.pending]);
+  }, [baselineImage, catalog, closeDriver, fail, patch, readDevice, selected, state.baseline, state.pending]);
 
   const confirm = useCallback(
     async (acks: UpdateAckId[]) => {
@@ -449,6 +468,8 @@ export function useUpdater(): Updater {
     step: stepOf(state),
     catalog,
     latest,
-    actions: { inspect, skipInspect, toCheck, toReview, back, choosePort, confirm, verifyDevice, skipVerify, reset, loadCatalog },
+    offers,
+    selected,
+    actions: { inspect, skipInspect, toCheck, toReview, back, choosePort, confirm, verifyDevice, skipVerify, reset, loadCatalog, setRelease },
   };
 }

@@ -42,7 +42,7 @@ function vidPid(release: CatalogRelease | undefined): string | null {
   return `${hex(usb.vid)}:${hex(usb.pid)}`;
 }
 
-function ReleaseBadges({ release, latestStable }: { release: CatalogRelease; latestStable: boolean }) {
+export function ReleaseBadges({ release, latestStable }: { release: CatalogRelease; latestStable: boolean }) {
   const { t } = useI18n();
   return (
     <>

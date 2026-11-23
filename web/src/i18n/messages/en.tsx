@@ -620,7 +620,7 @@ export const en = {
       outdated: "This firmware is older than v0.3.1 and cannot report its build. Its version is read in download mode instead.",
     },
     check: {
-      description: "The newest release that declares an application-only update for this firmware.",
+      description: "Choose the version to update to. Only releases newer than the one on the key are listed; the one right after it is selected first.",
       loading: "Loading releases…",
       installed: "Installed",
       offered: "Offered",
@@ -628,11 +628,12 @@ export const en = {
       versionLine: (title: string, version: string, tag: string) => `${title}, version ${version} (${tag})`,
       upToDate: { title: "Already up to date", text: "The application on the key is byte-identical to the newest release. Nothing to update." },
       unsupported: {
-        title: "The newest release has no application-only update",
+        title: "This release has no application-only update",
         text: (tag: string) =>
           `Release ${tag} was published before application-only updates existed, so it does not declare that one is safe. The installer can still update the key; it rewrites the bootloader and partition table as well and keeps part0.`,
       },
       noRelease: "No release has a build for this firmware.",
+      nothingNewer: "No published release is newer than the version on the key.",
       useInstaller: "Open the installer",
     },
     review: {
