@@ -6,7 +6,7 @@ import type { NameRequest } from "./device/mkauth";
 export interface InstallerConfig {
   /** Release tag, or null for "the default release". */
   tag: string | null;
-  image: "fido";
+  image: "fido" | "openpgp";
   name: NameRequest;
 }
 
@@ -20,11 +20,12 @@ export function parseConfig(raw: string | null): InstallerConfig {
     const v = JSON.parse(raw) as { tag?: unknown; image?: unknown; name?: { mode?: unknown; name?: unknown } } | null;
     if (!v || typeof v !== "object") return DEFAULT_CONFIG;
     const tag = v.tag ?? null;
-    if ((tag !== null && typeof tag !== "string") || v.image !== "fido" || !v.name || typeof v.name !== "object") return DEFAULT_CONFIG;
+    const image = v.image === "fido" || v.image === "openpgp" ? v.image : null;
+    if ((tag !== null && typeof tag !== "string") || !image || !v.name || typeof v.name !== "object") return DEFAULT_CONFIG;
     const { mode } = v.name;
-    if (mode === "keep" || mode === "default") return { tag, image: "fido", name: { mode } };
+    if (mode === "keep" || mode === "default") return { tag, image, name: { mode } };
     if (mode === "custom" && typeof v.name.name === "string" && validateDeviceName(v.name.name) === null) {
-      return { tag, image: "fido", name: { mode, name: v.name.name } };
+      return { tag, image, name: { mode, name: v.name.name } };
     }
   } catch {
     // fall through

@@ -1,5 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
-import { ackAll, HARDWARE_CHECK, keyWrites, recordDownloads, setup, toChooser } from "./helpers";
+import { ackAll, flashWrites, HARDWARE_CHECK, keyWrites, recordDownloads, setup, toChooser } from "./helpers";
 
 const NAME = "Mew's Security Key";
 const CLI = `multikey device rename "${NAME}" --reenumerate`;
@@ -331,4 +331,66 @@ test("foreign partition table -> repurpose needs REPURPOSE typed", async ({ page
   await expect(install).toBeDisabled();
   await page.getByLabel(/Type REPURPOSE/).fill("REPURPOSE");
   await expect(install).toBeEnabled();
+});
+
+test("OpenPGP: from a FIDO2 board the switch needs three acknowledgements and SWITCH typed, writes stay off the data areas", async ({ page }) => {
+  const downloads = recordDownloads(page);
+  await setup(page, { device: "fido-0.2.0", images: ["fido", "openpgp"] });
+  await page.goto("/install");
+  await page.getByRole("checkbox", { name: HARDWARE_CHECK }).check();
+  await next(page).click();
+  await expect(page.locator("#image-fido")).toBeChecked();
+  await page.locator("#image-openpgp").check();
+  await expect(page.getByText("Read this before choosing OpenPGP")).toBeVisible();
+  await expect(page.getByRole("radio", { name: "Custom name" })).toHaveCount(0);
+  await next(page).click();
+  await page.getByRole("button", { name: "Choose device" }).click();
+
+  await expect(page.getByTestId("install-mode")).toHaveText("Switch to a different MultiKeys firmware");
+  await expect(page.getByText("FIDO2 and OpenPGP keep separate data")).toBeVisible();
+  const install = page.getByRole("button", { name: "Install firmware" });
+  await expect(install).toBeDisabled();
+  for (const box of await page.getByRole("checkbox").all()) await box.check();
+  await expect(install).toBeDisabled();
+  await page.getByLabel(/Type SWITCH/).fill("switch");
+  await expect(install).toBeDisabled();
+  await page.getByLabel(/Type SWITCH/).fill("SWITCH");
+  await expect(install).toBeEnabled();
+  await install.click();
+
+  await expect(page.getByText("The OpenPGP card is not checked from the browser", { exact: false })).toHaveCount(0);
+  await page.getByRole("button", { name: "I replugged it" }).click();
+  await expect(page.getByText("Flash verified. The OpenPGP card is not checked from the browser.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Check my key" })).toHaveCount(0);
+  expect(await flashWrites(page)).toEqual([0, 0x8000, 0x20000]);
+  expect(downloads).toEqual(["multikey-firmware-v0.2.0-esp32s3-16mb-openpgp-dev.zip"]);
+});
+
+test("OpenPGP: a blank board needs the experimental acknowledgement, not the SWITCH confirmation", async ({ page }) => {
+  await setup(page, { device: "blank", images: ["fido", "openpgp"] });
+  await page.goto("/install");
+  await page.getByRole("checkbox", { name: HARDWARE_CHECK }).check();
+  await next(page).click();
+  await page.locator("#image-openpgp").check();
+  await next(page).click();
+  await page.getByRole("button", { name: "Choose device" }).click();
+  await expect(page.getByTestId("install-mode")).toHaveText("First installation");
+  await expect(page.getByLabel(/Type SWITCH/)).toHaveCount(0);
+  const install = page.getByRole("button", { name: "Install firmware" });
+  await page.getByLabel(/experimental development firmware and not suitable/).check();
+  await expect(install).toBeDisabled();
+  await page.getByLabel(/OpenPGP firmware is experimental/).check();
+  // OpenPGP is only build-verified, even on the board the FIDO2 image was tested on.
+  await expect(install).toBeDisabled();
+  await page.getByLabel(/hasn't been tested with MultiKeys/).check();
+  await expect(install).toBeEnabled();
+});
+
+test("OpenPGP: a release without an OpenPGP build leaves the option disabled", async ({ page }) => {
+  await setup(page, { device: "blank" });
+  await page.goto("/install");
+  await page.getByRole("checkbox", { name: HARDWARE_CHECK }).check();
+  await next(page).click();
+  await expect(page.locator("#image-openpgp")).toBeDisabled();
+  await expect(page.locator("#image-fido")).toBeChecked();
 });

@@ -5,14 +5,16 @@ machine-readable firmware manifest. From v0.3.0 the release carries one firmware
 [HARDWARE_PROFILES](HARDWARE_PROFILES.md)); v0.2.0 has a single 16 MB firmware and v0.1.0 contained host tools only.
 
 The published firmware is the FIDO2 development image for ESP32-S3 boards with 4, 8 or 16 MB quad flash, with the BOOT button
-(GPIO0) as the touch button and no LED (`boards/esp32s3-boot-button.board`). Only the 16 MB build is hardware verified (one
+(GPIO0) as the touch button and no LED (`boards/esp32s3-boot-button.board`). Only the 16 MB FIDO2 build is hardware verified (one
 N16R8 board); the 4 and 8 MB builds are build verified. It uses the development USB VID:PID `303A:4002` and the
-development AAGUID ([USB_IDENTITY](USB_IDENTITY.md)); publishing it requires the maintainer's explicit acceptance of that. The
-OpenPGP image and other boards are built from source ([FLASHING_ADVANCED](FLASHING_ADVANCED.md)).
+development AAGUID ([USB_IDENTITY](USB_IDENTITY.md)); publishing it requires the maintainer's explicit acceptance of that. From the
+first release built with this workflow the same flash sizes also get an **Experimental OpenPGP/PIV development image** (separate
+firmware, build verified only, offered by the web installer under Advanced / Experimental). Other boards are built from source
+([FLASHING_ADVANCED](FLASHING_ADVANCED.md)).
 
 ## Assets (a release with firmware for every flash size)
 
-Eight files: three host archives, three firmware zips (one per hardware profile), the manifest and `SHA256SUMS`.
+Eleven files: three host archives, six firmware zips (FIDO2 and OpenPGP, one per hardware profile), the manifest and `SHA256SUMS`.
 
 | File | Contents |
 |---|---|
@@ -22,8 +24,9 @@ Eight files: three host archives, three firmware zips (one per hardware profile)
 | `multikey-firmware-vX.Y.Z-esp32s3-16mb-fido-dev.zip` | `bootloader.bin`, `partition-table.bin`, `multikey-fido.bin`, `firmware.json`, `SHA256SUMS`, `LICENSE`, `NOTICE.txt`, `README.txt` (16 MB flash; the hardware-verified profile) |
 | `multikey-firmware-vX.Y.Z-esp32s3-8mb-fido-dev.zip` | the same members for 8 MB flash (build verified, not hardware tested) |
 | `multikey-firmware-vX.Y.Z-esp32s3-4mb-fido-dev.zip` | the same members for 4 MB flash (build verified, not hardware tested) |
+| `multikey-firmware-vX.Y.Z-esp32s3-{16,8,4}mb-openpgp-dev.zip` | three zips with `multikey-openpgp.bin` instead of `multikey-fido.bin`, otherwise the same members. **Experimental**: build verified on every size, never run on hardware, so the manifest says `build-verified` with no `verified_hardware` even for the 16 MB profile |
 | `firmware-manifest.json` | one entry per firmware build: profile, offsets, sizes and SHA-256 of each image and of the zip, partition layout, USB identity, data-compatibility range |
-| `SHA256SUMS` | SHA-256 of the seven files above |
+| `SHA256SUMS` | SHA-256 of the ten files above |
 
 v0.2.0, published before the flash-size profiles, has six files: a single firmware zip named
 `multikey-firmware-v0.2.0-esp32s3-n16r8-fido-dev.zip` (the 16 MB build) and a schema-1 manifest. The web installer and its Worker keep
@@ -139,11 +142,14 @@ A `-suffix` in the version (`0.3.0-rc.1`) publishes a pre-release.
 |---|---|
 | `meta` | release script tests (packaging, firmware packaging, workflow invariants); all five host crates share one version; for a tag: it is `vMAJOR.MINOR.PATCH[-suffix]`, equals that version, `docs/releases/v<version>.md` exists, and no release for it exists yet |
 | `build` (3 legs: Windows x86_64, Linux x86_64, PAM Linux x86_64) | for a tag: `cargo fmt --check`, `clippy -D warnings`, tests (on `main` and pull requests `ci.yml` runs them); every run: `--locked --release` build, packaging, then **the extracted archive** is exercised: `--version`, `--help` of every group, Windows: no Visual C++/UCRT DLL imports; Linux: `ldd` resolves; PAM: symbols, dependencies, `dlopen`, fail-closed `pamtester` run |
-| `firmware` (ESP-IDF v5.5.6 container, **one leg per hardware profile**: `esp32s3-4mb`, `esp32s3-8mb`, `esp32s3-16mb`) | patches apply; FIDO2 dev image built with `build.py dev --hw <profile> --board esp32s3-boot-button --release` (descriptor version = release version); `check_no_irreversible.py`; `check_usb_descriptors.py`; `package_firmware.py package --hw <profile>` refuses CI-pin images, wrong chip, wrong flash size/mode/frequency (in the config, `flasher_args.json` and the bootloader and app image headers), Secure Boot/flash encryption/eFuse provisioning, any image touching nvs/phy_init/part0, a partition table that differs from `partitions.csv`, a wrong app project/version, an invalid default USB name and a landing URL other than `https://multikeys.mewis.me`; uploads `firmware-<profile>-fido-dev` |
-| `assemble` | needs `build` and `firmware`; writes `firmware-manifest.json` with `--require-release-profiles` (fails unless every `release: true` profile of `tools/flash_policy.json` has a FIDO2 build), re-verifies every firmware zip against it, requires exactly the seven expected files, writes and checks `SHA256SUMS`, writes a summary table (profile, verification, zip, size, SHA-256) to the job summary, uploads the `release-bundle` artifact; read-only, publishes nothing |
-| `release` | only for `v*` tags and only if `assemble` succeeded; the only job with `contents: write` (asserted by `tests/release/test_workflows.py`); downloads `release-bundle`, checks it holds eight files and `SHA256SUMS`, then `gh release create --verify-tag` (never `--clobber`, never an upload to an existing release) |
+| `firmware` (ESP-IDF v5.5.6 container, **one leg per image and hardware profile**: `fido`, `openpgp` × `esp32s3-4mb`, `esp32s3-8mb`, `esp32s3-16mb`) | patches apply; dev image built with `build.py dev --app <image> --hw <profile> --board esp32s3-boot-button --release` (descriptor version = release version); `check_no_irreversible.py`; `check_usb_descriptors.py`; `package_firmware.py package --app <image> --hw <profile>` refuses CI-pin images, wrong chip, wrong flash size/mode/frequency (in the config, `flasher_args.json` and the bootloader and app image headers), Secure Boot/flash encryption/eFuse provisioning, any image touching nvs/phy_init/part0, a partition table that differs from `partitions.csv`, a wrong app project/version, an invalid default USB name and a landing URL other than `https://multikeys.mewis.me`; uploads `firmware-<profile>-<image>-dev` |
+| `assemble` | needs `build` and `firmware`; writes `firmware-manifest.json` with `--require-release-profiles` (fails unless every `release: true` profile of `tools/flash_policy.json` has **both** a FIDO2 and an OpenPGP build), re-verifies every firmware zip against it, requires exactly the ten expected files, writes and checks `SHA256SUMS`, writes a summary table (image, profile, verification, zip, size, SHA-256) to the job summary, uploads the `release-bundle` artifact; read-only, publishes nothing |
+| `release` | only for `v*` tags and only if `assemble` succeeded; the only job with `contents: write` (asserted by `tests/release/test_workflows.py`); downloads `release-bundle`, checks it holds eleven files and `SHA256SUMS`, then `gh release create --verify-tag` (never `--clobber`, never an upload to an existing release) |
 
-Pull requests, pushes to `main` and manual runs never reach `release`. `release.yml` builds, packages and verifies the three
+`package_firmware.py` marks an OpenPGP build `build-verified` with no `verified_hardware`, whatever its profile says, until a hardware
+run is recorded (`HARDWARE_VERIFIED_IMAGES`); the six legs never use `--ci-pins`.
+
+Pull requests, pushes to `main` and manual runs never reach `release`. `release.yml` builds, packages and verifies the six
 firmware zips on every push to `main` and on firmware-related pull requests; `ci.yml` no longer packages firmware.
 
 **Caches never reach a release.** Pull requests and `main` restore the ESP-IDF ccache and the Rust build cache; only `main`

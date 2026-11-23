@@ -42,7 +42,13 @@ Exit codes: 0 PASS/dry run, 1 failure, 2 prerequisite/arguments, 3 no or ambiguo
 - It does not reset the authenticator, set a PIN or create credentials.
 - It never flashes a `--ci-pins` image (that image refuses to run anyway).
 - The OpenPGP image shares the `part0` file system with different applets. Credentials, PINs and keys from the FIDO image are not
-  usable and may be lost or mis-read; the script requires `-AcknowledgeOpenPgpImage` and still asks for `FLASH`.
+  usable and may be lost or mis-read; the script requires `-AcknowledgeOpenPgpImage` and still asks for `FLASH`. The web installer
+  offers the same image under **Advanced / Experimental**: switching from a FIDO2 board needs tick boxes (development firmware,
+  "the other firmware's data will not be usable", Experimental, and the untested-hardware box because an OpenPGP build is never
+  hardware verified) **and `SWITCH` typed**; a first install needs the same boxes without `SWITCH`. Either way it writes only
+  `0x0`, `0x8000` and `0x20000`, never `part0`, and the page does not talk to an OpenPGP key afterwards (no name, no WebUSB
+  check); read the card with `gpg --card-status`
+  ([OPENPGP](OPENPGP.md)). The image is build verified, never run on hardware.
 
 ### Why `part0` survives
 

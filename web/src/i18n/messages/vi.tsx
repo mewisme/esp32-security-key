@@ -377,9 +377,27 @@ export const vi: Messages = {
       checkConnection: "Kiểm tra kết nối internet của bạn.",
       noReleaseText: "Firmware dựng sẵn chưa được công bố. Hãy quay lại sau hoặc dùng cách dành cho nhà phát triển trong README.",
       version: (version: string, date: string | null) => (date ? `Phiên bản ${version} · ${date}` : `Phiên bản ${version}`),
-      openpgp: {
-        title: "MultiKeys OpenPGP — chưa được công bố",
-        text: "Không có trong trình cài đặt web; hãy dựng từ mã nguồn bằng script dành cho nhà phát triển.",
+      imageLegend: "Loại firmware",
+      experimental: "Nâng cao / Thử nghiệm",
+      notInRelease: "Không có trong bản phát hành này.",
+      images: {
+        fido: {
+          title: "MultiKeys FIDO2",
+          text: "Passkey, khóa bảo mật FIDO2/U2F với nút BOOT làm xác nhận hiện diện. Image được khuyên dùng.",
+        },
+        openpgp: {
+          title: "MultiKeys OpenPGP",
+          text: "Thẻ thông minh OpenPGP (GnuPG: ký, giải mã, xác thực) và PIV qua CCID. Là image riêng: thay thế FIDO2.",
+        },
+      },
+      openpgpWarning: {
+        title: "Đọc kỹ trước khi chọn OpenPGP",
+        items: [
+          "Thử nghiệm: đã dựng và kiểm tra, nhưng chưa được chạy trên phần cứng thật.",
+          "Không có FIDO2 hay passkey khi đã cài, và không đổi tên được thiết bị.",
+          "Đây là firmware riêng, không phải phần bổ sung. Chuyển giữa nó và FIDO2 làm khóa lưu của bên kia không dùng được.",
+          "PIN mặc định áp dụng cho đến khi bạn đổi (người dùng 123456, quản trị 12345678).",
+        ],
       },
       nameOptions: {
         keep: { title: "Không đổi tên", text: `Khóa mới hiển thị "${FALLBACK_DEFAULT_NAME}"; khóa được cập nhật giữ tên hiện tại.` },
@@ -454,6 +472,10 @@ export const vi: Messages = {
         neverTouched: (partitions: string[]) =>
           `Luôn được giữ nguyên: ${[...partitions.map((p) => (p === "part0" ? "part0 (các khóa của bạn)" : p)), "eFuse (cài đặt chip vĩnh viễn)"].join(", ")}.`,
       },
+      switchWarning: {
+        title: "FIDO2 và OpenPGP lưu dữ liệu riêng",
+        text: "Cả hai firmware dùng cùng vùng lưu trữ (part0) nhưng mỗi bên đọc theo định dạng riêng. Trình cài đặt này không xóa gì, nhưng khóa và credential do firmware bị thay thế tạo ra sẽ không dùng được và có thể bị ghi đè khi firmware mới chạy. Hãy sao lưu những gì cần thiết trước. Chuyển lại sau này nghĩa là cài lại firmware kia; credential không quay lại.",
+      },
       data: { title: "Dữ liệu của bạn", why: "Lý do:", risk },
       untested: {
         title: "Chưa được thử trên bo mạch này",
@@ -468,10 +490,15 @@ export const vi: Messages = {
           "dev-firmware": "Tôi hiểu đây là firmware phát triển thử nghiệm và không phù hợp để bảo vệ các tài khoản quan trọng.",
           "update-unverified": "Tôi hiểu các khóa do phiên bản đang cài lưu có thể không dùng được sau lần cập nhật này.",
           "switch-image": "Tôi hiểu dữ liệu từ firmware MultiKeys kia sẽ không dùng được.",
+          "experimental-image":
+            "Tôi hiểu firmware OpenPGP còn thử nghiệm, chưa được thử trên phần cứng và không phù hợp cho các khóa tôi tin cậy.",
           "replace-layout": "Tôi hiểu firmware hiện có trên bo mạch này sẽ bị thay thế.",
           "untested-hardware": "Tôi hiểu loại bo mạch này chưa được thử với MultiKeys",
         },
-        repurposeLabel: "Nhập REPURPOSE để xác nhận các vùng nvs và part0 sẽ bị xóa",
+        typedLabels: {
+          "repurpose-typed": "Nhập REPURPOSE để xác nhận các vùng nvs và part0 sẽ bị xóa",
+          "switch-image-typed": "Nhập SWITCH để xác nhận bạn đang chuyển giữa firmware FIDO2 và OpenPGP",
+        },
       },
     },
 
@@ -510,6 +537,13 @@ export const vi: Messages = {
           `Trang đích (landing page): ${url ?? "chưa kiểm tra (trình duyệt không đọc được; điều này phổ biến trên Windows và vô hại)"}`,
         unverifiedTitle: "Flash đã xác minh; chưa kiểm tra khóa đang chạy",
         unverifiedText: "Firmware đã được ghi và xác minh; chưa phát hiện khóa.",
+      },
+      openpgp: {
+        title: "Flash đã xác minh. Thẻ OpenPGP không được kiểm tra từ trình duyệt.",
+        text: "Image này không có trang WebUSB và không thể đổi tên. Cắm vào cổng USB gốc (native) rồi đọc thẻ bằng GnuPG (cần dịch vụ thẻ thông minh: pcscd trên Linux, có sẵn trên Windows):",
+        pins: "Hãy đổi PIN mặc định (người dùng 123456, quản trị 12345678) trước khi tạo khóa: gpg --edit-card, admin, passwd. Image này còn thử nghiệm và chưa được chạy trên phần cứng.",
+        replugHint: "Sau khi cắm lại, bo mạch xuất hiện như đầu đọc thẻ thông minh (CCID), không phải khóa bảo mật.",
+        done: "Tôi đã cắm lại",
       },
     },
   },

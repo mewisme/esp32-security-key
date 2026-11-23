@@ -45,7 +45,11 @@ COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 DATA_PRESERVING_FROM = "0.2.0"
 INSTALL_MODES = ["first-install", "update", "update-unverified", "switch-image", "replace-compatible-layout",
                  "repurpose"]
-TITLES = {"fido": "MultiKeys FIDO2 — Development Firmware", "openpgp": "MultiKeys OpenPGP — Development Firmware"}
+TITLES = {"fido": "MultiKeys FIDO2 — Development Firmware",
+          "openpgp": "MultiKeys OpenPGP — Experimental Development Firmware"}
+# Images whose profile-level hardware verification (tools/flash_policy.json) was actually run with that image.
+# OpenPGP joins only after a recorded hardware run (docs/hw-reports).
+HARDWARE_VERIFIED_IMAGES = frozenset({"fido"})
 IMAGE_FILES = {"bootloader": "bootloader.bin", "partition-table": "partition-table.bin"}
 TEMPLATES = ROOT / "packaging" / "firmware"
 
@@ -224,8 +228,9 @@ def package(build_dir: Path, sdkconfig: Path, app: str, hw: str, version: str, c
         "layout_id": layout_id(parts), "partition_schema": layout_id(parts),
         "protected_partitions": list(fd.PROTECTED), "repurpose_fill": list(fd.POLICY["repurpose_fill"]),
         "update": {"data_preserving_from": DATA_PRESERVING_FROM}, "install_modes": INSTALL_MODES,
-        "verified_hardware": [v["label"] for v in prof["verified_hardware"]],
-        "verification": prof["verification"],
+        "verified_hardware": ([v["label"] for v in prof["verified_hardware"]] if app in HARDWARE_VERIFIED_IMAGES
+                              else []),
+        "verification": prof["verification"] if app in HARDWARE_VERIFIED_IMAGES else "build-verified",
     }
     name = package_name(version, app, hw)
     root = name.removesuffix(".zip")
@@ -274,10 +279,11 @@ def manifest(entry_paths: list, version: str, tag: str, commit: str, require_rel
         if b["version"] != version:
             raise PackageError(f"build {b['id']} has version {b['version']!r}, manifest is {version!r}")
     if require_release_profiles:
-        have = {b["profile_id"] for b in builds if b["image"] == "fido"}
-        missing = sorted(p["id"] for p in fd.PROFILES.values() if p.get("release") and p["id"] not in have)
-        if missing:
-            raise PackageError(f"no fido build for release profile(s) {', '.join(missing)}")
+        for image in ("fido", "openpgp"):
+            have = {b["profile_id"] for b in builds if b["image"] == image}
+            missing = sorted(p["id"] for p in fd.PROFILES.values() if p.get("release") and p["id"] not in have)
+            if missing:
+                raise PackageError(f"no {image} build for release profile(s) {', '.join(missing)}")
     return {"schema": "multikeys-firmware-manifest", "schema_version": 2, "version": version, "tag": tag,
             "source_commit": commit, "repository": REPOSITORY, "builds": sorted(builds, key=lambda b: b["id"])}
 

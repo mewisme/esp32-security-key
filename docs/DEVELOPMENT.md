@@ -91,6 +91,10 @@ python tools/package_firmware.py manifest --entries 'dist-fw/*.entry.json' --ver
 python tools/package_firmware.py verify dist-fw/multikey-firmware-*.zip --manifest dist-fw/firmware-manifest.json
 ```
 
+The same commands with `--app openpgp` build the Experimental OpenPGP/PIV image (project `multikey-openpgp`, asset
+`multikey-firmware-vX.Y.Z-esp32s3-<size>-openpgp-dev.zip`). `--require-release-profiles` needs both images for every release
+profile, and the packager labels OpenPGP builds `build-verified` with no `verified_hardware` until a hardware run is recorded.
+
 Each hardware profile (`esp32s3-4mb`, `esp32s3-8mb`, `esp32s3-16mb`, [HARDWARE_PROFILES](HARDWARE_PROFILES.md)) has its own
 build directory and generated sdkconfig (`build-fido-dev-4mb`, `build-fido-dev-8mb`, and `build-fido-dev` for the default
 16 MB profile). `--board NAME` layers `boards/NAME.board` instead of the git-ignored root `sdkconfig.board`; `--clean`

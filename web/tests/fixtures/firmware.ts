@@ -90,6 +90,8 @@ export interface FirmwareFixture {
   images: { bootloader: Uint8Array; table: Uint8Array; app: Uint8Array };
 }
 
+type ImageName = "fido" | "openpgp";
+
 interface Options {
   version?: string;
   tag?: string;
@@ -102,12 +104,12 @@ type Common = Pick<
   | "partitions" | "layout_id" | "protected_partitions" | "repurpose_fill" | "update" | "install_modes"
 >;
 
-function common(version: string): Common {
+function common(version: string, image: ImageName = "fido"): Common {
   return {
-    image: "fido",
-    project_name: "multikey-fido",
+    image,
+    project_name: `multikey-${image}`,
     version,
-    title: "MultiKeys FIDO2 — Development Firmware",
+    title: image === "fido" ? "MultiKeys FIDO2 — Development Firmware" : "MultiKeys OpenPGP — Experimental Development Firmware",
     chip: "ESP32-S3",
     security_profile: "development",
     idf_version: "v5.5.6",
@@ -130,19 +132,25 @@ interface Packaged {
 }
 
 /** Writes the zip for `entry` (firmware.json inside it is the published entry minus `package`). */
-async function pack(entryNoImages: object, packageName: string, flashSize: string, opts: Options & { version: string }): Promise<Packaged> {
+async function pack(
+  entryNoImages: object,
+  packageName: string,
+  flashSize: string,
+  opts: Options & { version: string; image?: ImageName },
+): Promise<Packaged> {
   const header = [0x02, (SIZE_CODE[flashSize]! << 4) | 0xf]; // image header bytes 2-3: dio, flash size | 80 MHz
   const bootloader = new Uint8Array(0x5000).fill(0x11);
   bootloader.set([0xe9, 0x03, ...header]);
   const table = partitionTable();
-  const app = appImage(opts.version);
+  const image = opts.image ?? "fido";
+  const app = appImage(opts.version, `multikey-${image}`);
   app.set(header, 2);
   const withImages = {
     ...entryNoImages,
     images: [
       { role: "bootloader", file: "bootloader.bin", offset: 0, size: bootloader.length, sha256: await sha256(bootloader) },
       { role: "partition-table", file: "partition-table.bin", offset: 0x8000, size: table.length, sha256: await sha256(table) },
-      { role: "app", file: "multikey-fido.bin", offset: 0x20000, size: app.length, sha256: await sha256(app) },
+      { role: "app", file: `multikey-${image}.bin`, offset: 0x20000, size: app.length, sha256: await sha256(app) },
     ],
   };
   const root = packageName.replace(/\.zip$/, "");
@@ -150,7 +158,7 @@ async function pack(entryNoImages: object, packageName: string, flashSize: strin
   const files: Record<string, Uint8Array> = {
     [`${root}/bootloader.bin`]: bootloader,
     [`${root}/partition-table.bin`]: table,
-    [`${root}/multikey-fido.bin`]: app,
+    [`${root}/multikey-${image}.bin`]: app,
     [`${root}/firmware.json`]: enc.encode(canonicalJson(withImages) + "\n"),
     [`${root}/SHA256SUMS`]: enc.encode("sums\n"),
     [`${root}/LICENSE`]: enc.encode("AGPL\n"),
@@ -166,10 +174,10 @@ async function pack(entryNoImages: object, packageName: string, flashSize: strin
   };
 }
 
-function v2Entry(version: string, prof: HardwareProfile): Omit<RawBuild, "package" | "images"> {
+function v2Entry(version: string, prof: HardwareProfile, image: ImageName): Omit<RawBuild, "package" | "images"> {
   return {
-    ...common(version),
-    id: `${prof.id}-fido-dev`,
+    ...common(version, image),
+    id: `${prof.id}-${image}-dev`,
     board: prof.board,
     flash_size: prof.flash_size,
     flash_mode: prof.flash_mode,
@@ -178,23 +186,26 @@ function v2Entry(version: string, prof: HardwareProfile): Omit<RawBuild, "packag
     flash_interface: prof.flash_interface,
     psram_required: prof.psram_required,
     partition_schema: LAYOUT_ID,
-    verified_hardware: prof.verified_hardware.map((v) => v.label),
-    verification: prof.verification,
+    // OpenPGP is never hardware verified (tools/package_firmware.py HARDWARE_VERIFIED_IMAGES).
+    verified_hardware: image === "fido" ? prof.verified_hardware.map((v) => v.label) : [],
+    verification: image === "fido" ? prof.verification : "build-verified",
     usb: { vid: 0x303a, pid: 0x4002, webusb_landing_url: "https://multikeys.mewis.me", product_name: FALLBACK_DEFAULT_NAME, custom_name: true },
   };
 }
 
 /** A schema-2 release. `profiles` defaults to every profile of tools/flash_policy.json, the 16 MB one first. */
-export async function makeFirmware(opts: Options & { profiles?: string[] } = {}): Promise<FirmwareFixture> {
+export async function makeFirmware(opts: Options & { profiles?: string[]; images?: ImageName[] } = {}): Promise<FirmwareFixture> {
   const version = opts.version ?? "0.2.0";
   const tag = opts.tag ?? `v${version}`;
   const ids = opts.profiles ?? [policy.default_profile, ...policy.profiles.map((p) => p.id).filter((id) => id !== policy.default_profile)];
   const packed: { raw: RawBuild; zip: Uint8Array; images: FirmwareFixture["images"] }[] = [];
-  for (const id of ids) {
-    const prof = policy.profiles.find((p) => p.id === id)!;
-    const name = `multikey-firmware-v${version}-${prof.id}-fido-dev.zip`;
-    const p = await pack(v2Entry(version, prof), name, prof.flash_size, { ...opts, version });
-    packed.push({ raw: p.published as unknown as RawBuild, zip: p.zip, images: p.images });
+  for (const image of opts.images ?? ["fido"]) {
+    for (const id of ids) {
+      const prof = policy.profiles.find((p) => p.id === id)!;
+      const name = `multikey-firmware-v${version}-${prof.id}-${image}-dev.zip`;
+      const p = await pack(v2Entry(version, prof, image), name, prof.flash_size, { ...opts, version, image });
+      packed.push({ raw: p.published as unknown as RawBuild, zip: p.zip, images: p.images });
+    }
   }
   const manifest: RawManifest = {
     schema: "multikeys-firmware-manifest",

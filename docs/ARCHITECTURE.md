@@ -18,7 +18,8 @@ Host apps (browser, ssh, git, gpg, PAM, multikey CLI)
 
 - The `fido` image enumerates as a composite device: two HID interfaces (FIDO, keyboard for the OTP applet), a CCID reader and
   the WinUSB interface (hardware verified on Windows 11, `docs/hw-reports/2026-11-23-first-run.md`). The `openpgp` image has no HID
-  and carries OpenPGP/PIV instead of FIDO, OATH and MKAUTH; the two are separate images ([ADR-0002](ADR-0002-separate-images.md)).
+  and carries OpenPGP/PIV instead of FIDO, OATH and MKAUTH (Experimental, build verified; [OPENPGP](OPENPGP.md)); the two are separate
+  images ([ADR-0002](ADR-0002-separate-images.md)). Why they cannot be one image yet, measured: [DESIGN-combined-image](DESIGN-combined-image.md).
 - MKAUTH rides on CCID (and on the WebCCID interface from the browser), so it needs no interface of its own.
 - Source layout: `pico-*` submodules (pinned, never edited), `patches/` (our changes to them), `components/` (our
   firmware components), `host/` (Rust workspace), `web/` (web installer), `tools/`, `docs/`.

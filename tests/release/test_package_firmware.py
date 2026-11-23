@@ -73,6 +73,7 @@ class Base(unittest.TestCase):
                                         "0x8000": "partition_table/partition-table.bin"},
                         "extra_esptool_args": {"chip": "esp32s3"}}
         self.sdk = SDKCONFIG
+        self.app = "fido"
         self.use_flash_size("16MB")
         self.boards = self.dir / "boards"
         self.boards.mkdir()
@@ -88,9 +89,18 @@ class Base(unittest.TestCase):
         self.flasher["flash_settings"]["flash_size"] = size
         self.sdk = re.sub(r"CONFIG_ESPTOOLPY_FLASHSIZE_\d+MB=y", f"CONFIG_ESPTOOLPY_FLASHSIZE_{size}=y", self.sdk)
         (self.build / "bootloader" / "bootloader.bin").write_bytes(bootloader_bin(size))
-        (self.build / "multikey-fido.bin").write_bytes(app_bin(flash_size=size))
+        self.flash_size = size
+        (self.build / f"multikey-{self.app}.bin").write_bytes(
+            app_bin(project=f"multikey-{self.app}", flash_size=size))
 
-    def package(self, version="0.2.0", app="fido", out="out", epoch=1700000000):
+    def use_app(self, app):
+        """Make the fake build an `app` build (flasher args and app image name)."""
+        self.app = app
+        self.flasher["flash_files"]["0x20000"] = f"multikey-{app}.bin"
+        (self.build / f"multikey-{app}.bin").write_bytes(app_bin(project=f"multikey-{app}", flash_size=self.flash_size))
+
+    def package(self, version="0.2.0", app=None, out="out", epoch=1700000000):
+        app = app or self.app
         (self.build / "flasher_args.json").write_text(json.dumps(self.flasher))
         sdk = self.dir / "sdkconfig"
         sdk.write_text(self.sdk, encoding="utf-8")
@@ -225,11 +235,13 @@ class ManifestAndVerify(Base):
         man = pf.manifest(self.entries(), "0.2.0", "v0.2.0", COMMIT)
         return dest, man
 
-    def package_all(self):
+    def package_all(self, apps=("fido",), sizes=("4MB", "8MB", "16MB")):
         zips = []
-        for size in ("4MB", "8MB", "16MB"):
-            self.use_flash_size(size)
-            zips.append(self.package()[0])
+        for app in apps:
+            self.use_app(app)
+            for size in sizes:
+                self.use_flash_size(size)
+                zips.append(self.package()[0])
         return zips
 
     def test_verify_ok(self):
@@ -239,29 +251,42 @@ class ManifestAndVerify(Base):
         self.assertEqual(len(pf.verify(dest, man)), 8)
 
     def test_manifest_is_schema_2_with_profile_ids(self):
-        zips = self.package_all()
+        zips = self.package_all(apps=("fido", "openpgp"))
         man = pf.manifest(self.entries(), "0.2.0", "v0.2.0", COMMIT, require_release_profiles=True)
         self.assertEqual(man["schema_version"], 2)
-        self.assertEqual([b["profile_id"] for b in man["builds"]], ["esp32s3-16mb", "esp32s3-4mb", "esp32s3-8mb"])
+        self.assertEqual([(b["image"], b["profile_id"]) for b in man["builds"]],
+                         [(i, p) for p in ("esp32s3-16mb", "esp32s3-4mb", "esp32s3-8mb") for i in ("fido", "openpgp")])
         for z in zips:
             self.assertEqual(len(pf.verify(z, man)), 8)
+
+    def test_openpgp_is_build_verified_even_on_a_hardware_verified_profile(self):
+        self.package_all(apps=("fido", "openpgp"), sizes=("16MB",))
+        by_image = {b["image"]: b for b in pf.manifest(self.entries(), "0.2.0", "v0.2.0", COMMIT)["builds"]}
+        self.assertEqual((by_image["fido"]["verification"], by_image["fido"]["verified_hardware"]),
+                         ("hardware-verified", ["ESP32-S3 N16R8"]))
+        self.assertEqual((by_image["openpgp"]["verification"], by_image["openpgp"]["verified_hardware"]),
+                         ("build-verified", []))
+        self.assertIn("Experimental", by_image["openpgp"]["title"])
 
     def test_release_profiles_are_required_on_request(self):
         self.package()  # only the 16 MB build
         pf.manifest(self.entries(), "0.2.0", "v0.2.0", COMMIT)  # fine for a local/CI dev bundle
         with self.assertRaises(pf.PackageError) as cm:
             pf.manifest(self.entries(), "0.2.0", "v0.2.0", COMMIT, require_release_profiles=True)
-        self.assertIn("esp32s3-4mb", str(cm.exception))
-        self.assertIn("esp32s3-8mb", str(cm.exception))
-        self.assertNotIn("esp32s3-16mb", str(cm.exception))
+        self.assertIn("no fido build for release profile(s) esp32s3-4mb, esp32s3-8mb", str(cm.exception))
+
+    def test_every_image_is_required_for_a_release(self):
+        self.package_all(apps=("fido",))
+        with self.assertRaises(pf.PackageError) as cm:
+            pf.manifest(self.entries(), "0.2.0", "v0.2.0", COMMIT, require_release_profiles=True)
+        self.assertIn("no openpgp build for release profile(s) esp32s3-16mb, esp32s3-4mb, esp32s3-8mb",
+                      str(cm.exception))
 
     def test_non_release_profile_is_not_required(self):
         original = pf.fd.PROFILES["esp32s3-4mb"]
         pf.fd.PROFILES["esp32s3-4mb"] = dict(original, release=False)
         self.addCleanup(pf.fd.PROFILES.__setitem__, "esp32s3-4mb", original)
-        for size in ("8MB", "16MB"):
-            self.use_flash_size(size)
-            self.package()
+        self.package_all(apps=("fido", "openpgp"), sizes=("8MB", "16MB"))
         pf.manifest(self.entries(), "0.2.0", "v0.2.0", COMMIT, require_release_profiles=True)
 
     def test_duplicate_image_and_profile_rejected(self):

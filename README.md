@@ -157,9 +157,10 @@ Two images, built from one tree on top of the AGPL-3.0 Pico Keys projects:
 | Image (`--app`) | Provides | Status |
 |---|---|---|
 | `fido` | FIDO2/CTAP2 + U2F over USB HID (upstream pico-fido v8.2), OATH/OTP applets, **MKAUTH** challenge-response applet over CCID | Basic FIDO2 flow and user presence hardware verified on one board (Windows 11); MKAUTH SELECT/GET_INFO verified; everything else untested |
-| `openpgp` | OpenPGP card + PIV over CCID (upstream pico-openpgp main `9b23276`) | Build verified; not hardware verified; not published as a prebuilt image |
+| `openpgp` | OpenPGP card + PIV over CCID (upstream pico-openpgp main `9b23276`) | **Experimental.** Build verified for 4, 8 and 16 MB and published as a development image from the next release (web installer: Advanced / Experimental); not hardware verified. A separate firmware, not an add-on: it replaces FIDO2 on the board ([OPENPGP](docs/OPENPGP.md), [DESIGN-combined-image](docs/DESIGN-combined-image.md)) |
 
-A single merged FIDO+OpenPGP image is **Blocked** ([ADR-0002](docs/ADR-0002-separate-images.md)). No CTAP 2.1 or FIDO certification
+A single merged FIDO+OpenPGP image is **Blocked** ([ADR-0002](docs/ADR-0002-separate-images.md), exact blockers and a design in
+[DESIGN-combined-image](docs/DESIGN-combined-image.md)). No CTAP 2.1 or FIDO certification
 claim is made; attestation is development-only. SSH `*-sk` keys and Git SSH signing use the FIDO2 function
 ([PROTOCOLS](docs/PROTOCOLS.md), [TESTING](docs/TESTING.md)).
 

@@ -255,6 +255,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        app: [fido, openpgp]
         hw: [esp32s3-4mb, esp32s3-8mb, esp32s3-16mb]
     env:
       VERSION: ${{ needs.meta.outputs.version }}
@@ -276,9 +277,9 @@ jobs:
         if: needs.meta.outputs.is_release != 'true'
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: ccache-release-${{ matrix.hw }}-idf5.5.6-${{ github.sha }}
+          key: ccache-release-${{ matrix.app }}-${{ matrix.hw }}-idf5.5.6-${{ github.sha }}
           restore-keys: |
-            ccache-release-${{ matrix.hw }}-idf5.5.6-
+            ccache-release-${{ matrix.app }}-${{ matrix.hw }}-idf5.5.6-
       # The saved cache carries the statistics of the run that saved it; zero them after the restore so the numbers printed
       # at the end describe this run only.
       - name: Zero ccache statistics
@@ -287,12 +288,12 @@ jobs:
         run: git config --global --add safe.directory '*' && python3 tools/apply_patches.py
       - name: Build tag
         run: |
-          tag=$(python3 -c "import sys; sys.path.insert(0, 'tools'); import flash_dev as f; print(f.build_tag('fido', 'dev', '${{ matrix.hw }}'))")
+          tag=$(python3 -c "import sys; sys.path.insert(0, 'tools'); import flash_dev as f; print(f.build_tag('${{ matrix.app }}', 'dev', '${{ matrix.hw }}'))")
           echo "TAG=$tag" >> "$GITHUB_ENV"
-      - name: Build the FIDO2 development image (release version stamp, BOOT-button board profile)
+      - name: Build the ${{ matrix.app }} development image (release version stamp, BOOT-button board profile)
         run: |
           . $IDF_PATH/export.sh
-          python3 tools/build.py dev --app fido --hw ${{ matrix.hw }} --board esp32s3-boot-button --clean --release
+          python3 tools/build.py dev --app ${{ matrix.app }} --hw ${{ matrix.hw }} --board esp32s3-boot-button --clean --release
       - name: Irreversible-operation and USB descriptor checks
         run: |
           . $IDF_PATH/export.sh
@@ -301,7 +302,7 @@ jobs:
       - name: Package
         run: |
           python3 tools/package_firmware.py package --build-dir "build-$TAG" \
-            --sdkconfig "sdkconfig.$TAG.generated" --app fido --hw ${{ matrix.hw }} \
+            --sdkconfig "sdkconfig.$TAG.generated" --app ${{ matrix.app }} --hw ${{ matrix.hw }} \
             --version "$VERSION" --commit "$GITHUB_SHA" --out dist-fw --source-date-epoch "$SOURCE_DATE_EPOCH"
       - name: ccache statistics
         if: always()
@@ -310,10 +311,10 @@ jobs:
         if: needs.meta.outputs.is_release != 'true' && github.ref == 'refs/heads/main'
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: ccache-release-${{ matrix.hw }}-idf5.5.6-${{ github.sha }}
+          key: ccache-release-${{ matrix.app }}-${{ matrix.hw }}-idf5.5.6-${{ github.sha }}
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: firmware-${{ matrix.hw }}-fido-dev
+          name: firmware-${{ matrix.hw }}-${{ matrix.app }}-dev
           path: dist-fw/
           if-no-files-found: error
           retention-days: 14
@@ -345,7 +346,7 @@ jobs:
           path: dist
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          pattern: firmware-*-fido-dev
+          pattern: firmware-*-dev
           merge-multiple: true
           path: dist
       - name: Firmware manifest and verification
@@ -360,11 +361,11 @@ jobs:
           python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
           import json
           m = json.load(open("dist/firmware-manifest.json"))
-          print("| Profile | Verification | Package | Size (bytes) | SHA-256 |")
-          print("|---|---|---|---|---|")
+          print("| Image | Profile | Verification | Package | Size (bytes) | SHA-256 |")
+          print("|---|---|---|---|---|---|")
           for b in m["builds"]:
               p = b["package"]
-              print(f"| {b['profile_id']} | {b['verification']} | {p['name']} | {p['size']} | `{p['sha256']}` |")
+              print(f"| {b['image']} | {b['profile_id']} | {b['verification']} | {p['name']} | {p['size']} | `{p['sha256']}` |")
           PY
       - name: Exactly the expected assets, checksums
         run: |
@@ -373,8 +374,11 @@ jobs:
           expected=$(printf '%s\n' \
             "firmware-manifest.json" \
             "multikey-firmware-v$VERSION-esp32s3-16mb-fido-dev.zip" \
+            "multikey-firmware-v$VERSION-esp32s3-16mb-openpgp-dev.zip" \
             "multikey-firmware-v$VERSION-esp32s3-4mb-fido-dev.zip" \
+            "multikey-firmware-v$VERSION-esp32s3-4mb-openpgp-dev.zip" \
             "multikey-firmware-v$VERSION-esp32s3-8mb-fido-dev.zip" \
+            "multikey-firmware-v$VERSION-esp32s3-8mb-openpgp-dev.zip" \
             "multikey-pam-v$VERSION-linux-x86_64.tar.gz" \
             "multikey-v$VERSION-linux-x86_64.tar.gz" \
             "multikey-v$VERSION-windows-x86_64.zip" | sort)
@@ -416,7 +420,7 @@ jobs:
         run: |
           set -euo pipefail
           cd dist
-          test "$(ls -1 | wc -l)" -eq 8
+          test "$(ls -1 | wc -l)" -eq 11
           sha256sum -c SHA256SUMS
       - name: Create the GitHub Release
         run: |

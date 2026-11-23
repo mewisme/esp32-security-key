@@ -73,7 +73,10 @@ what it guarantees:
 - **Existing data.** Before writing, the installer reads the board's partition table and app descriptor (read-only) and picks
   an install mode. A matching layout keeps `part0` (credentials) and `nvs` untouched; updates outside the release's declared
   data-compatible range, switching between the FIDO and OpenPGP images and replacing non-MultiKeys firmware each need an
-  explicit acknowledgement. A foreign layout without MultiKeys on it can be repurposed only after typing `REPURPOSE`: the
+  explicit acknowledgement. A switch between the two images additionally needs the word `SWITCH` typed, because both images
+  read the same `part0` in different formats: nothing is erased, but the other image's keys and credentials stop being usable.
+  The OpenPGP image is offered only as Advanced / Experimental and always needs its own acknowledgement (it is build verified,
+  never run on hardware). A foreign layout without MultiKeys on it can be repurposed only after typing `REPURPOSE`: the
   installer then writes 0xFF over `nvs` and `part0` (the previous firmware's data) before writing MultiKeys. A foreign layout
   with MultiKeys on it is refused (`storage-incompatible`). An unreadable table stops the install (`unsafe-layout`).
 - **Never.** Full-chip erase, eFuse writes, Secure Boot/flash-encryption changes, PIN or credential operations.

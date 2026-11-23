@@ -27,21 +27,28 @@ pnpm run deploy                                  # production Worker (multikeys-
 
 `pnpm deploy` is a pnpm builtin; always use `pnpm run deploy`.
 
-Local firmware for `MULTIKEYS_LOCAL_FIRMWARE`: build one image per flash size (without `--release`), package each and write a
-manifest (schema 2, all three release profiles):
+Local firmware for `MULTIKEYS_LOCAL_FIRMWARE`: build both images (`fido`, `openpgp`) for every flash size (without `--release`),
+package each and write a manifest (schema 2, all three release profiles; `--require-release-profiles` insists on both images):
 
 ```sh
 V="$(python tools/package_firmware.py version)-dev"
-for hw in esp32s3-4mb esp32s3-8mb esp32s3-16mb; do
-  python tools/build.py dev --app fido --hw $hw --board esp32s3-boot-button --clean
-  tag="$(python -c "import sys; sys.path.insert(0, 'tools'); import flash_dev as f; print(f.build_tag('fido', 'dev', '$hw'))")"
-  python tools/package_firmware.py package --build-dir "build-$tag" --sdkconfig "sdkconfig.$tag.generated" --app fido \
-    --hw $hw --version "$V" --commit "$(git rev-parse HEAD)" --out build-localfw --source-date-epoch 0
+for app in fido openpgp; do
+  for hw in esp32s3-4mb esp32s3-8mb esp32s3-16mb; do
+    python tools/build.py dev --app $app --hw $hw --board esp32s3-boot-button --clean
+    tag="$(python -c "import sys; sys.path.insert(0, 'tools'); import flash_dev as f; print(f.build_tag('$app', 'dev', '$hw'))")"
+    python tools/package_firmware.py package --build-dir "build-$tag" --sdkconfig "sdkconfig.$tag.generated" --app $app \
+      --hw $hw --version "$V" --commit "$(git rev-parse HEAD)" --out build-localfw --source-date-epoch 0
+  done
 done
 python tools/package_firmware.py manifest --entries 'build-localfw/*.entry.json' --version "$V" --tag local \
   --commit "$(git rev-parse HEAD)" --out build-localfw/firmware-manifest.json --require-release-profiles
 MULTIKEYS_LOCAL_FIRMWARE=../build-localfw pnpm dev
 ```
+
+The install page lists **MultiKeys OpenPGP** under "Firmware type" with an Advanced / Experimental badge only when the selected
+release has an `openpgp` build. Choosing it hides the naming step, adds the experimental acknowledgement (always, because an
+OpenPGP build is never hardware verified) and, on a board that already runs the other image, the typed `SWITCH` confirmation. The
+finish stage does not open the key (it has no MKAUTH/WebUSB interface) and shows the `gpg --card-status` first-use step instead.
 
 Tag `local` is accepted only by the dev server (`import.meta.env.DEV`); production builds reject it.
 

@@ -16,6 +16,11 @@ describe("parseConfig", () => {
     }
   });
 
+  it("round-trips the OpenPGP image", () => {
+    const c = { tag: "v0.4.0", image: "openpgp" as const, name: { mode: "keep" as const } };
+    expect(parseConfig(json(c))).toEqual(c);
+  });
+
   it("accepts an unset release", () => {
     expect(parseConfig(json({ tag: null, image: "fido", name: { mode: "keep" } }))).toEqual(DEFAULT_CONFIG);
     expect(parseConfig(json({ image: "fido", name: { mode: "keep" } }))).toEqual(DEFAULT_CONFIG);
@@ -23,7 +28,7 @@ describe("parseConfig", () => {
 
   it("falls back to the default for an unknown mode, image or tag type", () => {
     expect(parseConfig(json({ tag: null, image: "fido", name: { mode: "erase" } }))).toEqual(DEFAULT_CONFIG);
-    expect(parseConfig(json({ tag: null, image: "openpgp", name: { mode: "keep" } }))).toEqual(DEFAULT_CONFIG);
+    expect(parseConfig(json({ tag: null, image: "piv", name: { mode: "keep" } }))).toEqual(DEFAULT_CONFIG);
     expect(parseConfig(json({ tag: 2, image: "fido", name: { mode: "keep" } }))).toEqual(DEFAULT_CONFIG);
     expect(parseConfig(json({ tag: null, image: "fido" }))).toEqual(DEFAULT_CONFIG);
   });

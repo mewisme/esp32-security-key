@@ -97,13 +97,15 @@ class Workflows(unittest.TestCase):
         assemble = self.flows["release.yml"]["jobs"]["assemble"]
         expected = next(s["run"] for s in assemble["steps"] if "expected=" in str(s.get("run", "")))
         for hw in release_profiles:
-            self.assertIn(f"-{hw}-fido-dev.zip", expected, hw)
-        matrix = self.flows["release.yml"]["jobs"]["firmware"]["strategy"]["matrix"]["hw"]
-        self.assertEqual(sorted(matrix), sorted(release_profiles))
-        # 3 host archives + firmware-manifest.json + one zip per release profile + SHA256SUMS
+            for image in ("fido", "openpgp"):
+                self.assertIn(f"-{hw}-{image}-dev.zip", expected, (hw, image))
+        matrix = self.flows["release.yml"]["jobs"]["firmware"]["strategy"]["matrix"]
+        self.assertEqual(sorted(matrix["hw"]), sorted(release_profiles))
+        self.assertEqual(sorted(matrix["app"]), ["fido", "openpgp"])
+        # 3 host archives + firmware-manifest.json + one zip per image and release profile + SHA256SUMS
         release_job = self.flows["release.yml"]["jobs"]["release"]
-        count = next(s["run"] for s in release_job["steps"] if "wc -l" in str(s.get("run", "")))
-        self.assertIn(f"-eq {3 + 1 + len(release_profiles) + 1}", count)
+        count = next(s["run"] for s in release_job["steps"] if "ls -1" in str(s.get("run", "")))
+        self.assertIn(f"-eq {3 + 1 + 2 * len(release_profiles) + 1}", count)
 
 
 if __name__ == "__main__":

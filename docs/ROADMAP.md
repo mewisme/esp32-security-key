@@ -11,7 +11,7 @@ tests listed in the linked reports only (`docs/hw-reports/`).
 |---|---|---|---|
 | 1 | Repo, AGPL-3.0 licence, pinned submodules, docs | Implemented | ADR-0001, ADR-0002 |
 | 1 | `fido` image, dev + prod, pins unset (`--ci-pins`) | Build verified | ESP-IDF v5.5.6; dev 0.62 MB, prod 0.58 MB of the 1.88 MB app partition |
-| 1 | `openpgp` image, dev + prod | Build verified | pico-openpgp pinned to upstream main `9b23276`; v5.0 does not build (ADR-0002) |
+| 1 | `openpgp` image, dev + prod | Build verified | pico-openpgp pinned to upstream main `9b23276`; v5.0 does not build (ADR-0002). The dev image was also built as a release image (no `--ci-pins`) for 4, 8 and 16 MB and packaged (`build-verified`) |
 | 1 | Kconfig pins; build fails when unset | Build verified | verified: unset pins fail with the intended `#error`; plain-LED + pins compiles |
 | 1 | BOOT (GPIO0, active low) as presence button, LED optional (`LED_TYPE_NONE` default), pin safety checks | Hardware verified (button); LED not tested | pressing BOOT is read on GPIO0 and flashing/boot are unaffected (3 flashes through the native port); the LED path is untested on hardware |
 | 1 | Real user presence enforced (SDK patch 0001 + pico-fido patch 0001) | Hardware verified, one open anomaly | found on hardware: stock behaviour accepted makeCredential with no press. Fixed: no-touch requests are refused after 15 s, a held button does not count. One unexplained early success at 10.6 s in 1 of 6 no-touch runs on the final image (probable early press); longer idle test pending |
@@ -20,8 +20,8 @@ tests listed in the linked reports only (`docs/hw-reports/`).
 | 1 | No automatic eFuse writes (patch 0002) | Implemented, build verified | upstream burned KEY3/KEY4 at first boot; now opt-in |
 | 2 | FIDO2/CTAP2 + U2F (upstream pico-fido v8.2) | **Hardware verified (basic)**: GetInfo, ES256 + EdDSA makeCredential/getAssertion with verified signatures, U2F version/check-only, real user presence | one board, Windows 11, python-fido2 only. PIN, credential management, browsers/WebAuthn sites, U2F register, ssh/git signing not tested. Advertised CTAP versions are not a conformance claim. Report: `2026-11-23-first-run.md` |
 | 3 | SSH `*-sk`, Git signing | Not tested | no firmware work; scripts written (`tools/ssh_smoke.*`), never run |
-| 4 | OpenPGP + PIV over CCID (separate image) | Build verified | `tools/gpg_smoke.sh` written, never run |
-| 4 | OpenPGP + FIDO in ONE image | **Blocked** | two management applets and two key-wrapping providers; needs a reviewed design (ADR-0002) |
+| 4 | OpenPGP + PIV over CCID (separate image) | Build verified (4/8/16 MB), packaged and added to the release workflow and web installer as Experimental; not Hardware verified | `tools/gpg_smoke.*` and `tools/piv_smoke.sh` implemented and Unit tested (argument guards, status parsing, fake pinentry), never run on a card (`docs/TESTING.md`) |
+| 4 | OpenPGP + FIDO in ONE image | **Blocked** | 11 duplicate global definitions, two management applets, overlapping key domains; design and verification plan in `docs/DESIGN-combined-image.md` |
 | 5 | MKAUTH applet (firmware) | Implemented, build verified; SELECT, GET_INFO, INS 06 (unenrolled and PIN path) and ENROLL / CHALLENGE (`mkauth auth`) / REVOKE hardware verified once on 2026-11-23 | one board, Windows; wrong-PIN, PIN-blocked and tamper paths not run on hardware; no C-level unit tests |
 | 5 | Rust host: proto / host / CLI | Unit tested (mock device, 116 `#[test]` functions in the four host crates, incl. device-name rules, selection, FIDO PIN flows); `readers`/`status`/`device`/enroll/auth/revoke hardware verified (one run) | PIN-failure paths not run on hardware |
 | 6 | Linux PAM module (`multikey-pam`) | Implemented, unit tested (logic), build verified on Linux (CI: `multikey-pam` tests, `.so` checks and fail-closed `pamtester` in `release.yml`) | not hardware verified |

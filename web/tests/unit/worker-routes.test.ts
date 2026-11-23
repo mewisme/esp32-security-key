@@ -9,6 +9,9 @@ describe("parseFirmwareRoute", () => {
     expect(parseFirmwareRoute("/api/firmware/v0.2.0/multikey-firmware-v0.2.0-esp32s3-8mb-fido-dev.zip")).not.toBeNull();
     expect(parseFirmwareRoute("/api/firmware/v0.2.0/multikey-firmware-v0.2.0-esp32s3-4mb-fido-dev.zip")).not.toBeNull();
     expect(parseFirmwareRoute("/api/firmware/v0.3.0-rc.1/multikey-firmware-v0.3.0-rc.1-esp32s3-4mb-fido-dev.zip")).not.toBeNull();
+    for (const hw of ["4mb", "8mb", "16mb"]) {
+      expect(parseFirmwareRoute(`/api/firmware/v0.4.0/multikey-firmware-v0.4.0-esp32s3-${hw}-openpgp-dev.zip`)).not.toBeNull();
+    }
   });
 
   it("keeps the published n16r8 asset names of v0.2.0 downloadable", () => {

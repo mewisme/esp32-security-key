@@ -77,6 +77,10 @@ class FakeDriver implements FlashDriver {
         }
         onProgress(done, total);
       }
+      const recorded: unknown = Reflect.get(window, "__flashWrites");
+      const offsets = Array.isArray(recorded) ? recorded : [];
+      offsets.push(w.offset);
+      Reflect.set(window, "__flashWrites", offsets);
       this.flash.set(w.offset, w.data.slice());
     }
   }

@@ -3,7 +3,7 @@
 | Protocol | Provided by | Status |
 |---|---|---|
 | CTAPHID, CTAP2, U2F | upstream pico-fido v8.2 + local patches (`patches/pico-fido`): `GetInfo` on hardware: versions `U2F_V2, FIDO_2_0..2_3`, AAGUID `0a63b994-8ba6-5e74-9e5a-0f894cc35c4d` (development value, docs/USB_IDENTITY.md) | Basic flows hardware verified on one board; UV/PIN policy in `docs/FIDO_UV.md`. No FIDO certification claimed. |
-| OpenPGP card 3.x | upstream pico-openpgp main `9b23276` (v5.0 + 48 commits; separate firmware image, see ADR-0002) | Build verified (ROADMAP). Not hardware verified. |
+| OpenPGP card 3.x, PIV (CCID) | upstream pico-openpgp main `9b23276` (v5.0 + 48 commits; separate firmware image, see ADR-0002). AIDs: OpenPGP `D2760001240103...` (checked by `tools/gpg_smoke.*`), PIV `A000000308` | Build verified (4/8/16 MB), Experimental release image. Not hardware verified (`docs/OPENPGP.md`). |
 | SSH `ecdsa-sk` / `ed25519-sk` | FIDO2; ed25519-sk requires EdDSA in `GetInfo` algorithms | Not tested |
 | Git SSH signing | `ssh-keygen -Y sign` with sk key | Not tested |
 | MKAUTH applet | this repo | Specified below; see ROADMAP for implementation status |

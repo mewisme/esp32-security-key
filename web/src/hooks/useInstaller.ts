@@ -60,6 +60,7 @@ export interface InstallerActions {
   /** Stage 1 -> 2: checks the browser, then continues. Safe to call again after Back. */
   begin(): void;
   setRelease(tag: string): void;
+  setImage(image: InstallerConfig["image"]): void;
   setNameRequest(req: NameRequest): void;
   /** Stage 2 -> 3: commits the configured release. */
   selectFirmware(): void;
@@ -142,6 +143,7 @@ export function useInstaller(): Installer {
   }, [dispatch]);
 
   const setRelease = useCallback((tag: string) => setConfig((c) => ({ ...c, tag })), []);
+  const setImage = useCallback((image: InstallerConfig["image"]) => setConfig((c) => ({ ...c, image })), []);
   const setNameRequest = useCallback((req: NameRequest) => setConfig((c) => ({ ...c, name: req })), []);
 
   const releaseFor = useCallback(
@@ -255,6 +257,11 @@ export function useInstaller(): Installer {
   /** Must run from a click (WebUSB device chooser). */
   const connectKey = useCallback(async () => {
     const b = selection?.build;
+    if (b?.image === "openpgp") {
+      // The OpenPGP image has no MKAUTH/WebUSB interface to read the identity or rename: first use happens in GnuPG.
+      dispatch({ type: "DEVICE_NOT_DETECTED" });
+      return;
+    }
     const connector = createKeyConnector();
     const wantsName = config.name.mode !== "keep";
     if (!b || !connector.supported()) {
@@ -312,6 +319,7 @@ export function useInstaller(): Installer {
     actions: {
       begin,
       setRelease,
+      setImage,
       setNameRequest,
       selectFirmware,
       back,

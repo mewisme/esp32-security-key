@@ -6,7 +6,7 @@ import type { Scenario } from "./scenario";
 export const HARDWARE_CHECK = "My board is an ESP32-S3 with a native USB connector and a BOOT button";
 
 export async function setup(page: Page, scenario: Scenario, opts: { corruptZip?: boolean; noSerial?: boolean } = {}): Promise<FirmwareFixture> {
-  const fw = scenario.release === "legacy-v1" ? await makeLegacyFirmware() : await makeFirmware();
+  const fw = scenario.release === "legacy-v1" ? await makeLegacyFirmware() : await makeFirmware({ images: scenario.images });
   await page.addInitScript(
     ([s, noSerial]) => {
       localStorage.setItem("multikeys-e2e-scenario", JSON.stringify(s));
@@ -58,5 +58,13 @@ export function keyWrites(page: Page): Promise<unknown[]> {
   return page.evaluate(() => {
     const writes: unknown = Reflect.get(window, "__keyWrites");
     return Array.isArray(writes) ? writes : [];
+  });
+}
+
+/** Offsets the simulated board's flash received writes at, in order (see tests/e2e/fake-create-driver.ts). */
+export function flashWrites(page: Page): Promise<number[]> {
+  return page.evaluate(() => {
+    const writes: unknown = Reflect.get(window, "__flashWrites");
+    return Array.isArray(writes) ? writes.filter((w): w is number => typeof w === "number") : [];
   });
 }

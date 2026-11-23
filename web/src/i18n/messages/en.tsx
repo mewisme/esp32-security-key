@@ -12,7 +12,7 @@ import type { Support } from "@/lib/compatibility/profiles";
 import { DEVICE_NAME_MAX, FALLBACK_DEFAULT_NAME, type NameProblem } from "@/lib/device/device-name";
 import type { NameRequest } from "@/lib/device/mkauth";
 import type { ErrorCode, ErrorGroup, ErrorText } from "@/lib/errors/catalog";
-import type { AckId, InstallMode } from "@/lib/flashing/install-mode";
+import type { AckId, InstallMode, TypedAckId } from "@/lib/flashing/install-mode";
 import type { LabCheck, LabErrorId } from "@/lib/passkey/lab";
 import type { StepId } from "@/lib/wizard-steps";
 import { flashSizeList } from "./shared";
@@ -389,9 +389,27 @@ export const en = {
       checkConnection: "Check your internet connection.",
       noReleaseText: "Prebuilt firmware isn't published yet. Check back later or use the developer method from the README.",
       version: (version: string, date: string | null) => (date ? `Version ${version} · ${date}` : `Version ${version}`),
-      openpgp: {
-        title: "MultiKeys OpenPGP — not published",
-        text: "Not available in the web installer; build it from source with the developer script.",
+      imageLegend: "Firmware type",
+      experimental: "Advanced / Experimental",
+      notInRelease: "Not part of this release.",
+      images: {
+        fido: {
+          title: "MultiKeys FIDO2",
+          text: "Passkeys, FIDO2/U2F security key with the BOOT button as user presence. The recommended image.",
+        },
+        openpgp: {
+          title: "MultiKeys OpenPGP",
+          text: "OpenPGP smart card (GnuPG: sign, decrypt, authenticate) and PIV over CCID. A separate image: it replaces FIDO2.",
+        },
+      },
+      openpgpWarning: {
+        title: "Read this before choosing OpenPGP",
+        items: [
+          "Experimental: built and checked, but not yet run on real hardware.",
+          "No FIDO2 or passkeys while it is installed, and no device renaming.",
+          "It is a separate firmware, not an add-on. Changing between it and FIDO2 makes the other one's stored keys unusable.",
+          "Default PINs apply until you change them (user 123456, admin 12345678).",
+        ],
       },
       nameOptions: {
         keep: { title: "Don't change the name", text: `New keys show "${FALLBACK_DEFAULT_NAME}"; updated keys keep their current name.` },
@@ -467,6 +485,10 @@ export const en = {
         neverTouched: (partitions: string[]) =>
           `Never touched: ${[...partitions.map((p) => (p === "part0" ? "part0 (your keys)" : p)), "eFuses (permanent chip settings)"].join(", ")}.`,
       },
+      switchWarning: {
+        title: "FIDO2 and OpenPGP keep separate data",
+        text: "Both firmwares use the same storage area (part0), but each one reads it in its own format. Nothing is erased by this installer, yet the keys and credentials made by the firmware being replaced will not be usable, and may be overwritten once the new firmware starts. Back up what you need first. Switching back later means installing the other firmware again; the credentials do not return.",
+      },
       data: { title: "Your data", why: "Why:", risk },
       untested: {
         title: "Not tested on this board",
@@ -481,10 +503,15 @@ export const en = {
           "dev-firmware": "I understand this is experimental development firmware and not suitable for protecting important accounts.",
           "update-unverified": "I understand keys stored by the installed version may not be usable after this update.",
           "switch-image": "I understand data from the other MultiKeys firmware will not be usable.",
+          "experimental-image":
+            "I understand the OpenPGP firmware is experimental, has not been tested on hardware, and is not suitable for keys I rely on.",
           "replace-layout": "I understand the firmware currently on this board will be replaced.",
           "untested-hardware": "I understand this board type hasn't been tested with MultiKeys",
-        } satisfies Record<Exclude<AckId, "repurpose-typed">, string>,
-        repurposeLabel: "Type REPURPOSE to confirm that the nvs and part0 areas will be erased",
+        } satisfies Record<Exclude<AckId, TypedAckId>, string>,
+        typedLabels: {
+          "repurpose-typed": "Type REPURPOSE to confirm that the nvs and part0 areas will be erased",
+          "switch-image-typed": "Type SWITCH to confirm that you are changing between the FIDO2 and OpenPGP firmware",
+        } satisfies Record<TypedAckId, string>,
       },
     },
 
@@ -523,6 +550,13 @@ export const en = {
           `Landing page: ${url ?? "not checked (the browser couldn't read it; that is common on Windows and harmless)"}`,
         unverifiedTitle: "Flash verified; running key not checked",
         unverifiedText: "Firmware written and verified; key not yet detected.",
+      },
+      openpgp: {
+        title: "Flash verified. The OpenPGP card is not checked from the browser.",
+        text: "This image has no WebUSB page and cannot be renamed. Plug it into the native USB connector and read the card with GnuPG (it needs a smart-card service: pcscd on Linux, built in on Windows):",
+        pins: "Change the default PINs (user 123456, admin 12345678) before generating keys: gpg --edit-card, admin, passwd. This image is experimental and has not been run on hardware yet.",
+        replugHint: "After the replug the board appears as a smart-card reader (CCID), not as a security key.",
+        done: "I replugged it",
       },
     },
   },

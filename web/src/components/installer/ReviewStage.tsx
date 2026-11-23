@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { type Installer, isUartBridge } from "@/hooks/useInstaller";
 import { useI18n } from "@/i18n/context";
-import type { AckId } from "@/lib/flashing/install-mode";
+import { type AckId, TYPED_ACKS, type TypedAckId } from "@/lib/flashing/install-mode";
 import { formatBytes, formatHex } from "@/lib/format";
 import { CompatibilityBadge, StageCard } from "./StageCard";
 
@@ -17,12 +17,15 @@ export function ReviewStage({ inst, headingRef }: { inst: Installer; headingRef:
   const { state, selection, actions, config } = inst;
   const { decision, chip } = state;
   const [acks, setAcks] = useState<AckId[]>([]);
-  const [typed, setTyped] = useState("");
+  const [typed, setTyped] = useState<Partial<Record<TypedAckId, string>>>({});
   const { t, locale } = useI18n();
   if (!decision || !selection) return null;
   const { build, release, profile, support } = selection;
 
-  const given: AckId[] = [...acks, ...(typed === "REPURPOSE" ? (["repurpose-typed"] as const) : [])];
+  const given: AckId[] = [
+    ...acks,
+    ...(Object.keys(TYPED_ACKS) as TypedAckId[]).filter((a) => typed[a] === TYPED_ACKS[a]),
+  ];
   const ready = decision.acks.every((a) => given.includes(a));
   const filled = new Set(decision.writes.filter((w) => w.kind === "fill").map((w) => w.role));
   const untouched = build.protected_partitions.filter((p) => !filled.has(p));
@@ -113,6 +116,16 @@ export function ReviewStage({ inst, headingRef }: { inst: Installer; headingRef:
         <p className="text-sm text-muted-foreground">{t.install.review.writes.neverTouched(untouched)}</p>
       </div>
 
+      {decision.mode === "switch-image" && (
+        <Alert variant="destructive">
+          <ShieldAlert aria-hidden />
+          <AlertTitle>{t.install.review.switchWarning.title}</AlertTitle>
+          <AlertDescription>
+            <p>{t.install.review.switchWarning.text}</p>
+          </AlertDescription>
+        </Alert>
+      )}
+
       <Alert variant={decision.mode === "repurpose" ? "destructive" : "default"}>
         {decision.mode === "repurpose" ? <ShieldAlert aria-hidden /> : <Info aria-hidden />}
         <AlertTitle>{t.install.review.data.title}</AlertTitle>
@@ -153,7 +166,7 @@ export function ReviewStage({ inst, headingRef }: { inst: Installer; headingRef:
       <FieldSet>
         <legend className="mb-1 font-medium">{t.install.review.before.legend}</legend>
         {decision.acks
-          .filter((a): a is Exclude<AckId, "repurpose-typed"> => a !== "repurpose-typed")
+          .filter((a): a is Exclude<AckId, TypedAckId> => !(a in TYPED_ACKS))
           .map((a) => (
             <Field key={a} orientation="horizontal">
               <Checkbox
@@ -166,12 +179,20 @@ export function ReviewStage({ inst, headingRef }: { inst: Installer; headingRef:
               </Label>
             </Field>
           ))}
-        {decision.acks.includes("repurpose-typed") && (
-          <Field>
-            <Label htmlFor="repurpose-confirm">{t.install.review.before.repurposeLabel}</Label>
-            <Input id="repurpose-confirm" value={typed} onChange={(e) => setTyped(e.target.value)} autoComplete="off" className="max-w-xs font-mono" />
-          </Field>
-        )}
+        {decision.acks
+          .filter((a): a is TypedAckId => a in TYPED_ACKS)
+          .map((a) => (
+            <Field key={a}>
+              <Label htmlFor={`typed-${a}`}>{t.install.review.before.typedLabels[a]}</Label>
+              <Input
+                id={`typed-${a}`}
+                value={typed[a] ?? ""}
+                onChange={(e) => setTyped((cur) => ({ ...cur, [a]: e.target.value }))}
+                autoComplete="off"
+                className="max-w-xs font-mono"
+              />
+            </Field>
+          ))}
       </FieldSet>
     </StageCard>
   );

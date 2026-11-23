@@ -7,6 +7,8 @@ export interface Scenario {
   flashType?: "quad" | "octal";
   /** Chip features reported by esptool (default: an N16R8, i.e. Wi-Fi, BLE and 8 MB embedded PSRAM). */
   features?: string[];
+  /** Images the fake release carries (default fido only). */
+  images?: ("fido" | "openpgp")[];
   /** Which release the fake server publishes: the schema-2 release with every profile (default) or the legacy v0.2.0 shape. */
   release?: "v2" | "legacy-v1";
   /** Milliseconds the simulated flash write waits per chunk (default 15); raise it to look at the install stage. */

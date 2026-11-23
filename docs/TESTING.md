@@ -17,7 +17,8 @@ pastes a real report into `docs/hw-reports/`. Reports so far: `2026-11-23-read-o
 | Tool self-test (eFuse reporter) | `python tools/provision_check.py --self-test` | `pip install -r tools/requirements.txt` not required for this step | no | Unit tested (fixtures only) |
 | CTAP2/U2F smoke | `python tools/ctap_smoke.py [--pin PIN] [--skip-pin-change]` (a `--pin` on a PIN-less key SETS that PIN, which ends touch-only use; see FIDO_UV.md) | venv with `tools/requirements.txt`; **fido** image flashed; Windows: elevated shell | yes | pending hardware |
 | SSH sk keys | `tools/ssh_smoke.sh --yes` / `tools\ssh_smoke.ps1 -Yes` | OpenSSH >= 8.3 (verify-required needs >= 8.4); fido image | yes | pending hardware |
-| OpenPGP card | `tools/gpg_smoke.sh` | gpg 2.2+, pcscd/scdaemon; **openpgp** image (not the fido image) | yes | pending hardware |
+| OpenPGP card | `tools/gpg_smoke.sh` (read-only) or `... --destructive --i-understand-this-resets-the-card`; `tools\gpg_smoke.ps1` on Windows | gpg 2.2+, pcscd/scdaemon (Gpg4win on Windows); **openpgp** image (not the fido image); destructive mode needs python3 and a **test** key | yes | Implemented, Unit tested (argument guards, status parsing, fake pinentry: `python -m unittest discover tests/smoke`); pending hardware |
+| PIV | `tools/piv_smoke.sh` (read-only) or `... --destructive --i-understand-this-changes-the-card` | yubico-piv-tool, openssl; **openpgp** image | yes | Implemented, Unit tested (parsing, guards); pending hardware |
 | MKAUTH round trip | `multikey mkauth enroll --user U` / `mkauth auth --user U` / `mkauth revoke --user U` (host CLI) | PC/SC; fido image | yes | Hardware verified once (Windows 11; `2026-11-23-management-cli-and-webusb.md`) |
 | eFuse state report | `python tools/provision_check.py -p COMx` (read-only `espefuse summary`) | board in download mode; `tools/requirements.txt` | yes | Hardware verified (read-only, one blank chip; `2026-11-23-read-only-probe.md`) |
 | FIDO UV/PIN policy, no hardware | `tools/run_emulation_tests.sh` (WSL/Linux; CI job `fido-emulation`) | rsync, cmake, ninja, gcc, libssl-dev, python3; builds pico-fido's `ENABLE_EMULATION` binary from a /tmp copy | no | Integration tested (28 pass, 3 pinned upstream deviations) |
@@ -60,7 +61,8 @@ Every cell stays `pending hardware` until a report exists in `docs/hw-reports/`.
 | Linux PAM (`pam_multikey`) | n/a | pending hardware | test only via a throw-away PAM service, never login/sudo first |
 | ssh (`ecdsa-sk`, `ed25519-sk`, resident keys) | pending hardware | pending hardware | fido image; ed25519-sk needs EdDSA in GetInfo |
 | git SSH commit signing | pending hardware | pending hardware | `tools/ssh_smoke.*` (`ssh-keygen -Y sign`) |
-| gpg (card status, sign, decrypt, gpg-agent SSH) | pending hardware | pending hardware | **openpgp** image |
+| gpg (card status, sign, decrypt, gpg-agent SSH) | pending hardware | pending hardware | **openpgp** image; `tools/gpg_smoke.sh` / `.ps1` Implemented and Unit tested (parsing, guards), not run on a card |
+| PIV (status, ECCP256 slot 9c, sign, PIN change) | pending hardware | pending hardware | **openpgp** image; `tools/piv_smoke.sh` Implemented and Unit tested, not run on a card |
 
 ## Power-loss and persistence (pending hardware)
 

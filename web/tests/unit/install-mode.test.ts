@@ -40,10 +40,26 @@ describe("decideInstallMode", () => {
     expect(decide({ table: T("match"), app: app("1.89") }).mode).toBe("update-unverified");
   });
 
-  it("match + openpgp -> switch-image", () => {
+  it("match + openpgp -> switch-image, which also needs SWITCH typed", () => {
     const d = decide({ table: T("match"), app: app("0.2.0", "multikey-openpgp") });
     expect(d.mode).toBe("switch-image");
-    expect(d.acks).toContain("switch-image");
+    expect(d.acks).toEqual(["dev-firmware", "switch-image", "switch-image-typed"]);
+  });
+
+  it("an OpenPGP build needs the experimental acknowledgement in every installing mode", async () => {
+    const pgp = (await makeFirmware({ images: ["openpgp"] })).build;
+    const run = (table: TableResult, a: AppDescriptor | null, untestedHardware = false) =>
+      decideInstallMode({ build: pgp, untestedHardware, table, app: a });
+    expect(run(T("blank"), null).acks).toEqual(["dev-firmware", "experimental-image"]);
+    expect(run(T("match"), app("0.2.0", "multikey-openpgp")).mode).toBe("update");
+    expect(run(T("match"), app("0.2.0", "multikey-openpgp")).acks).toEqual(["dev-firmware", "experimental-image"]);
+    expect(run(T("match"), app("0.2.0")).acks).toEqual(["dev-firmware", "switch-image", "switch-image-typed", "experimental-image"]);
+    expect(run(T("mismatch"), app("1.0", "esp-demo")).acks).toContain("experimental-image");
+    expect(run(T("blank"), null, true).acks).toEqual(["dev-firmware", "experimental-image", "untested-hardware"]);
+  });
+
+  it("a FIDO2 build never asks for the experimental acknowledgement", () => {
+    expect(decide({ table: T("blank"), app: null }).acks).not.toContain("experimental-image");
   });
 
   it("match + no app -> replace-compatible-layout", () => {

@@ -1,6 +1,8 @@
 # ADR-0002: Two firmware images (fido, openpgp), not one merged image
 
-Status: accepted (2026-11-22)
+Status: accepted (2026-11-22); revisited 2026-11-23, unchanged: combined image still Blocked, see
+[DESIGN-combined-image](DESIGN-combined-image.md) for the measured blockers and a design. The separate `openpgp` image is now
+packaged and released as Experimental.
 
 ## Context
 

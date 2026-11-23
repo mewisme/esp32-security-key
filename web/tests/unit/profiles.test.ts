@@ -18,6 +18,7 @@ const chip = (over: Partial<ChipInfo> = {}): ChipInfo => ({
 const { builds } = await makeFirmware();
 const legacy = await makeLegacyFirmware();
 
+const both = await makeFirmware({ images: ["fido", "openpgp"] });
 function failure(c: ChipInfo, b = builds) {
   const r = selectProfile(c, b, "fido");
   if (r.ok) throw new Error("expected a failure");
@@ -88,5 +89,12 @@ describe("selectProfile", () => {
 
   it("does not fall back to another image or another size", () => {
     expect(selectProfile(chip({ flashSize: "4MB" }), builds, "openpgp")).toMatchObject({ ok: false, code: "profile-not-in-release" });
+  });
+
+  it("picks the OpenPGP build, which is never hardware verified, even on the tested N16R8", () => {
+    const r = selectProfile(chip(), both.builds, "openpgp");
+    expect(r).toMatchObject({ ok: true, support: "build-verified", verifiedAs: null });
+    if (r.ok) expect([r.build.image, r.build.profile_id]).toEqual(["openpgp", "esp32s3-16mb"]);
+    expect(selectProfile(chip(), both.builds, "fido")).toMatchObject({ ok: true, support: "hardware-verified" });
   });
 });

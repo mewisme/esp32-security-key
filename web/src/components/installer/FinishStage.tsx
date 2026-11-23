@@ -39,6 +39,7 @@ export function FinishStage({ inst, headingRef }: { inst: Installer; headingRef:
   const shownName = name.applied ?? state.device?.productName ?? t.common.unnamedDevice;
   // The outcome of the key check replaces the replug instructions; instructions that are already there ride on the stage.
   const resolved = useChangedSinceMount(done) ? "enter-reveal" : undefined;
+  const openpgp = selection?.build.image === "openpgp";
 
   return (
     <StageCard
@@ -95,22 +96,26 @@ export function FinishStage({ inst, headingRef }: { inst: Installer; headingRef:
               <p className="font-medium">{t.install.finish.key.replug}</p>
               <p>{t.install.finish.key.replugWhy}</p>
               <p className="text-sm text-muted-foreground">
-                {t.install.finish.key.checkHint(selection?.build.usb.product_name ?? FALLBACK_DEFAULT_NAME, inst.config.name.mode !== "keep")}
+                {openpgp
+                  ? t.install.finish.openpgp.replugHint
+                  : t.install.finish.key.checkHint(selection?.build.usb.product_name ?? FALLBACK_DEFAULT_NAME, inst.config.name.mode !== "keep")}
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                disabled={busy || !waiting}
-                onClick={() => {
-                  setBusy(true);
-                  void actions.connectKey().finally(() => setBusy(false));
-                }}
-              >
-                <KeyRound aria-hidden /> {t.common.checkMyKey}
-              </Button>
-              <Button type="button" variant="outline" disabled={!waiting} onClick={actions.skipCheck}>
-                {t.install.finish.key.skip}
+              {!openpgp && (
+                <Button
+                  type="button"
+                  disabled={busy || !waiting}
+                  onClick={() => {
+                    setBusy(true);
+                    void actions.connectKey().finally(() => setBusy(false));
+                  }}
+                >
+                  <KeyRound aria-hidden /> {t.common.checkMyKey}
+                </Button>
+              )}
+              <Button type="button" variant={openpgp ? "default" : "outline"} disabled={!waiting} onClick={actions.skipCheck}>
+                {openpgp ? t.install.finish.openpgp.done : t.install.finish.key.skip}
               </Button>
             </div>
           </>
@@ -121,7 +126,15 @@ export function FinishStage({ inst, headingRef }: { inst: Installer; headingRef:
             <p className="text-sm text-muted-foreground">{t.install.finish.key.landing(state.device.landingUrl ?? null)}</p>
           </div>
         )}
-        {done && !detected && (
+        {done && !detected && openpgp && (
+          <div className={cn("flex flex-col gap-2", resolved)}>
+            <p className="font-medium">{t.install.finish.openpgp.title}</p>
+            <p className="text-sm text-muted-foreground">{t.install.finish.openpgp.text}</p>
+            <pre className="overflow-x-auto rounded-lg border bg-muted/40 p-3 font-mono text-xs">gpg --card-status</pre>
+            <p className="text-sm text-muted-foreground">{t.install.finish.openpgp.pins}</p>
+          </div>
+        )}
+        {done && !detected && !openpgp && (
           <div className={cn("flex flex-col gap-2", resolved)}>
             <p className="font-medium">{t.install.finish.key.unverifiedTitle}</p>
             <p className="text-sm text-muted-foreground">{t.install.finish.key.unverifiedText}</p>
@@ -134,17 +147,21 @@ export function FinishStage({ inst, headingRef }: { inst: Installer; headingRef:
         )}
       </ResultRow>
 
-      <Separator />
+      {!openpgp && (
+        <>
+          <Separator />
 
-      <ResultRow icon={Tag} title={t.common.deviceName}>
-        <NameResult
-          name={name}
-          request={inst.config.name}
-          defaultName={selection?.build.usb.product_name ?? FALLBACK_DEFAULT_NAME}
-          onSubmitPin={actions.submitPin}
-          onRetry={() => void actions.applyName()}
-        />
-      </ResultRow>
+          <ResultRow icon={Tag} title={t.common.deviceName}>
+            <NameResult
+              name={name}
+              request={inst.config.name}
+              defaultName={selection?.build.usb.product_name ?? FALLBACK_DEFAULT_NAME}
+              onSubmitPin={actions.submitPin}
+              onRetry={() => void actions.applyName()}
+            />
+          </ResultRow>
+        </>
+      )}
 
       <Separator />
 

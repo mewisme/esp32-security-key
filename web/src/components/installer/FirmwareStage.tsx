@@ -1,4 +1,4 @@
-import { ExternalLink, Usb } from "lucide-react";
+import { ExternalLink, TriangleAlert, Usb } from "lucide-react";
 import { useState } from "react";
 import { DeviceNameField } from "@/components/device/DeviceNameField";
 import { Alert, AlertDescription, AlertTitle } from "@/components/reui/alert";
@@ -17,15 +17,20 @@ import { useI18n } from "@/i18n/context";
 import { profileById } from "@/lib/firmware/policy";
 import { StageCard } from "./StageCard";
 
-/** "4 / 8 / 16 MB" from the fido builds' profiles, smallest first. */
-function sizesLabel(release: CatalogRelease): string {
+function hasImage(release: CatalogRelease, image: "fido" | "openpgp"): boolean {
+  return release.manifest.builds.some((b) => b.image === image);
+}
+
+/** "4 / 8 / 16 MB" from the chosen image's builds' profiles, smallest first. */
+function sizesLabel(release: CatalogRelease, image: "fido" | "openpgp"): string {
   const labels = buildsBySize(release.manifest.builds)
-    .filter((b) => b.image === "fido")
+    .filter((b) => b.image === image)
     .map((b) => (profileById(b.profile_id)?.label ?? b.flash_size).replace(/\s*MB$/, ""));
   return labels.length ? `${labels.join(" / ")} MB` : "";
 }
 
 function ReleaseTiles({ inst, selectedTag }: { inst: Installer; selectedTag: string | null }) {
+  const image = inst.config.image;
   const { t, locale } = useI18n();
   const { catalog } = inst;
   // The list replaces its skeleton (or an error) once the catalog answers; a list that is already there rides on the stage.
@@ -63,8 +68,8 @@ function ReleaseTiles({ inst, selectedTag }: { inst: Installer; selectedTag: str
   return (
     <RadioGroup value={selectedTag ?? ""} onValueChange={inst.actions.setRelease} className={reveal}>
       {releases.map((r) => {
-        const build = r.manifest.builds.find((b) => b.image === "fido");
-        const sizes = sizesLabel(r);
+        const build = r.manifest.builds.find((b) => b.image === image);
+        const sizes = sizesLabel(r, image);
         return (
           <FieldLabel key={r.tag} htmlFor={`rel-${r.tag}`} className="transition-colors">
             <Field orientation="horizontal">
@@ -97,15 +102,6 @@ function ReleaseTiles({ inst, selectedTag }: { inst: Installer; selectedTag: str
           </FieldLabel>
         );
       })}
-      <FieldLabel htmlFor="rel-openpgp" className="transition-colors">
-        <Field orientation="horizontal" data-disabled="true">
-          <FieldContent>
-            <FieldTitle>{t.install.firmware.openpgp.title}</FieldTitle>
-            <FieldDescription>{t.install.firmware.openpgp.text}</FieldDescription>
-          </FieldContent>
-          <RadioGroupItem id="rel-openpgp" value="openpgp" disabled />
-        </Field>
-      </FieldLabel>
     </RadioGroup>
   );
 }
@@ -138,6 +134,7 @@ export function FirmwareStage({ inst, headingRef }: { inst: Installer; headingRe
     actions.setNameRequest({ mode: "custom", name: value });
   };
 
+  const openpgp = config.image === "openpgp";
   const nameInvalid = config.name.mode === "custom" && validateDeviceName(config.name.name) !== null;
   const previewName =
     config.name.mode === "custom"
@@ -157,44 +154,82 @@ export function FirmwareStage({ inst, headingRef }: { inst: Installer; headingRe
         </Button>
       }
       primary={
-        <Button type="button" disabled={!selected || nameInvalid} onClick={actions.selectFirmware}>
+        <Button type="button" disabled={!selected || !hasImage(selected, config.image) || (!openpgp && nameInvalid)} onClick={actions.selectFirmware}>
           {t.common.continue}
         </Button>
       }
     >
       <FieldSet>
+        <FieldLegend variant="label">{t.install.firmware.imageLegend}</FieldLegend>
+        <RadioGroup value={config.image} onValueChange={(v) => (v === "fido" || v === "openpgp") && actions.setImage(v)}>
+          {(["fido", "openpgp"] as const).map((img) => {
+            const available = !selected || hasImage(selected, img);
+            return (
+              <FieldLabel key={img} htmlFor={`image-${img}`} className="transition-colors">
+                <Field orientation="horizontal" data-disabled={available ? undefined : "true"}>
+                  <FieldContent>
+                    <FieldTitle>
+                      {t.install.firmware.images[img].title}
+                      {img === "openpgp" && <Badge variant="warning-light">{t.install.firmware.experimental}</Badge>}
+                    </FieldTitle>
+                    <FieldDescription>{available ? t.install.firmware.images[img].text : t.install.firmware.notInRelease}</FieldDescription>
+                  </FieldContent>
+                  <RadioGroupItem id={`image-${img}`} value={img} disabled={!available} />
+                </Field>
+              </FieldLabel>
+            );
+          })}
+        </RadioGroup>
+        {openpgp && (
+          <Alert variant="warning">
+            <TriangleAlert aria-hidden />
+            <AlertTitle>{t.install.firmware.openpgpWarning.title}</AlertTitle>
+            <AlertDescription>
+              <ul className="list-disc pl-5">
+                {t.install.firmware.openpgpWarning.items.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </AlertDescription>
+          </Alert>
+        )}
+      </FieldSet>
+
+      <FieldSet>
         <FieldLegend variant="label">{t.common.firmware}</FieldLegend>
         <ReleaseTiles inst={inst} selectedTag={selectedTag} />
       </FieldSet>
 
-      <FieldSet>
-        <FieldLegend variant="label">{t.install.firmware.personalize}</FieldLegend>
-        <RadioGroup value={mode} onValueChange={chooseMode}>
-          {NAME_MODES.map((m) => (
-            <FieldLabel key={m} htmlFor={`name-${m}`} className="transition-colors">
-              <Field orientation="horizontal">
-                <FieldContent>
-                  <FieldTitle>{t.install.firmware.nameOptions[m].title}</FieldTitle>
-                  <FieldDescription>{t.install.firmware.nameOptions[m].text}</FieldDescription>
-                </FieldContent>
-                <RadioGroupItem id={`name-${m}`} value={m} />
-              </Field>
-            </FieldLabel>
-          ))}
-        </RadioGroup>
-        {config.name.mode === "custom" && (
-          <div className={revealCustom}>
-            <DeviceNameField id="device-name" value={config.name.name} onChange={changeText} defaultName={FALLBACK_DEFAULT_NAME} />
+      {!openpgp && (
+        <FieldSet>
+          <FieldLegend variant="label">{t.install.firmware.personalize}</FieldLegend>
+          <RadioGroup value={mode} onValueChange={chooseMode}>
+            {NAME_MODES.map((m) => (
+              <FieldLabel key={m} htmlFor={`name-${m}`} className="transition-colors">
+                <Field orientation="horizontal">
+                  <FieldContent>
+                    <FieldTitle>{t.install.firmware.nameOptions[m].title}</FieldTitle>
+                    <FieldDescription>{t.install.firmware.nameOptions[m].text}</FieldDescription>
+                  </FieldContent>
+                  <RadioGroupItem id={`name-${m}`} value={m} />
+                </Field>
+              </FieldLabel>
+            ))}
+          </RadioGroup>
+          {config.name.mode === "custom" && (
+            <div className={revealCustom}>
+              <DeviceNameField id="device-name" value={config.name.name} onChange={changeText} defaultName={FALLBACK_DEFAULT_NAME} />
+            </div>
+          )}
+          <div className="flex items-center gap-3 rounded-lg border bg-muted/40 p-3">
+            <Usb className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+            <div className="flex min-w-0 flex-col">
+              <span className="truncate font-medium">{previewName}</span>
+              <span className="text-xs text-muted-foreground">{t.install.firmware.usbKey} · 303A:4002</span>
+            </div>
           </div>
-        )}
-        <div className="flex items-center gap-3 rounded-lg border bg-muted/40 p-3">
-          <Usb className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-          <div className="flex min-w-0 flex-col">
-            <span className="truncate font-medium">{previewName}</span>
-            <span className="text-xs text-muted-foreground">{t.install.firmware.usbKey} · 303A:4002</span>
-          </div>
-        </div>
-      </FieldSet>
+        </FieldSet>
+      )}
     </StageCard>
   );
 }

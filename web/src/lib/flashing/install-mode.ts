@@ -6,6 +6,8 @@
 //  5. foreign layout, no MultiKeys app             -> repurpose (clears nvs + part0 first, typed confirmation)
 //  6. foreign layout with a MultiKeys app          -> blocked (storage-incompatible)
 //  7. any board whose support is not hardware-verified needs the untested-hardware acknowledgement
+//  8. an OpenPGP image (experimental, not hardware verified) needs the experimental-image acknowledgement, and a
+//     switch between the two images also needs SWITCH typed (the FIDO2 / OpenPGP data areas are not interchangeable)
 // Outside repurpose no write ever touches a protected partition. A table that cannot be read never gets here: the
 // caller fails with `unsafe-layout`.
 import { type FlashPolicy, policy as defaultPolicy } from "../firmware/policy";
@@ -23,7 +25,19 @@ export type InstallMode =
   | "repurpose"
   | "blocked";
 
-export type AckId = "dev-firmware" | "update-unverified" | "switch-image" | "replace-layout" | "repurpose-typed" | "untested-hardware";
+export type AckId =
+  | "dev-firmware"
+  | "experimental-image"
+  | "update-unverified"
+  | "switch-image"
+  | "switch-image-typed"
+  | "replace-layout"
+  | "repurpose-typed"
+  | "untested-hardware";
+
+/** Acknowledgements the person gives by typing a word instead of ticking a box, with the word to type. */
+export const TYPED_ACKS = { "repurpose-typed": "REPURPOSE", "switch-image-typed": "SWITCH" } as const;
+export type TypedAckId = keyof typeof TYPED_ACKS;
 
 export interface Write {
   offset: number;
@@ -50,7 +64,11 @@ export function decideInstallMode(input: {
 }): InstallDecision {
   const { table, app, build } = input;
   const p = input.policy ?? defaultPolicy;
-  const acks = (...needed: AckId[]): AckId[] => (input.untestedHardware ? [...needed, "untested-hardware"] : needed);
+  const acks = (...needed: AckId[]): AckId[] => [
+    ...needed,
+    ...(input.build.image === "openpgp" ? (["experimental-image"] as const) : []),
+    ...(input.untestedHardware ? (["untested-hardware"] as const) : []),
+  ];
   const images: Write[] = [...build.images]
     .sort((a, b) => a.offset - b.offset)
     .map((i) => ({ offset: i.offset, length: i.size, kind: "image", role: i.role }));
@@ -84,7 +102,7 @@ export function decideInstallMode(input: {
       return {
         mode: "switch-image",
         allowed: true,
-        acks: acks("dev-firmware", "switch-image"),
+        acks: acks("dev-firmware", "switch-image", "switch-image-typed"),
         writes: images,
         reason: `the board runs ${app!.project_name}, this firmware is ${build.project_name}`,
       };
