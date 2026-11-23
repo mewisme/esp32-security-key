@@ -1,0 +1,17 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "multikeys-web",
+  "main": "./worker/index.ts",
+  "compatibility_date": "2026-11-23",
+  "workers_dev": true,
+  "preview_urls": true,
+  "assets": {
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "observability": { "enabled": true },
+  // The production custom domain (multikeys.mewis.me) is attached only after explicit approval; see web/README.md.
+  "env": {
+    "staging": { "name": "multikeys-web-staging", "workers_dev": true }
+  }
+}

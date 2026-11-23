@@ -18,3 +18,11 @@ signing*.bin
 dist/
 THIRD_PARTY_LICENSES.txt
 sdkconfig.*.generated
+
+# web installer (web/)
+web/node_modules/
+web/.wrangler/
+web/test-results/
+web/playwright-report/
+web/tests/fixtures/generated/
+.dev.vars

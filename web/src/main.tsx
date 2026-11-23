@@ -1,0 +1,40 @@
+import { lazy, StrictMode, Suspense } from "react";
+import { createRoot } from "react-dom/client";
+import { BrowserRouter, Route, Routes } from "react-router";
+import { Layout } from "@/components/layout/Layout";
+import { applyTheme, storedTheme } from "@/lib/theme";
+import { FirstUsePage } from "@/pages/FirstUse";
+import { HelpPage } from "@/pages/Help";
+import { HomePage } from "@/pages/Home";
+import { NotFoundPage } from "@/pages/NotFound";
+import { ReleasesPage } from "@/pages/Releases";
+import "./styles/index.css";
+
+// The installer pulls in esptool-js; keep it out of the landing page bundle.
+const InstallPage = lazy(() => import("@/pages/Install").then((m) => ({ default: m.InstallPage })));
+
+applyTheme(storedTheme());
+
+createRoot(document.getElementById("root")!).render(
+  <StrictMode>
+    <BrowserRouter>
+      <Routes>
+        <Route element={<Layout />}>
+          <Route index element={<HomePage />} />
+          <Route
+            path="install"
+            element={
+              <Suspense fallback={<div className="mx-auto max-w-4xl px-4 py-10 text-muted-foreground">Loading the installer…</div>}>
+                <InstallPage />
+              </Suspense>
+            }
+          />
+          <Route path="first-use" element={<FirstUsePage />} />
+          <Route path="help" element={<HelpPage />} />
+          <Route path="releases" element={<ReleasesPage />} />
+          <Route path="*" element={<NotFoundPage />} />
+        </Route>
+      </Routes>
+    </BrowserRouter>
+  </StrictMode>,
+);
