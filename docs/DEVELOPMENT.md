@@ -7,7 +7,7 @@
   On Windows `tools/build.py` converts `IDF_PATH` to forward slashes because upstream CMake interpolates it into strings.
 - Python 3.9+, Rust stable for `host/` (Linux additionally needs `libpcsclite-dev`; the PAM crate needs `libpam0g-dev`).
 - First configure needs network access: upstream `pico-keys-sdk/cmake/deps.cmake` fetches mbedTLS (EdDSA fork), tinycbor and
-  (openpgp) libcvc into `pico-keys-sdk/third-party`; the IDF component manager fetches `esp_tinyusb` and `neopixel`.
+  (openpgp) libcvc into `pico-keys-sdk/third-party` at pinned commit SHAs (patch 0006); the IDF component manager fetches `esp_tinyusb` and `neopixel`.
 
 ## Layout
 

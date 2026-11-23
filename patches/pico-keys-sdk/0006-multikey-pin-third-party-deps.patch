@@ -1,0 +1,52 @@
+diff --git a/cmake/deps.cmake b/cmake/deps.cmake
+index 8dbcf81..7e8bbbf 100644
+--- a/cmake/deps.cmake
++++ b/cmake/deps.cmake
+@@ -15,21 +15,23 @@ set(MLKEM_PATH "${CMAKE_CURRENT_LIST_DIR}/../third-party/mlkem")
+ set(MLDSA_PATH "${CMAKE_CURRENT_LIST_DIR}/../third-party/mldsa")
+ set(LIBCVC_PATH "${CMAKE_CURRENT_LIST_DIR}/../third-party/libcvc")
+ 
++# MultiKeys: every ref below is a full commit SHA (the tag or branch it replaced is in the trailing comment).
++# picokeys_sync_dep rejects a checkout whose HEAD differs from it. How to update: docs/DEPENDENCIES.md.
+ set(PICOKEYS_MBEDTLS_STD_REPO "https://github.com/Mbed-TLS/mbedtls.git")
+-set(PICOKEYS_MBEDTLS_STD_REF "v3.6.7")
++set(PICOKEYS_MBEDTLS_STD_REF "068ff080b369adfac81509f9b57b2afabaf82dc5") # v3.6.7
+ set(PICOKEYS_MBEDTLS_EDDSA_REPO "https://github.com/polhenarejos/mbedtls.git")
+-set(PICOKEYS_MBEDTLS_EDDSA_REF "v3.6.7-eddsa")
++set(PICOKEYS_MBEDTLS_EDDSA_REF "fc39404125e93ee00e6758605e6c6f2c8db440f1") # v3.6.7-eddsa
+ 
+ set(PICOKEYS_TINYCBOR_REPO "https://github.com/intel/tinycbor.git")
+-set(PICOKEYS_TINYCBOR_REF "v0.6.1")
++set(PICOKEYS_TINYCBOR_REF "c0aad2fb2137a31b9845fbaae3653540c410f215") # v0.6.1
+ set(PICOKEYS_CJSON_REPO "https://github.com/DaveGamble/cJSON.git")
+-set(PICOKEYS_CJSON_REF "v1.7.19")
++set(PICOKEYS_CJSON_REF "c859b25da02955fef659d658b8f324b5cde87be3") # v1.7.19
+ set(PICOKEYS_MLKEM_REPO "https://github.com/pq-code-package/mlkem-native.git")
+-set(PICOKEYS_MLKEM_REF "v1.2.0")
++set(PICOKEYS_MLKEM_REF "0ba906cb14b1c241476134d7403a811b382ca498") # v1.2.0
+ set(PICOKEYS_MLDSA_REPO "https://github.com/pq-code-package/mldsa-native.git")
+-set(PICOKEYS_MLDSA_REF "v1.0.0-beta2")
++set(PICOKEYS_MLDSA_REF "9b0ee84f4cf399043eca59eca4e5f8531ca1d61b") # v1.0.0-beta2
+ set(PICOKEYS_LIBCVC_REPO "https://github.com/polhenarejos/libcvc.git")
+-set(PICOKEYS_LIBCVC_REF "main")
++set(PICOKEYS_LIBCVC_REF "54562afc4d620c8bdb118183c0db49048baa0b2c") # main
+ 
+ set(PICOKEYS_FETCH_DEPS_ON_DEMAND ON CACHE BOOL "Fetch third-party deps into pico-keys-sdk/third-party when missing")
+ 
+@@ -88,6 +90,16 @@ function(picokeys_sync_dep name repo ref dest)
+         if(NOT _checkout_rc EQUAL 0)
+             message(FATAL_ERROR "Failed to checkout ${name} ref ${ref}\nstdout: ${_checkout_out}\nstderr: ${_checkout_err}")
+         endif()
++        execute_process(
++            COMMAND git -C ${dest} rev-parse HEAD
++            RESULT_VARIABLE _head_rc
++            OUTPUT_VARIABLE _head
++            OUTPUT_STRIP_TRAILING_WHITESPACE
++        )
++        if(NOT _head_rc EQUAL 0 OR NOT _head STREQUAL "${ref}")
++            file(REMOVE_RECURSE "${dest}")
++            message(FATAL_ERROR "${name}: ref ${ref} must be a full commit SHA and HEAD must equal it (got '${_head}')")
++        endif()
+         if(NOT EXISTS "${dest}")
+             message(FATAL_ERROR "Failed to fetch ${name} into ${dest}")
+         endif()

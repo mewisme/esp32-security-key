@@ -107,6 +107,31 @@ class Workflows(unittest.TestCase):
         count = next(s["run"] for s in release_job["steps"] if "ls -1" in str(s.get("run", "")))
         self.assertIn(f"-eq {3 + 1 + 2 * len(release_profiles) + 1}", count)
 
+    def test_web_deploys_are_manual_and_environment_bound(self):
+        web = self.flows["web.yml"]
+        on = web["on"]
+        self.assertIn("workflow_dispatch", on)
+        jobs = web["jobs"]
+        self.assertEqual(sorted(jobs), ["check", "deploy-production", "deploy-staging"])
+        for job_id, env in (("deploy-staging", "staging"), ("deploy-production", "production")):
+            job = jobs[job_id]
+            self.assertEqual(job["environment"], env)
+            self.assertEqual(job["permissions"], {"contents": "read"})
+            self.assertFalse(job["concurrency"]["cancel-in-progress"])
+            self.assertIn("github.event_name == 'workflow_dispatch'", job["if"])
+            self.assertEqual(job["needs"], "check")
+        self.assertIn("inputs.deploy == 'production'", jobs["deploy-production"]["if"])
+        self.assertIn("refs/heads/main", jobs["deploy-production"]["if"])
+        self.assertIn("confirm_production", jobs["deploy-production"]["if"])
+        self.assertNotIn("production", jobs["deploy-staging"]["if"])
+        # Cloudflare credentials appear nowhere but the two deploy jobs, and no other workflow can deploy.
+        for job_id, job in jobs.items():
+            self.assertEqual("CLOUDFLARE_API_TOKEN" in yaml.safe_dump(job), job_id.startswith("deploy-"), job_id)
+        for name, wf in self.flows.items():
+            if name != "web.yml":
+                self.assertNotIn("CLOUDFLARE", yaml.safe_dump(wf), name)
+                self.assertNotIn("wrangler", yaml.safe_dump(wf), name)
+
 
 if __name__ == "__main__":
     unittest.main()
