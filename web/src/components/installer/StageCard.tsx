@@ -82,19 +82,18 @@ export function CheckRow(props: { label: string; state: RowState; children?: Rea
 }
 
 const SUPPORT_BADGE = {
-  "hardware-verified": "success-light",
+  "reference-config": "info-light",
   "expected-compatible": "info-light",
   "build-verified": "warning-light",
 } as const satisfies Record<Support, string>;
 
 /** How well the connected board is known to work: one state badge, text from the compatibility module. */
-export function CompatibilityBadge({ support, verifiedAs }: { support: Support; verifiedAs: string | null }) {
+export function CompatibilityBadge({ support }: { support: Support }) {
   const { t } = useI18n();
-  const text = support === "hardware-verified" ? `${t.support[support]} (${verifiedAs ?? "ESP32-S3 N16R8"})` : t.support[support];
   // The text is longer than a phone's row: let it wrap instead of being cut off.
   return (
     <Badge variant={SUPPORT_BADGE[support]} className="h-auto min-h-5 text-left whitespace-normal">
-      {text}
+      {t.support[support]}
     </Badge>
   );
 }

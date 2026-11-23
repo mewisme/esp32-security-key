@@ -117,7 +117,7 @@ export function ConnectVerifyStage({ inst, headingRef }: { inst: Installer; head
           {selection ? t.install.firmwareName(<span className="whitespace-nowrap">{selection.profile.label}</span>) : null}
         </CheckRow>
         <CheckRow label={rows.compatibility} state={rowState(phase, "validating-compatibility")}>
-          {selection ? <CompatibilityBadge support={selection.support} verifiedAs={selection.verifiedAs} /> : null}
+          {selection ? <CompatibilityBadge support={selection.support} /> : null}
         </CheckRow>
         <CheckRow
           label={rows.download}

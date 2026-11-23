@@ -6,7 +6,7 @@
 //  4. matching layout, no / non-MultiKeys app      -> replace-compatible-layout
 //  5. foreign layout, no MultiKeys app             -> repurpose (clears nvs + part0 first, typed confirmation)
 //  6. foreign layout with a MultiKeys app          -> blocked (storage-incompatible)
-//  7. any board whose support is not hardware-verified needs the untested-hardware acknowledgement
+//  7. every board needs (none is positively identified as the tested unit) the untested-hardware acknowledgement
 //  8. an OpenPGP image (experimental, not hardware verified) needs the experimental-image acknowledgement, and a
 //     switch between the two images also needs SWITCH typed (the FIDO2 / OpenPGP data areas are not interchangeable)
 // Outside repurpose no write ever touches a protected partition. A table that cannot be read never gets here: the
@@ -60,7 +60,7 @@ export function decideInstallMode(input: {
   table: TableResult;
   app: AppDescriptor | null;
   build: Build;
-  /** True when the board's support level is anything but hardware-verified (see compatibility/profiles.ts). */
+  /** True unless the board is positively identified as the tested unit (see BOARD_IDENTITY_VERIFIED in compatibility/profiles.ts). */
   untestedHardware: boolean;
   policy?: FlashPolicy;
 }): InstallDecision {

@@ -119,14 +119,14 @@ test("H: a 4 MB board gets the 4 MB build, labelled build-verified, and needs th
   expect(downloads).toEqual(["multikey-firmware-v0.2.0-esp32s3-4mb-fido-dev.zip"]);
 });
 
-test("I: the tested N16R8 is hardware-verified and needs no extra acknowledgement", async ({ page }) => {
+test("I: a board with the tested N16R8 configuration is not labelled hardware verified and needs the acknowledgement", async ({ page }) => {
   const downloads = recordDownloads(page);
   await setup(page, { device: "blank" });
   await toChooser(page);
   await expect(page.getByText("MultiKeys FIDO2 — 16 MB")).toBeVisible();
-  await expect(page.getByText("Hardware verified (ESP32-S3 N16R8)").first()).toBeVisible();
-  await expect(page.getByLabel(/hasn't been tested with MultiKeys/)).toHaveCount(0);
-  await expect(page.getByText("Not tested on this board")).toHaveCount(0);
+  await expect(page.getByText(/Same configuration as the hardware-verified N16R8/).first()).toBeVisible();
+  await expect(page.getByText("Hardware verified (ESP32-S3 N16R8)")).toHaveCount(0);
+  await expect(page.getByLabel(/hasn't been tested with MultiKeys/)).toBeVisible();
   expect(downloads).toEqual(["multikey-firmware-v0.2.0-esp32s3-16mb-fido-dev.zip"]);
 });
 
@@ -150,6 +150,14 @@ test("K: an octal-flash board is refused", async ({ page }) => {
   await toChooser(page);
   await expect(page.getByTestId("error-panel")).toHaveAttribute("data-error-code", "unsupported-flash-mode");
   await expect(page.getByTestId("error-panel")).toContainText("nothing was written");
+});
+
+test("K2: a flash type that cannot be read is refused, with a retry and nothing written", async ({ page }) => {
+  await setup(page, { flashType: null });
+  await toChooser(page);
+  await expect(page.getByTestId("error-panel")).toHaveAttribute("data-error-code", "unknown-flash-mode");
+  await expect(page.getByTestId("error-panel")).toContainText("Nothing was written");
+  await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
 });
 
 test("L: an unreadable flash size is refused, with a retry", async ({ page }) => {

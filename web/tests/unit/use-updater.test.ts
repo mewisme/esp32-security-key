@@ -169,7 +169,7 @@ describe("useUpdater", () => {
     expect(result.current.state.decision).toMatchObject({ outcome: "safe-update", allowed: true });
     expect(driver.writes).toEqual([]);
 
-    await run(() => result.current.actions.confirm(["update-confirm"]));
+    await run(() => result.current.actions.confirm(["update-confirm", "untested-hardware"]));
     expect(driver.writes).toEqual([0x20000]);
     expect(driver.pendingDuringWrite).toMatchObject({ project: "multikey-fido", toVersion: "0.3.3", fromVersion: "0.3.1" });
     expect(loadPending()).toBeNull();
@@ -197,7 +197,7 @@ describe("useUpdater", () => {
     const { result } = renderHook(() => useUpdater());
     await toReview(result);
     driver.failWrite = true;
-    await run(() => result.current.actions.confirm(["update-confirm"]));
+    await run(() => result.current.actions.confirm(["update-confirm", "untested-hardware"]));
     expect(result.current.state.phase).toBe("failed");
     expect(result.current.state.error?.code).toBe("flash-write-failed");
     expect(driver.writes).toEqual([0x20000]);
@@ -208,7 +208,7 @@ describe("useUpdater", () => {
     const { result } = renderHook(() => useUpdater());
     await toReview(result);
     driver.corruptVerifications = 2;
-    await run(() => result.current.actions.confirm(["update-confirm"]));
+    await run(() => result.current.actions.confirm(["update-confirm", "untested-hardware"]));
     expect(result.current.state.phase).toBe("failed");
     expect(result.current.state.error?.code).toBe("flash-verify-failed");
     expect(driver.writes).toEqual([0x20000, 0x20000]);
@@ -219,7 +219,7 @@ describe("useUpdater", () => {
     const { result } = renderHook(() => useUpdater());
     await toReview(result);
     driver.corruptVerifications = 1;
-    await run(() => result.current.actions.confirm(["update-confirm"]));
+    await run(() => result.current.actions.confirm(["update-confirm", "untested-hardware"]));
     expect(driver.writes).toEqual([0x20000, 0x20000]);
     expect(result.current.state.phase).toBe("awaiting-replug");
     expect(loadPending()).toBeNull();
@@ -230,7 +230,7 @@ describe("useUpdater", () => {
     const { result } = renderHook(() => useUpdater());
     await toReview(result);
     expect(result.current.state.decision).toMatchObject({ outcome: "unknown", reason: "different-key", allowed: false });
-    await run(() => result.current.actions.confirm(["update-confirm"]));
+    await run(() => result.current.actions.confirm(["update-confirm", "untested-hardware"]));
     expect(driver.writes).toEqual([]);
   });
 
@@ -246,7 +246,7 @@ describe("useUpdater", () => {
   it("shows a version or name that changed, and a key that runs another version, as a mismatch", async () => {
     const { result } = renderHook(() => useUpdater());
     await toReview(result);
-    await run(() => result.current.actions.confirm(["update-confirm"]));
+    await run(() => result.current.actions.confirm(["update-confirm", "untested-hardware"]));
     h.key!.state = keyBefore({ version: "0.3.1", sha: "22".repeat(32), name: "Other", deviceId: 9 });
     await run(() => result.current.actions.verifyDevice());
     expect(result.current.state.report).toMatchObject({ imageMatches: false, versionMatches: false, nameUnchanged: false, mkauthUnchanged: false, verdict: "mismatch" });
@@ -264,9 +264,9 @@ describe("useUpdater", () => {
     const { result } = renderHook(() => useUpdater());
     await toReview(result, false);
     expect(result.current.state.decision).toMatchObject({ outcome: "repair", allowed: true });
-    await run(() => result.current.actions.confirm(["update-confirm"]));
+    await run(() => result.current.actions.confirm(["update-confirm", "untested-hardware"]));
     expect(driver.writes).toEqual([]);
-    await run(() => result.current.actions.confirm(["update-confirm", "repair-typed"]));
+    await run(() => result.current.actions.confirm(["update-confirm", "untested-hardware", "repair-typed"]));
     expect(driver.writes).toEqual([0x20000]);
   });
 });

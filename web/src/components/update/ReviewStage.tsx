@@ -161,7 +161,7 @@ export function ReviewStage({ up, headingRef }: { up: Updater; headingRef: React
           <TableRow>
             <TableHead scope="row">{t.install.review.rows.compatibility}</TableHead>
             <TableCell className="whitespace-normal">
-              <CompatibilityBadge support={support} verifiedAs={profile.verified_hardware[0]?.label ?? null} />
+              <CompatibilityBadge support={support} />
             </TableCell>
           </TableRow>
           <TableRow>

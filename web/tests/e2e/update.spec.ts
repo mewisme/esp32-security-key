@@ -126,7 +126,7 @@ test("after an interrupted write the unreadable application is repaired, with RE
   await page.getByRole("button", { name: "Choose device" }).click();
   await expect(page.getByTestId("update-outcome")).toHaveAttribute("data-outcome", "repair");
   const update = page.getByRole("button", { name: "Update application" });
-  await page.getByRole("checkbox").check();
+  await ackAll(page);
   await expect(update).toBeDisabled();
   await page.getByLabel(/Type REPAIR/).fill("REPAIR");
   await expect(update).toBeEnabled();

@@ -80,6 +80,11 @@ const errors: Messages["errors"] = {
     what: "Bo mạch của bạn dùng flash octal. MultiKeys chỉ hỗ trợ bo mạch ESP32-S3 có flash quad-SPI; chưa có gì được ghi.",
     next: ["Dùng bo mạch ESP32-S3 có module flash quad. Các module ESP32-S3-WROOM-2 (ví dụ N16R8V) dùng flash octal."],
   },
+  "unknown-flash-mode": {
+    title: "Không đọc được loại flash",
+    what: "Không đọc được giao diện flash của bo mạch (quad hay octal) nên không có gì bảo đảm firmware này khớp với bo mạch. Chưa có gì được ghi.",
+    next: [DOWNLOAD_MODE, "Nhấn Thử lại. Nếu vẫn lỗi, kiểm tra module không phải loại flash octal như N16R8V."],
+  },
   "unknown-flash-size": {
     title: "Không đọc được dung lượng flash",
     what: "Không đọc được dung lượng flash nên không thể chọn firmware một cách an toàn. Kết nối lại ở chế độ nạp (download mode) rồi thử lại; chưa có gì được ghi.",
@@ -558,6 +563,8 @@ export const vi: Messages = {
       },
       untested: {
         title: "Chưa được thử trên bo mạch này",
+        referenceConfig:
+          "Bo mạch này báo cùng dung lượng flash và PSRAM với ESP32-S3 N16R8 đã được thử, nên nhận bản dựng đã kiểm chứng trên phần cứng ở bo mạch đó. Không có gì trên bo mạch cho biết nó chính là bo mạch ấy, và chính bo mạch này chưa được thử với MultiKeys.",
         expectedCompatible:
           "Đây là bản dựng chạy trên ESP32-S3 N16R8 đã được thử, nhưng chính bo mạch này chưa được thử với MultiKeys. Nó vượt qua mọi kiểm tra ảnh firmware.",
         buildVerified: (size: string) =>
@@ -571,7 +578,7 @@ export const vi: Messages = {
           "experimental-image":
             "Tôi hiểu firmware OpenPGP còn thử nghiệm, chưa được thử trên phần cứng và không phù hợp cho các khóa tôi tin cậy.",
           "replace-layout": "Tôi hiểu firmware hiện có trên bo mạch này sẽ bị thay thế.",
-          "untested-hardware": "Tôi hiểu loại bo mạch này chưa được thử với MultiKeys",
+          "untested-hardware": "Tôi hiểu chính bo mạch này chưa được thử với MultiKeys",
           "force-storage":
             "Tôi hiểu bản phát hành này không được chứng minh là đọc được các khóa đang lưu trên bo mạch. Trình cài đặt không xóa các khóa, nhưng chúng có thể không dùng được hoặc bị mất, và firmware cũ có thể không trả lại. Tôi đã sao lưu những gì cần.",
         },
@@ -771,7 +778,7 @@ export const vi: Messages = {
         acks: {
           "update-confirm":
             "Tôi hiểu rằng chỉ ứng dụng MultiKeys bị thay thế, việc ghi không nguyên tử và nếu bị gián đoạn thì phải chạy lại bản cập nhật này.",
-          "untested-hardware": "Tôi hiểu loại bo mạch này chưa được thử với MultiKeys",
+          "untested-hardware": "Tôi hiểu chính bo mạch này chưa được thử với MultiKeys",
           "experimental-image":
             "Tôi hiểu firmware OpenPGP còn thử nghiệm, chưa được thử trên phần cứng và không phù hợp cho các khóa tôi tin cậy.",
         },
@@ -1136,7 +1143,7 @@ export const vi: Messages = {
   },
 
   support: {
-    "hardware-verified": "Đã kiểm chứng trên phần cứng",
+    "reference-config": "Cùng cấu hình với N16R8 đã kiểm chứng trên phần cứng — chưa xác định được chính bo mạch này",
     "expected-compatible": "Dự kiến tương thích — chưa thử trên đúng bo mạch này",
     "build-verified": "Đã kiểm chứng bản dựng — chưa thử trên phần cứng",
   },

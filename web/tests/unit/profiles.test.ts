@@ -28,7 +28,7 @@ function failure(c: ChipInfo, b = builds) {
 describe("selectProfile", () => {
   it("picks the 4 MB build for a 4 MB board and says it is only build-verified", () => {
     const r = selectProfile(chip({ flashSize: "4MB", features: ["Wi-Fi", "BLE"] }), builds, "fido");
-    expect(r).toMatchObject({ ok: true, support: "build-verified", verifiedAs: null });
+    expect(r).toMatchObject({ ok: true, support: "build-verified" });
     if (r.ok) expect([r.build.profile_id, r.profile.id]).toEqual(["esp32s3-4mb", "esp32s3-4mb"]);
   });
 
@@ -38,15 +38,15 @@ describe("selectProfile", () => {
     if (r.ok) expect(r.build.profile_id).toBe("esp32s3-8mb");
   });
 
-  it("recognises the tested N16R8 by its embedded 8 MB PSRAM", () => {
+  it("labels a board with the N16R8 flash and PSRAM as the reference configuration, never as verified", () => {
     const r = selectProfile(chip(), builds, "fido");
-    expect(r).toMatchObject({ ok: true, support: "hardware-verified", verifiedAs: "ESP32-S3 N16R8" });
+    expect(r).toMatchObject({ ok: true, support: "reference-config" });
     if (r.ok) expect(r.build.profile_id).toBe("esp32s3-16mb");
   });
 
   it("treats other 16 MB boards as expected-compatible, not verified", () => {
     for (const features of [["Wi-Fi", "BLE"], ["Wi-Fi", "BLE", "Embedded PSRAM 2MB (AP_3v3)"], []]) {
-      expect(selectProfile(chip({ features }), builds, "fido")).toMatchObject({ ok: true, support: "expected-compatible", verifiedAs: null });
+      expect(selectProfile(chip({ features }), builds, "fido")).toMatchObject({ ok: true, support: "expected-compatible" });
     }
   });
 
@@ -67,8 +67,10 @@ describe("selectProfile", () => {
     expect(failure(chip({ flashSize: null })).code).toBe("unknown-flash-size");
   });
 
-  it("accepts an undetermined flash type when the size is known", () => {
-    expect(selectProfile(chip({ flashType: null }), builds, "fido").ok).toBe(true);
+  it("refuses an undetermined flash type, even when the size is known", () => {
+    const r = failure(chip({ flashType: null }));
+    expect(r.code).toBe("unknown-flash-mode");
+    expect(failure(chip({ flashType: null, flashSize: "8MB" })).code).toBe("unknown-flash-mode");
   });
 
   it("rejects another chip before looking at flash", () => {
@@ -93,8 +95,8 @@ describe("selectProfile", () => {
 
   it("picks the OpenPGP build, which is never hardware verified, even on the tested N16R8", () => {
     const r = selectProfile(chip(), both.builds, "openpgp");
-    expect(r).toMatchObject({ ok: true, support: "build-verified", verifiedAs: null });
+    expect(r).toMatchObject({ ok: true, support: "build-verified" });
     if (r.ok) expect([r.build.image, r.build.profile_id]).toEqual(["openpgp", "esp32s3-16mb"]);
-    expect(selectProfile(chip(), both.builds, "fido")).toMatchObject({ ok: true, support: "hardware-verified" });
+    expect(selectProfile(chip(), both.builds, "fido")).toMatchObject({ ok: true, support: "reference-config" });
   });
 });

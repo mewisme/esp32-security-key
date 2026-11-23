@@ -60,7 +60,7 @@ class FakeDriver implements FlashDriver {
       features: this.s.features ?? ["Wi-Fi", "BLE", "Embedded PSRAM 8MB (AP_3v3)"],
       mac: "80:b5:4e:c8:22:78",
       flashSize: this.s.flashSize === undefined ? "16MB" : this.s.flashSize,
-      flashType: chipName === "ESP32-S3" ? (this.s.flashType ?? "quad") : null,
+      flashType: chipName === "ESP32-S3" ? (this.s.flashType === undefined ? "quad" : this.s.flashType) : null,
       secureDownloadMode: false,
     };
   }

@@ -30,7 +30,7 @@ import { formatBytes } from "@/lib/format";
 
 function verificationBadge(build: Build, t: Messages): { variant: "success-light" | "warning-light"; text: string } {
   if (build.verification === "hardware-verified") {
-    return { variant: "success-light", text: `${t.support["hardware-verified"]} (${build.verified_hardware[0] ?? "ESP32-S3 N16R8"})` };
+    return { variant: "success-light", text: `${t.levels["hardware-verified"]} (${build.verified_hardware[0] ?? "ESP32-S3 N16R8"})` };
   }
   return { variant: "warning-light", text: t.support["build-verified"] };
 }

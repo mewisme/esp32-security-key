@@ -93,6 +93,11 @@ const errors = {
     what: "Your board uses octal flash. MultiKeys only supports ESP32-S3 boards with quad-SPI flash; nothing was written.",
     next: ["Use an ESP32-S3 board with a quad-flash module. ESP32-S3-WROOM-2 modules (for example N16R8V) use octal flash."],
   },
+  "unknown-flash-mode": {
+    title: "The flash type couldn't be read",
+    what: "The board's flash interface (quad or octal) couldn't be read, so nothing can tell that this firmware matches the board. Nothing was written.",
+    next: [DOWNLOAD_MODE, "Press Try again. If it keeps failing, check that the module isn't an octal-flash part such as N16R8V."],
+  },
   "unknown-flash-size": {
     title: "The flash size couldn't be read",
     what: "The flash size couldn't be read, so no firmware can be chosen safely. Reconnect in download mode and try again; nothing was written.",
@@ -573,6 +578,8 @@ export const en = {
       },
       untested: {
         title: "Not tested on this board",
+        referenceConfig:
+          "This board reports the same flash size and PSRAM as the tested ESP32-S3 N16R8, so it gets the build that was hardware verified on that board. Nothing in the board identifies it as that unit, and this exact board hasn't been tested with MultiKeys.",
         expectedCompatible:
           "This is the build that runs on the tested ESP32-S3 N16R8, but this exact board hasn't been tested with MultiKeys. It passes every image check.",
         buildVerified: (size: string) =>
@@ -586,7 +593,7 @@ export const en = {
           "experimental-image":
             "I understand the OpenPGP firmware is experimental, has not been tested on hardware, and is not suitable for keys I rely on.",
           "replace-layout": "I understand the firmware currently on this board will be replaced.",
-          "untested-hardware": "I understand this board type hasn't been tested with MultiKeys",
+          "untested-hardware": "I understand this exact board hasn't been tested with MultiKeys",
           "force-storage":
             "I understand this release is not shown to read the keys stored on this board. The keys are not erased by the installer, but they may become unusable or be lost, and the old firmware may not return them. I have backed up what I need.",
         } satisfies Record<Exclude<AckId, TypedAckId>, string>,
@@ -786,7 +793,7 @@ export const en = {
         acks: {
           "update-confirm":
             "I understand that only the MultiKeys application is replaced, that the write is not atomic, and that an interrupted write means running this update again.",
-          "untested-hardware": "I understand this board type hasn't been tested with MultiKeys",
+          "untested-hardware": "I understand this exact board hasn't been tested with MultiKeys",
           "experimental-image":
             "I understand the OpenPGP firmware is experimental, has not been tested on hardware, and is not suitable for keys I rely on.",
         } satisfies Record<Exclude<UpdateAckId, TypedUpdateAckId>, string>,
@@ -1156,7 +1163,7 @@ export const en = {
 
   // How well a connected board is known to work (installer badges and the Releases page).
   support: {
-    "hardware-verified": "Hardware verified",
+    "reference-config": "Same configuration as the hardware-verified N16R8 — this board itself isn't identified",
     "expected-compatible": "Expected compatible — not tested on this exact board",
     "build-verified": "Build verified — not hardware tested",
   } satisfies Record<Support, string>,

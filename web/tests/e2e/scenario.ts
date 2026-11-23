@@ -3,8 +3,8 @@
 export interface Scenario {
   chip?: string;
   flashSize?: string | null;
-  /** Quad or octal flash as read from eFuse (default quad). */
-  flashType?: "quad" | "octal";
+  /** Quad or octal flash as read from eFuse (default quad); null = the eFuse could not be read. */
+  flashType?: "quad" | "octal" | null;
   /** Chip features reported by esptool (default: an N16R8, i.e. Wi-Fi, BLE and 8 MB embedded PSRAM). */
   features?: string[];
   /** Images the fake release carries (default fido only). */

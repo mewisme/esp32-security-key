@@ -2,7 +2,7 @@
 // reducer. Every write happens only in `confirm`, which the reducer gates on all required acknowledgements. Choices made
 // before connecting (release, device name) live in `config`, which survives Back/Continue and reloads of the tab.
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
-import { selectProfile, type Support } from "@/lib/compatibility/profiles";
+import { BOARD_IDENTITY_VERIFIED, selectProfile, type Support } from "@/lib/compatibility/profiles";
 import { createKeyConnector } from "@/lib/device/create-key-connector";
 import type { KeyConnection } from "@/lib/device/key-connector";
 import type { NameRequest } from "@/lib/device/mkauth";
@@ -52,8 +52,6 @@ export interface Selection {
   build: Build;
   profile: HardwareProfile;
   support: Support;
-  /** Label of the tested hardware this board matches (only when support is hardware-verified). */
-  verifiedAs: string | null;
 }
 
 export interface InstallerActions {
@@ -190,7 +188,7 @@ export function useInstaller(): Installer {
       const picked = selectProfile(chip, release.manifest.builds, state.image);
       if (!picked.ok) throw new FirmwareError(picked.code, picked.detail);
       const b = picked.build;
-      setSelection({ release, build: b, profile: picked.profile, support: picked.support, verifiedAs: picked.verifiedAs });
+      setSelection({ release, build: b, profile: picked.profile, support: picked.support });
       dispatch({ type: "COMPATIBLE", buildId: b.id, profileId: picked.profile.id, support: picked.support });
       phase = "fetching-metadata";
       validateManifest(release.manifest, release.tag);
@@ -208,7 +206,7 @@ export function useInstaller(): Installer {
         table: parsePartitionTable(tableBlob, b.partitions),
         app: parseAppDescriptor(appBlob),
         build: b,
-        untestedHardware: picked.support !== "hardware-verified",
+        untestedHardware: !BOARD_IDENTITY_VERIFIED,
       });
       setLog(d.log());
       dispatch({ type: "SAFETY_DECIDED", decision });

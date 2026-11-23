@@ -78,7 +78,7 @@ export function ReviewStage({ inst, headingRef }: { inst: Installer; headingRef:
           <TableRow>
             <TableHead scope="row">{t.install.review.rows.compatibility}</TableHead>
             <TableCell className="whitespace-normal">
-              <CompatibilityBadge support={support} verifiedAs={selection.verifiedAs} />
+              <CompatibilityBadge support={support} />
             </TableCell>
           </TableRow>
           <TableRow>
@@ -169,9 +169,11 @@ export function ReviewStage({ inst, headingRef }: { inst: Installer; headingRef:
           <AlertTitle>{t.install.review.untested.title}</AlertTitle>
           <AlertDescription>
             <p>
-              {support === "expected-compatible"
-                ? t.install.review.untested.expectedCompatible
-                : t.install.review.untested.buildVerified(profile.flash_size.replace("MB", " MB"))}
+              {support === "reference-config"
+                ? t.install.review.untested.referenceConfig
+                : support === "expected-compatible"
+                  ? t.install.review.untested.expectedCompatible
+                  : t.install.review.untested.buildVerified(profile.flash_size.replace("MB", " MB"))}
             </p>
           </AlertDescription>
         </Alert>

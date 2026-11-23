@@ -28,6 +28,7 @@ export type ErrorCode =
   | "no-reenumeration"
   | "firmware-version-unknown"
   | "unsupported-flash-mode"
+  | "unknown-flash-mode"
   | "unknown-flash-size"
   | "profile-not-in-release"
   | "name-rename-disabled"
@@ -69,6 +70,7 @@ export const ERRORS: Record<ErrorCode, ErrorInfo> = {
   "unsupported-chip": { group: "Board", retry: false },
   "wrong-flash-size": { group: "Board", retry: false },
   "unsupported-flash-mode": { group: "Board", retry: false },
+  "unknown-flash-mode": { group: "Board", retry: true },
   "unknown-flash-size": { group: "Board", retry: true },
   "profile-not-in-release": { group: "Board", retry: false },
   "secure-download-mode": { group: "Board", retry: false },

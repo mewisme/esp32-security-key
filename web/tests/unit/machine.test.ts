@@ -13,7 +13,7 @@ const decision = (acks: InstallDecision["acks"] = ["dev-firmware"]): InstallDeci
 
 const run = (events: FlashEvent[], from: FlashState = initialState) => events.reduce(flashReducer, from);
 
-const COMPATIBLE: FlashEvent = { type: "COMPATIBLE", buildId: "esp32s3-16mb-fido-dev", profileId: "esp32s3-16mb", support: "hardware-verified" };
+const COMPATIBLE: FlashEvent = { type: "COMPATIBLE", buildId: "esp32s3-16mb-fido-dev", profileId: "esp32s3-16mb", support: "reference-config" };
 
 const TO_CONFIRM: FlashEvent[] = [
   { type: "START" },
@@ -54,7 +54,7 @@ describe("flashReducer", () => {
   it("COMPATIBLE stores the build, profile and support level", () => {
     const s = run(TO_CONFIRM.slice(0, 8));
     expect(s.phase).toBe("fetching-metadata");
-    expect([s.buildId, s.profileId, s.support]).toEqual(["esp32s3-16mb-fido-dev", "esp32s3-16mb", "hardware-verified"]);
+    expect([s.buildId, s.profileId, s.support]).toEqual(["esp32s3-16mb-fido-dev", "esp32s3-16mb", "reference-config"]);
   });
 
   it("ignores CANCEL while flashing and verifying", () => {

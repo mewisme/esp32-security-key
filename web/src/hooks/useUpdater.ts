@@ -2,7 +2,7 @@
 // mode, decides with decideAppUpdate, and writes only in `confirm`, which re-decides on the same open connection first.
 // The only region ever written is the app image (decideAppUpdate returns at most that one write).
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { selectProfile, type Support } from "@/lib/compatibility/profiles";
+import { BOARD_IDENTITY_VERIFIED, selectProfile, type Support } from "@/lib/compatibility/profiles";
 import { createKeyConnector } from "@/lib/device/create-key-connector";
 import type { KeyConnection } from "@/lib/device/key-connector";
 import { type KeySnapshot, readKeySnapshot } from "@/lib/device/key-snapshot";
@@ -329,7 +329,7 @@ export function useUpdater(): Updater {
         tag: target.release.tag,
         pending: state.pending,
         baseline: baselineOf(state.baseline),
-        untestedHardware: target.support !== "hardware-verified",
+        untestedHardware: !BOARD_IDENTITY_VERIFIED,
       });
       patch({ phase: "reviewed", stage: null, decision, log: d.log() });
       if (!decision.allowed) await closeDriver();
@@ -358,7 +358,7 @@ export function useUpdater(): Updater {
           tag: target.release.tag,
           pending: state.pending,
           baseline: baselineOf(state.baseline),
-          untestedHardware: target.support !== "hardware-verified",
+          untestedHardware: !BOARD_IDENTITY_VERIFIED,
         });
         if (!again.allowed || again.outcome !== decision.outcome) {
           patch({ phase: "reviewed", decision: again });
