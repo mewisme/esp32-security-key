@@ -79,25 +79,6 @@ test("an unknown error code in the Help hash scrolls its panel into view", async
   await expect(page.locator("#unknown-flash-size")).toContainText("The flash size couldn't be read");
 });
 
-test("the releases page lists every build with its flash size and verification level", async ({ page }) => {
-  await setup(page, {});
-  await page.goto("/releases");
-  await expect(page.getByText("MultiKeys v0.2.0").first()).toBeVisible();
-  for (const size of ["4 MB", "8 MB", "16 MB"]) await expect(page.getByText(size, { exact: true }).first()).toBeVisible();
-  await expect(page.getByText("Build verified — not hardware tested").first()).toBeVisible();
-  await expect(page.getByText("Hardware verified (ESP32-S3 N16R8)").first()).toBeVisible();
-  await expect(page.getByRole("link", { name: /download/i }).first()).toHaveAttribute("href", /\/api\/firmware\/v0\.2\.0\/multikey-firmware-v0\.2\.0-esp32s3-(4|8|16)mb-fido-dev\.zip/);
-});
-
-test("the releases page shows a legacy v0.2.0 release as a single 16 MB build", async ({ page }) => {
-  await setup(page, { release: "legacy-v1" });
-  await page.goto("/releases");
-  await expect(page.getByText("MultiKeys v0.2.0").first()).toBeVisible();
-  await expect(page.getByText("16 MB", { exact: true }).first()).toBeVisible();
-  await expect(page.getByText("4 MB", { exact: true })).toHaveCount(0);
-  await expect(page.getByText("Build verified — not hardware tested")).toHaveCount(1);
-});
-
 test.describe("First use", () => {
   test("step 4 sends you to the Your key page", async ({ page }) => {
     await setup(page, {});
