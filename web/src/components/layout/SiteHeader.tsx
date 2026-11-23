@@ -49,10 +49,10 @@ export function SiteHeader() {
           <KeyRound className="size-5 text-primary" aria-hidden />
           MultiKeys
         </Link>
-        <nav aria-label={t.layout.mainNav} className="hidden items-center gap-1 md:flex">
+        <nav aria-label={t.layout.mainNav} className="hidden items-center gap-1 lg:flex">
           <NavItems />
         </nav>
-        <Button asChild variant="ghost" size="icon" className="hidden md:inline-flex">
+        <Button asChild variant="ghost" size="icon" className="hidden lg:inline-flex">
           <a href={REPO_URL} target="_blank" rel="noopener noreferrer" aria-label={t.layout.githubRepository}>
             <GitHubIcon />
           </a>
@@ -61,7 +61,7 @@ export function SiteHeader() {
         <ThemeToggle />
         <Sheet>
           <SheetTrigger asChild>
-            <Button type="button" variant="ghost" size="icon" className="md:hidden" aria-label={t.layout.openMenu}>
+            <Button type="button" variant="ghost" size="icon" className="lg:hidden" aria-label={t.layout.openMenu}>
               <Menu aria-hidden />
             </Button>
           </SheetTrigger>

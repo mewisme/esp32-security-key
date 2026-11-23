@@ -2,6 +2,7 @@ import { KeyRound } from "lucide-react";
 import { ActivityCard } from "@/components/key-info/ActivityCard";
 import { FirmwareCard } from "@/components/key-info/FirmwareCard";
 import { Page } from "@/components/layout/Page";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { Alert, AlertDescription } from "@/components/reui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,10 +19,7 @@ export function KeyInfoPage() {
   const connected = key.connect.status === "connected";
   return (
     <Page width="flow">
-      <header className="flex flex-col gap-2">
-        <h1 className="text-3xl font-semibold">{k.title}</h1>
-        <p className="text-muted-foreground">{k.intro}</p>
-      </header>
+      <PageHeader title={k.title} description={k.intro} />
       {!key.supported && (
         <Alert variant="warning">
           <AlertDescription>{k.unsupported}</AlertDescription>

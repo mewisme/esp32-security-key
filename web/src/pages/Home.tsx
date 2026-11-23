@@ -1,8 +1,10 @@
-import { Cable, Download, Fingerprint, GitBranch, Hash, KeyRound, MousePointerClick, ShieldCheck, TriangleAlert } from "lucide-react";
+import { Cable, Download, FileKey, Fingerprint, GitBranch, Hash, KeyRound, MousePointerClick, ShieldCheck, TriangleAlert } from "lucide-react";
 import { Link } from "react-router";
 import { HardwareTable } from "@/components/home/HardwareTable";
 import { LatestRelease } from "@/components/home/LatestRelease";
 import { Page } from "@/components/layout/Page";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { Section } from "@/components/layout/Section";
 import { Alert, AlertDescription, AlertTitle } from "@/components/reui/alert";
 import { Badge } from "@/components/reui/badge";
 import { IconTile } from "@/components/reui/icon-tile";
@@ -10,6 +12,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useI18n } from "@/i18n/context";
 import { DOCS_URL, REPO_URL } from "@/lib/status";
+
+const IMAGES = [
+  { key: "fido", icon: KeyRound, badge: "success-light" },
+  { key: "openpgp", icon: FileKey, badge: "warning-light" },
+] as const;
 
 const HOW = [
   { key: "connect", icon: Cable },
@@ -31,47 +38,38 @@ const DOCS = [
   { key: "releasesProcess", href: `${REPO_URL}/blob/main/docs/RELEASES.md` },
 ] as const;
 
-function Section({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
-  return (
-    <section aria-labelledby={id} className="flex flex-col gap-4">
-      <h2 id={id} className="text-2xl font-semibold">
-        {title}
-      </h2>
-      {children}
-    </section>
-  );
-}
-
 export function HomePage() {
   const { t } = useI18n();
   return (
     <Page width="wide">
-      <section className="flex flex-col items-start gap-4" aria-labelledby="hero">
-        <Badge variant="outline">{t.home.badge}</Badge>
-        <h1 id="hero" className="max-w-3xl text-4xl font-bold sm:text-5xl">
-          {t.home.title}
-        </h1>
-        <p className="max-w-2xl text-lg text-muted-foreground">{t.home.lead}</p>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button asChild size="lg">
-            <Link to="/install">{t.layout.nav.install}</Link>
-          </Button>
-          <Button asChild size="lg" variant="outline">
-            <Link to="/update">{t.home.updateFirmware}</Link>
-          </Button>
-          <Button asChild size="lg" variant="outline">
-            <Link to="/first-use">{t.layout.nav.firstUse}</Link>
-          </Button>
-          <Button asChild size="lg" variant="link">
-            <a href={REPO_URL} target="_blank" rel="noopener noreferrer">
-              {t.home.source}
-            </a>
-          </Button>
-        </div>
-        <p className="flex items-center gap-2 text-sm text-muted-foreground">
-          <ShieldCheck className="size-4" aria-hidden /> {t.home.verified}
-        </p>
-      </section>
+      <PageHeader
+        size="hero"
+        id="hero"
+        eyebrow={<Badge variant="outline">{t.home.badge}</Badge>}
+        title={t.home.title}
+        description={t.home.lead}
+        actions={
+          <>
+            <Button asChild size="lg">
+              <Link to="/install">{t.layout.nav.install}</Link>
+            </Button>
+            <Button asChild size="lg" variant="outline">
+              <Link to="/update">{t.home.updateFirmware}</Link>
+            </Button>
+            <Button asChild size="lg" variant="outline">
+              <Link to="/first-use">{t.layout.nav.firstUse}</Link>
+            </Button>
+            <Button asChild size="lg" variant="link">
+              <a href={REPO_URL} target="_blank" rel="noopener noreferrer">
+                {t.home.source}
+              </a>
+            </Button>
+          </>
+        }
+      />
+      <p className="flex items-start gap-2 text-sm text-muted-foreground">
+        <ShieldCheck className="mt-0.5 size-4 shrink-0" aria-hidden /> <span className="break-words">{t.home.verified}</span>
+      </p>
 
       <Section id="how" title={t.home.how.title}>
         <ol className="grid gap-4 sm:grid-cols-3">
@@ -104,6 +102,27 @@ export function HomePage() {
                   </IconTile>
                   <CardTitle>{t.home.features[f.key].title}</CardTitle>
                   <CardDescription>{t.home.features[f.key].text}</CardDescription>
+                </CardHeader>
+              </Card>
+            </li>
+          ))}
+        </ul>
+      </Section>
+
+      <Section id="images" title={t.home.images.title} description={t.home.images.note}>
+        <ul className="grid gap-4 sm:grid-cols-2">
+          {IMAGES.map((img) => (
+            <li key={img.key} className="flex">
+              <Card className="w-full">
+                <CardHeader>
+                  <IconTile variant="soft">
+                    <img.icon aria-hidden />
+                  </IconTile>
+                  <CardTitle>{t.home.images[img.key].title}</CardTitle>
+                  <CardDescription>{t.home.images[img.key].text}</CardDescription>
+                  <div>
+                    <Badge variant={img.badge}>{t.home.images[img.key].status}</Badge>
+                  </div>
                 </CardHeader>
               </Card>
             </li>

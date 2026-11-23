@@ -2,6 +2,7 @@ import { Link } from "react-router";
 import { ExperimentalNotice } from "@/components/common/ExperimentalNotice";
 import { RenameKey } from "@/components/first-use/RenameKey";
 import { Page } from "@/components/layout/Page";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -47,10 +48,7 @@ export function FirstUsePage() {
   ];
   return (
     <Page width="flow">
-      <header className="flex flex-col gap-2">
-        <h1 className="text-3xl font-semibold">{f.title}</h1>
-        <p className="text-muted-foreground">{f.lead}</p>
-      </header>
+      <PageHeader title={f.title} description={f.lead} />
       <ExperimentalNotice />
       <Step n={1} title={f.reconnect.title} description={f.reconnect.text} />
       <Step n={2} title={f.presence.title} description={f.presence.text} />

@@ -294,6 +294,20 @@ export const en = {
       pin: { title: "PIN", text: "Protect stored credentials with a FIDO PIN set from your browser or OS." },
       open: { title: "Open source and auditable", text: "Firmware, host tools and this site are published under the AGPL." },
     },
+    images: {
+      title: "Two firmware images",
+      note: "A key runs one image at a time, FIDO2 or OpenPGP. They are separate builds: to switch, install the other one.",
+      fido: {
+        title: "FIDO2",
+        text: "Passkeys and WebAuthn sign-in, with a BOOT-button press for every use. The image the installer offers first.",
+        status: "Hardware verified on 16 MB",
+      },
+      openpgp: {
+        title: "OpenPGP",
+        text: "An OpenPGP smart card (GnuPG sign, decrypt, authenticate) and PIV over CCID. Read the warning in the installer before choosing it.",
+        status: "Experimental",
+      },
+    },
     hardware: {
       title: "Supported hardware",
       details: (link: ReactNode) => <>Details and how to read your module's marking: {link}.</>,
@@ -311,12 +325,21 @@ export const en = {
     title: "Help",
     lead: "What each message means and what to do next.",
     topics: "Help topics",
+    search: {
+      label: "Search help",
+      placeholder: "Search by message or error code",
+      clear: "Clear search",
+      results: (n: number) => (n === 1 ? "1 entry" : `${n} entries`),
+      emptyTitle: "Nothing matches that search",
+      emptyText: "Try a shorter word, or clear the search to see every entry.",
+    },
   },
 
   notFound: {
     title: "Page not found",
     text: "That address doesn't exist on this site.",
     home: "Go home",
+    help: "Open Help",
   },
 
   releases: {

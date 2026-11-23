@@ -199,3 +199,35 @@ test.describe("E: dialogs", () => {
     await expect(page.getByRole("dialog").getByRole("link", { name: "Cài đặt" })).toBeVisible();
   });
 });
+
+test.describe("G: Help search", () => {
+  test("the typed search stays, and its results and empty state follow the language", async ({ page }) => {
+    await setup(page, {});
+    await page.goto("/help");
+    const box = page.getByRole("searchbox", { name: /Search help|Tìm trong trợ giúp/ });
+    await box.fill("unknown-flash-size");
+    await expect(page.getByText("1 entry")).toBeVisible();
+    await expect(page.locator("#unknown-flash-size")).toBeVisible();
+    await switchLang(page, "vi");
+    await expect(box).toHaveValue("unknown-flash-size");
+    await expect(page.getByText("1 mục")).toBeVisible();
+    await expect(page.locator("#unknown-flash-size")).toContainText("Không đọc được dung lượng flash");
+
+    await box.fill("zzzzqqq");
+    await expect(page.getByText("Không có mục nào khớp")).toBeVisible();
+    await switchLang(page, "en");
+    await expect(box).toHaveValue("zzzzqqq");
+    await expect(page.getByText("Nothing matches that search")).toBeVisible();
+    await page.getByRole("button", { name: "Clear search" }).first().click();
+    await expect(box).toHaveValue("");
+    await expect(page.locator("#unknown-flash-size")).toBeVisible();
+  });
+
+  test("a Vietnamese search finds entries without typing the accents", async ({ page }) => {
+    await setup(page, {});
+    await page.goto("/help");
+    await switchLang(page, "vi");
+    await page.getByRole("searchbox").fill("dung luong flash");
+    await expect(page.locator("#unknown-flash-size")).toBeVisible();
+  });
+});

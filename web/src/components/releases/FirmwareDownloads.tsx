@@ -5,7 +5,7 @@ import { ReleaseBadges } from "@/components/installer/FirmwareStage";
 import { Alert, AlertDescription } from "@/components/reui/alert";
 import { Badge } from "@/components/reui/badge";
 import { Button } from "@/components/ui/button";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { TechnicalDetails } from "@/components/common/TechnicalDetails";
 import { Field } from "@/components/ui/field";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item";
 import { Label } from "@/components/ui/label";
@@ -65,42 +65,24 @@ function CopySha({ sha256 }: { sha256: string }) {
   );
 }
 
-function TechnicalDetails({ build }: { build: Build }) {
+function BuildDetails({ build }: { build: Build }) {
   const { t } = useI18n();
   const d = t.releases.details;
-  const rows: [string, string][] = [
-    [d.board, build.board],
-    [d.chip, build.chip],
-    [d.flash, `${build.flash_size} · ${build.flash_mode} · ${build.flash_freq}`],
-    [d.psram, build.psram_required ? d.psramRequired : d.psramOptional],
-    [d.idf, build.idf_version],
-    [d.usb, `${build.usb.vid.toString(16).padStart(4, "0")}:${build.usb.pid.toString(16).padStart(4, "0")}`],
-    [d.layout, build.layout_id],
-    [d.presence, `GPIO${build.user_presence.gpio}${build.user_presence.active_low ? " (active low)" : ""}`],
-    [d.manifest, build.legacy ? d.schemaLegacy : d.schemaCurrent],
-  ];
   return (
-    <Collapsible>
-      <CollapsibleTrigger className="text-sm text-muted-foreground underline underline-offset-4 transition-colors hover:text-foreground">
-        {t.common.technicalDetails}
-      </CollapsibleTrigger>
-      <CollapsibleContent className="collapse-content pt-3">
-        <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-[max-content_1fr]">
-          <dt className="text-muted-foreground">{d.sha256}</dt>
-          <dd className="font-mono text-xs break-all" lang="en">
-            {build.package.sha256}
-          </dd>
-          {rows.map(([k, v]) => (
-            <div key={k} className="contents">
-              <dt className="text-muted-foreground">{k}</dt>
-              <dd className="break-words" lang="en">
-                {v}
-              </dd>
-            </div>
-          ))}
-        </dl>
-      </CollapsibleContent>
-    </Collapsible>
+    <TechnicalDetails
+      rows={[
+        { label: d.sha256, value: build.package.sha256, technical: true },
+        { label: d.board, value: build.board },
+        { label: d.chip, value: build.chip },
+        { label: d.flash, value: `${build.flash_size} · ${build.flash_mode} · ${build.flash_freq}` },
+        { label: d.psram, value: build.psram_required ? d.psramRequired : d.psramOptional },
+        { label: d.idf, value: build.idf_version },
+        { label: d.usb, value: `${build.usb.vid.toString(16).padStart(4, "0")}:${build.usb.pid.toString(16).padStart(4, "0")}` },
+        { label: d.layout, value: build.layout_id },
+        { label: d.presence, value: `GPIO${build.user_presence.gpio}${build.user_presence.active_low ? " (active low)" : ""}` },
+        { label: d.manifest, value: build.legacy ? d.schemaLegacy : d.schemaCurrent },
+      ]}
+    />
   );
 }
 
@@ -201,11 +183,13 @@ export function FirmwareDownloads({
             <ItemMedia variant="icon">
               <Cpu aria-hidden />
             </ItemMedia>
-            <ItemContent>
-              <ItemTitle className="flex-wrap">
+            <ItemContent className="min-w-0">
+              <ItemTitle className="line-clamp-none flex-wrap">
                 {build.title}
                 <Badge variant="outline">{profileById(build.profile_id)?.label ?? build.flash_size}</Badge>
-                <Badge variant={verificationBadge(build, t).variant}>{verificationBadge(build, t).text}</Badge>
+                <Badge variant={verificationBadge(build, t).variant} className="h-auto whitespace-normal text-left">
+                  {verificationBadge(build, t).text}
+                </Badge>
               </ItemTitle>
               <ItemDescription className="font-mono text-xs break-all" lang="en">
                 {build.package.name}
@@ -221,7 +205,7 @@ export function FirmwareDownloads({
               <CopySha sha256={build.package.sha256} />
             </ItemActions>
           </Item>
-          <TechnicalDetails build={build} />
+          <BuildDetails build={build} />
         </div>
       ) : (
         <Alert variant="info" role="status">

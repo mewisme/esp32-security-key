@@ -281,6 +281,20 @@ export const vi: Messages = {
       pin: { title: "PIN", text: "Bảo vệ thông tin xác thực đã lưu bằng mã PIN FIDO đặt từ trình duyệt hoặc hệ điều hành." },
       open: { title: "Mã nguồn mở, có thể kiểm toán", text: "Firmware, công cụ trên máy và trang web này được công bố theo giấy phép AGPL." },
     },
+    images: {
+      title: "Hai ảnh firmware",
+      note: "Một khóa chỉ chạy một ảnh tại một thời điểm, FIDO2 hoặc OpenPGP. Đây là hai bản dựng riêng: muốn đổi, hãy cài ảnh còn lại.",
+      fido: {
+        title: "FIDO2",
+        text: "Passkey và đăng nhập WebAuthn, mỗi lần dùng đều cần nhấn nút BOOT. Đây là ảnh mà trình cài đặt đề xuất trước.",
+        status: "Đã kiểm chứng trên phần cứng 16 MB",
+      },
+      openpgp: {
+        title: "OpenPGP",
+        text: "Thẻ thông minh OpenPGP (GnuPG: ký, giải mã, xác thực) và PIV qua CCID. Hãy đọc cảnh báo trong trình cài đặt trước khi chọn.",
+        status: "Thử nghiệm",
+      },
+    },
     hardware: {
       title: "Phần cứng được hỗ trợ",
       details: (link: ReactNode) => <>Chi tiết và cách đọc ký hiệu trên module của bạn: {link}.</>,
@@ -298,12 +312,21 @@ export const vi: Messages = {
     title: "Trợ giúp",
     lead: "Ý nghĩa của từng thông báo và việc cần làm tiếp theo.",
     topics: "Chủ đề trợ giúp",
+    search: {
+      label: "Tìm trong trợ giúp",
+      placeholder: "Tìm theo thông báo hoặc mã lỗi",
+      clear: "Xóa tìm kiếm",
+      results: (n: number) => `${n} mục`,
+      emptyTitle: "Không có mục nào khớp",
+      emptyText: "Hãy thử từ ngắn hơn, hoặc xóa tìm kiếm để xem tất cả các mục.",
+    },
   },
 
   notFound: {
     title: "Không tìm thấy trang",
     text: "Địa chỉ đó không tồn tại trên trang web này.",
     home: "Về trang chủ",
+    help: "Mở trang Trợ giúp",
   },
 
   releases: {

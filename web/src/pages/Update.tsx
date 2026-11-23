@@ -4,6 +4,7 @@ import { ErrorPanel } from "@/components/flasher/ErrorPanel";
 import { InstallStepper } from "@/components/installer/InstallStepper";
 import { StageCard } from "@/components/installer/StageCard";
 import { Page } from "@/components/layout/Page";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { Alert, AlertDescription, AlertTitle } from "@/components/reui/alert";
 import { CheckStage } from "@/components/update/CheckStage";
 import { InspectStage } from "@/components/update/InspectStage";
@@ -70,10 +71,7 @@ export function UpdatePage() {
 
   return (
     <Page width="flow">
-      <header className="flex flex-col gap-2">
-        <h1 className="text-2xl font-semibold sm:text-3xl">{t.update.title}</h1>
-        <p className="text-muted-foreground">{t.update.lead}</p>
-      </header>
+      <PageHeader title={t.update.title} description={t.update.lead} />
       <InstallStepper stage={index} steps={UPDATE_STEPS} titles={t.update.steps} text={t.update.stepper} />
       <section key={view} className={direction ? "enter-stage" : undefined} data-direction={direction ?? undefined} aria-labelledby="step-heading">
         {stage}

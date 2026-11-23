@@ -9,6 +9,7 @@ import { InstallStepper } from "@/components/installer/InstallStepper";
 import { ReviewStage } from "@/components/installer/ReviewStage";
 import { StageCard } from "@/components/installer/StageCard";
 import { Page } from "@/components/layout/Page";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { useInstaller } from "@/hooks/useInstaller";
 import { useI18n } from "@/i18n/context";
@@ -80,10 +81,7 @@ export function InstallPage() {
 
   return (
     <Page width="flow">
-      <header className="flex flex-col gap-2">
-        <h1 className="text-2xl font-semibold sm:text-3xl">{t.install.title}</h1>
-        <p className="text-muted-foreground">{t.install.lead}</p>
-      </header>
+      <PageHeader title={t.install.title} description={t.install.lead} />
       <InstallStepper stage={step} />
       <section key={view} className={direction ? "enter-stage" : undefined} data-direction={direction ?? undefined} aria-labelledby="step-heading">
         {stage}

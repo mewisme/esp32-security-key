@@ -1,9 +1,8 @@
 import { Link } from "react-router";
 import { Badge } from "@/components/reui/badge";
-import { CatalogError } from "@/components/releases/CatalogError";
+import { AsyncState } from "@/components/common/AsyncState";
 import { useReleaseCatalog } from "@/components/releases/useReleaseCatalog";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { useChangedSinceMount } from "@/hooks/useChangedSinceMount";
 import { useI18n } from "@/i18n/context";
 import { buildsBySize, defaultRelease } from "@/lib/firmware/catalog";
@@ -15,15 +14,15 @@ export function LatestRelease() {
   const { t } = useI18n();
   // The answer replaces the skeleton with a reveal; a catalog that is already there rides on the page.
   const reveal = useChangedSinceMount(catalog.status) ? "enter-reveal" : undefined;
-  if (catalog.status === "loading") return <Skeleton className="h-9 w-full max-w-md" role="status" aria-label={t.releases.loadingLatest} />;
+  if (catalog.status === "loading") return <AsyncState state="loading" label={t.releases.loadingLatest} rows={1} />;
   if (catalog.status === "error")
     return (
       <div className={reveal}>
-        <CatalogError message={catalog.message} onRetry={reload} />
+        <AsyncState state="error" title={t.releases.loadFailed} message={catalog.message} retryLabel={t.common.retry} onRetry={reload} />
       </div>
     );
   const latest = defaultRelease(catalog.catalog);
-  if (!latest) return <p className={cn("text-muted-foreground", reveal)}>{t.common.noFirmwareRelease}</p>;
+  if (!latest) return <AsyncState state="empty" title={t.common.noFirmwareRelease} />;
   const sizes = buildsBySize(latest.manifest.builds)
     .filter((b) => b.image === "fido")
     .map((b) => profileById(b.profile_id)?.label ?? b.flash_size);

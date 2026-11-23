@@ -73,7 +73,8 @@ for (const locale of ["en-US", "vi-VN"] as const) {
   test.describe(`layout in ${locale}`, () => {
     test.use({ locale });
     for (const scheme of ["light", "dark"] as const) {
-      for (const width of [360, 375, 768, 1280, 1440]) {
+      // 320 and 640 are what a 400% / 200% browser zoom leaves of a 1280 px window (zoom narrows the CSS viewport).
+      for (const width of [320, 360, 375, 640, 768, 1024, 1280, 1440]) {
         test(`${scheme}, ${width}px: every page fits and shows its heading`, async ({ page }) => {
           test.setTimeout(60_000);
           await page.emulateMedia({ colorScheme: scheme });

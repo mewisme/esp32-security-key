@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Page } from "@/components/layout/Page";
-import { CatalogError } from "@/components/releases/CatalogError";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { AsyncState } from "@/components/common/AsyncState";
 import { FirmwareDownloads } from "@/components/releases/FirmwareDownloads";
 import { LatestRelease } from "@/components/releases/LatestRelease";
 import { ReleaseHistory } from "@/components/releases/ReleaseHistory";
@@ -59,16 +60,14 @@ export function ReleasesPage() {
   const reveal = useChangedSinceMount(catalog.status) ? "enter-reveal" : undefined;
   return (
     <Page width="wide">
-      <header className="flex flex-col gap-2">
-        <h1 className="text-3xl font-semibold">{t.releases.title}</h1>
-        <p className="text-muted-foreground">
-          {t.releases.intro(
-            <a className="underline underline-offset-4 transition-colors hover:text-primary" href={`${REPO_URL}/releases`} target="_blank" rel="noopener noreferrer">
-              {t.releases.githubReleases}
-            </a>,
-          )}
-        </p>
-      </header>
+      <PageHeader
+        title={t.releases.title}
+        description={t.releases.intro(
+          <a className="underline underline-offset-4 transition-colors hover:text-primary" href={`${REPO_URL}/releases`} target="_blank" rel="noopener noreferrer">
+            {t.releases.githubReleases}
+          </a>,
+        )}
+      />
       {catalog.status === "loading" && (
         <div className="flex flex-col gap-10" role="status" aria-label={t.common.loadingReleases}>
           <Frame spacing="default">
@@ -91,7 +90,7 @@ export function ReleasesPage() {
       )}
       {catalog.status === "error" && (
         <div className={reveal}>
-          <CatalogError message={catalog.message} onRetry={reload} />
+          <AsyncState state="error" title={t.releases.loadFailed} message={catalog.message} retryLabel={t.common.retry} onRetry={reload} />
         </div>
       )}
       {catalog.status === "ready" && <ReleasesReady catalog={catalog.catalog} className={reveal} />}

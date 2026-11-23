@@ -143,10 +143,9 @@ function FirmwareSection({ inst, selected }: { inst: Installer; selected: Catalo
               <SelectGroup>
                 {releases.map((r) => (
                   <SelectItem key={r.tag} value={r.tag}>
-                    <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <span className="flex items-center gap-2 whitespace-nowrap">
                       <span className="font-medium tabular-nums">v{r.manifest.version}</span>
                       <ReleaseBadges release={r} latestStable={r.tag === latestStableTag} />
-                      {r.publishedAt && <span className="text-xs text-muted-foreground">{formatDate(r.publishedAt, locale)}</span>}
                     </span>
                   </SelectItem>
                 ))}

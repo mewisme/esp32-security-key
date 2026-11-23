@@ -1,6 +1,7 @@
 import { Fingerprint, Hand, KeyRound, ScanSearch, ShieldCheck, TriangleAlert } from "lucide-react";
 import { useRef, useState } from "react";
 import { Page } from "@/components/layout/Page";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { Inspector, type Latest } from "@/components/passkey/Inspector";
 import { KeyVisual, type KeyVisualState } from "@/components/passkey/KeyVisual";
 import { type CardStatus, TestCard } from "@/components/passkey/TestCard";
@@ -67,17 +68,16 @@ export function PasskeyLabPage() {
 
   return (
     <Page width="flow">
-      <header className="grid items-center gap-8 md:grid-cols-2">
-        <div className="flex flex-col gap-4">
-          <h1 className="text-3xl font-semibold">{p.title}</h1>
-          <p className="text-muted-foreground">{p.lead}</p>
+      <div className="grid items-center gap-8 md:grid-cols-2">
+        <div className="flex min-w-0 flex-col gap-4">
+          <PageHeader title={p.title} description={p.lead} />
           <Alert variant="info">
             <ShieldCheck aria-hidden />
             <AlertDescription>{p.localOnly}</AlertDescription>
           </Alert>
         </div>
         <KeyVisual state={visual} timeoutMs={running ? timeoutFor(running) : 0} runId={runId} refuse={running === "refusal"} />
-      </header>
+      </div>
 
       {!supported ? (
         <Alert variant="warning" data-testid="not-supported">

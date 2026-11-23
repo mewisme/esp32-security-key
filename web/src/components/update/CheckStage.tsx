@@ -3,7 +3,6 @@ import { Link } from "react-router";
 import { Spinner } from "@/components/common/Spinner";
 import { ReleaseBadges } from "@/components/installer/FirmwareStage";
 import { StageCard } from "@/components/installer/StageCard";
-import { formatDate } from "@/components/releases/format-date";
 import { Alert, AlertDescription, AlertTitle } from "@/components/reui/alert";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
@@ -14,7 +13,7 @@ import type { Updater } from "@/hooks/useUpdater";
 import { useI18n } from "@/i18n/context";
 
 export function CheckStage({ up, headingRef }: { up: Updater; headingRef: React.Ref<HTMLHeadingElement> }) {
-  const { t, locale } = useI18n();
+  const { t } = useI18n();
   const { state, actions, catalog, latest, offers, selected } = up;
   const c = t.update.check;
   const snap = state.baseline?.status === "ok" ? state.baseline.snapshot : null;
@@ -105,10 +104,9 @@ export function CheckStage({ up, headingRef }: { up: Updater; headingRef: React.
               <SelectGroup>
                 {offers.map(({ release }) => (
                   <SelectItem key={release.tag} value={release.tag}>
-                    <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <span className="flex items-center gap-2 whitespace-nowrap">
                       <span className="font-medium tabular-nums">v{release.manifest.version}</span>
                       <ReleaseBadges release={release} latestStable={release.tag === latestStableTag} />
-                      {release.publishedAt && <span className="text-xs text-muted-foreground">{formatDate(release.publishedAt, locale)}</span>}
                     </span>
                   </SelectItem>
                 ))}
