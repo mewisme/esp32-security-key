@@ -29,8 +29,9 @@ Tested board types and what is not supported: see the compatibility section on
 ### Easiest: in your browser
 
 **[Install MultiKeys → multikeys.mewis.me](https://multikeys.mewis.me)** — web installer for desktop Chrome/Edge — launching
-soon, not yet hardware-tested. It checks your board, downloads the firmware from the official release, verifies it, and shows
-exactly what it will write before writing anything.
+soon (the site is not live yet). Tested once on real hardware: one board, Windows/Chrome, updating an existing install
+([report](docs/hw-reports/2026-11-23-web-installer.md)). It checks your board, downloads the firmware from the official
+release, verifies it, and shows exactly what it will write before writing anything.
 
 ### Developer: PowerShell (the verified method)
 

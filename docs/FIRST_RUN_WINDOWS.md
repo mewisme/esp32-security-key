@@ -8,7 +8,7 @@ Status: these steps were executed on one real board on 2026-11-23 (see
 [hw-reports/2026-11-23-first-run.md](hw-reports/2026-11-23-first-run.md)); anything differing on your board is news we want.
 
 This is the low-level, step-by-step developer path. Easier ways to install: the web installer at https://multikeys.mewis.me
-(prebuilt firmware, desktop Chrome/Edge; not yet hardware verified) or the one-command `tools/flash-dev.ps1` (README). All three
+(prebuilt firmware, desktop Chrome/Edge; run once on hardware) or the one-command `tools/flash-dev.ps1` (README). All three
 write the same three regions; [FLASHING_ADVANCED.md](FLASHING_ADVANCED.md) compares them and covers boards with other firmware.
 
 Read [HARDWARE.md](HARDWARE.md) "Verify physically" first (BOOT circuit, which USB-C port is native).

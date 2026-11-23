@@ -3,7 +3,7 @@
 There are three ways to install MultiKeys:
 
 1. **Web installer** (beginners): https://multikeys.mewis.me in desktop Chrome/Edge flashes the prebuilt release firmware
-   (from v0.2.0) with the same write allowlist as the script. Not yet hardware verified; see `docs/ROADMAP.md`.
+   (from v0.2.0) with the same write allowlist as the script. Run once on hardware (update path, one board); see `docs/ROADMAP.md`.
 2. **Developer script** (verified): `.\tools\flash-dev.ps1`, described below.
 3. **Manual** ESP-IDF/esptool commands, below; also for Linux/macOS and the OpenPGP image.
 

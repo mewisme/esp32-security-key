@@ -17,9 +17,10 @@ export function ReconnectStep(props: { state: FlashState; onCheck: () => Promise
       {!done && (
         <>
           <div className="space-y-2">
+            <p className="font-medium">Now unplug the board and plug it back in, without holding BOOT.</p>
             <p>
-              The board is restarting with MultiKeys. Its serial port disappears and it appears as a security key instead; that is
-              expected. If nothing happens within a few seconds, unplug the board and plug it back in without holding BOOT.
+              The board usually stays in installer mode until it is replugged. After that its serial port is gone and it appears as a
+              security key instead; that is expected.
             </p>
             <p className="text-sm text-muted-foreground">
               “Check my key” asks the browser to show the key; pick “MultiKeys Security Key”. This only reads its name.

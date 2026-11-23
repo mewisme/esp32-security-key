@@ -48,10 +48,10 @@ fallback; `public/_headers` sets CSP (`connect-src 'self'`), `Permissions-Policy
 
 ## Known limitations
 
-- Not yet run against real hardware. In particular esptool-js only offers an RTS `hard_reset` after writing; on the native
-  USB port the developer script needed `--after watchdog_reset` because `hard_reset` left the chip in download mode
-  (`docs/FLASHING_ADVANCED.md`). If that happens here, the reconnect step's replug instruction applies; no watchdog-reset
-  workaround is implemented without a hardware test.
+- Hardware coverage: one update on one board (`docs/hw-reports/2026-11-23-web-installer.md`). esptool-js only offers an RTS
+  `hard_reset` after writing, which left the native-USB board in download mode (as with the developer script, which uses
+  `--after watchdog_reset`); the reconnect step therefore tells the user to replug. No watchdog-reset workaround is
+  implemented without a further hardware test.
 - The WebUSB key check may not be able to open the device on Windows (HID/CCID drivers hold the interfaces); it then reports
   the landing page as "not checked". `python tools/check_usb_descriptors.py --live` is the check of record.
 

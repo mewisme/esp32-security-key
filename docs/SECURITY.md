@@ -79,7 +79,8 @@ what it guarantees:
 - **After writing.** Each written region is read back (MD5 from the chip) before the installer reports success; detecting the
   running key afterwards is optional and only reads USB descriptors.
 
-The installer has been unit- and e2e-tested against a simulated board only; see `docs/ROADMAP.md` for its hardware status.
+The installer is unit- and e2e-tested against a simulated board and was run once on real hardware (one board, update path,
+`docs/hw-reports/2026-11-23-web-installer.md`); see `docs/ROADMAP.md`.
 
 ## Rules enforced in the repository
 

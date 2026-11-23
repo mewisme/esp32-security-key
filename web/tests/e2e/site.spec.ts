@@ -25,9 +25,8 @@ test("390px wide: home and wizard have no horizontal scroll", async ({ page }) =
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 });
 
-test("home shows the experimental notice and the hardware-status banner", async ({ page }) => {
+test("home shows the experimental notice", async ({ page }) => {
   await setup(page, {});
   await page.goto("/");
   await expect(page.getByText("Experimental development firmware — not suitable for protecting important accounts.").first()).toBeVisible();
-  await expect(page.getByText("The web installer has not yet been tested on real hardware.")).toBeVisible();
 });
