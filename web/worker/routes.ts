@@ -43,23 +43,30 @@ export type ReleaseSummary = {
   html_url: string | null;
 };
 
-/** GitHub `GET /repos/:repo/releases` JSON -> published releases that carry a firmware manifest. */
-export function filterReleases(json: unknown): ReleaseSummary[] {
-  if (!Array.isArray(json)) return [];
+const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", "#39": "'" };
+
+/**
+ * GitHub's releases Atom feed (`/releases.atom`) -> published releases with a valid tag, newest first. The feed is used
+ * instead of the REST API because unauthenticated API calls from Workers' shared egress IPs hit GitHub's rate limit
+ * (observed as HTTP 403/502 on staging). Drafts never appear in the feed; the release workflow marks exactly the versions
+ * with a `-suffix` as pre-releases, so that is derived from the tag. Callers still check that the release has a manifest.
+ */
+export function parseReleasesAtom(xml: string): ReleaseSummary[] {
   const out: ReleaseSummary[] = [];
-  for (const r of json as Record<string, unknown>[]) {
-    if (!r || typeof r !== "object" || r.draft !== false) continue;
-    const tag = r.tag_name;
-    if (typeof tag !== "string" || !TAG_RE.test(tag)) continue;
-    const assets = Array.isArray(r.assets) ? (r.assets as Record<string, unknown>[]) : [];
-    if (!assets.some((a) => a && a.name === "firmware-manifest.json")) continue;
-    out.push({
-      tag,
-      name: typeof r.name === "string" && r.name ? r.name : tag,
-      prerelease: r.prerelease === true,
-      published_at: typeof r.published_at === "string" ? r.published_at : null,
-      html_url: typeof r.html_url === "string" ? r.html_url : null,
-    });
+  for (const m of xml.matchAll(/<entry>([\s\S]*?)<\/entry>/g)) {
+    const entry = m[1] ?? "";
+    const href = /<link[^>]*rel="alternate"[^>]*href="(https:\/\/github\.com\/[^"]+\/releases\/tag\/([^"]+))"/.exec(entry);
+    if (!href) continue;
+    let tag: string;
+    try {
+      tag = decodeURIComponent(href[2] ?? "");
+    } catch {
+      continue;
+    }
+    if (!TAG_RE.test(tag)) continue;
+    const title = /<title>([^<]*)<\/title>/.exec(entry)?.[1]?.replace(/&(amp|lt|gt|quot|apos|#39);/g, (_s, e: string) => ENTITIES[e] ?? "");
+    const updated = /<updated>([^<]+)<\/updated>/.exec(entry)?.[1] ?? null;
+    out.push({ tag, name: title || tag, prerelease: tag.includes("-"), published_at: updated, html_url: href[1] ?? null });
   }
   return out;
 }

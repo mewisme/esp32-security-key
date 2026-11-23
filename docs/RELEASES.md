@@ -78,5 +78,5 @@ Third-party actions are pinned by commit SHA in `release.yml`, `web.yml` and the
 
 ## Status
 
-v0.1.0 (host tools) is published. The firmware-bearing pipeline (`firmware` + `assemble`) ran green on `main` with `release`
-skipped; the downloaded `release-bundle` passed `sha256sum -c`. v0.2.0 is not tagged yet.
+v0.1.0 (host tools) and v0.2.0 (host tools + FIDO2 development firmware + manifest) are published. For v0.2.0 the tag run
+passed every job; the downloaded assets pass `sha256sum -c SHA256SUMS` and `package_firmware.py verify`.

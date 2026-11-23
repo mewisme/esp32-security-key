@@ -38,7 +38,7 @@ Tag `local` is accepted only by the dev server (`import.meta.env.DEV`); producti
 
 | Route | Behaviour |
 |---|---|
-| `GET /api/releases` | GitHub releases of `mewisme/esp32-security-key` that are not drafts and carry `firmware-manifest.json`; cached 5 min |
+| `GET /api/releases` | releases from GitHub's `releases.atom` feed (drafts never appear; the REST API is avoided because unauthenticated calls from Workers' shared IPs are rate-limited) whose `firmware-manifest.json` exists (HEAD check, newest 10); cached 5 min |
 | `GET /api/firmware/:tag/:asset` | proxies `releases/download/:tag/:asset`; `tag` must be `vX.Y.Z[-pre]`, `asset` must be `firmware-manifest.json`, `SHA256SUMS` or `multikey-firmware-v<tag version>-esp32s3-n16r8-<fido|openpgp>-dev.zip`; max 16 MiB; cached immutable |
 | other `/api/*` | 404 (`405` for non-GET) |
 

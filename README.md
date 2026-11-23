@@ -86,7 +86,7 @@ Manual commands, Linux/macOS, the OpenPGP image and recovering a board that has 
 [GitHub Releases](https://github.com/mewisme/esp32-security-key/releases):
 
 - **v0.1.0**: host tools only (`multikey` for Windows and Linux, the Linux PAM module). No firmware.
-- **From v0.2.0** (once published): the same host tools plus prebuilt FIDO2 firmware for ESP32-S3 N16R8 boards and a
+- **v0.2.0 and later**: the same host tools plus prebuilt FIDO2 firmware for ESP32-S3 N16R8 boards and a
   `firmware-manifest.json` with checksums, used by the web installer.
 
 Asset list, checksums and how releases are built: [docs/RELEASES.md](docs/RELEASES.md).

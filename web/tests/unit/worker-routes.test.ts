@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { filterReleases, parseFirmwareRoute } from "../../worker/routes";
+import { parseFirmwareRoute, parseReleasesAtom } from "../../worker/routes";
 
 describe("parseFirmwareRoute", () => {
   it("allows the release assets", () => {
@@ -26,15 +26,39 @@ describe("parseFirmwareRoute", () => {
   });
 });
 
-describe("filterReleases", () => {
-  it("drops drafts and releases without a firmware manifest", () => {
-    const out = filterReleases([
-      { tag_name: "v0.2.0", name: "MultiKeys v0.2.0", draft: false, prerelease: false, published_at: "2026-11-23T00:00:00Z", html_url: "u", assets: [{ name: "firmware-manifest.json" }] },
-      { tag_name: "v0.3.0", draft: true, prerelease: false, assets: [{ name: "firmware-manifest.json" }] },
-      { tag_name: "v0.1.0", draft: false, prerelease: false, assets: [{ name: "multikey-v0.1.0-windows-x86_64.zip" }] },
-      { tag_name: "../x", draft: false, assets: [{ name: "firmware-manifest.json" }] },
+const entry = (tag: string, title: string, updated = "2026-11-23T05:10:23Z") => `
+  <entry>
+    <id>tag:github.com,2008:Repository/1/${tag}</id>
+    <updated>${updated}</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/mewisme/esp32-security-key/releases/tag/${tag}"/>
+    <title>${title}</title>
+    <content type="html">&lt;h1&gt;notes&lt;/h1&gt;</content>
+  </entry>`;
+
+describe("parseReleasesAtom", () => {
+  it("extracts tag, title, date and pre-release from the feed", () => {
+    const xml = `<?xml version="1.0"?><feed><title>Release notes</title>${entry("v0.3.0-rc.1", "MultiKeys &amp; friends v0.3.0-rc.1")}${entry("v0.2.0", "MultiKeys v0.2.0")}</feed>`;
+    expect(parseReleasesAtom(xml)).toEqual([
+      {
+        tag: "v0.3.0-rc.1",
+        name: "MultiKeys & friends v0.3.0-rc.1",
+        prerelease: true,
+        published_at: "2026-11-23T05:10:23Z",
+        html_url: "https://github.com/mewisme/esp32-security-key/releases/tag/v0.3.0-rc.1",
+      },
+      {
+        tag: "v0.2.0",
+        name: "MultiKeys v0.2.0",
+        prerelease: false,
+        published_at: "2026-11-23T05:10:23Z",
+        html_url: "https://github.com/mewisme/esp32-security-key/releases/tag/v0.2.0",
+      },
     ]);
-    expect(out).toEqual([{ tag: "v0.2.0", name: "MultiKeys v0.2.0", prerelease: false, published_at: "2026-11-23T00:00:00Z", html_url: "u" }]);
-    expect(filterReleases({ message: "rate limited" })).toEqual([]);
+  });
+
+  it("drops entries whose tag is not a release version", () => {
+    const xml = `<feed>${entry("nightly", "x")}${entry("..%2Fx", "y")}${entry("%E0%A4%A", "z")}</feed>`;
+    expect(parseReleasesAtom(xml)).toEqual([]);
+    expect(parseReleasesAtom("rate limited")).toEqual([]);
   });
 });
