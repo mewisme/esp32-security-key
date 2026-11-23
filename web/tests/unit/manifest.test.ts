@@ -33,6 +33,14 @@ describe("validateManifest (schema 2)", () => {
     expect(validateManifest(manifest, "v0.2.0", false).builds.map((b) => b.profile_id)).toEqual([profile]);
   });
 
+  it("accepts update.app_only true and an absent field, and rejects a non-boolean", async () => {
+    const { manifest } = await makeFirmware({ appOnly: true });
+    expect(validateManifest(manifest, "v0.2.0", false).builds.every((b) => b.update.app_only === true)).toBe(true);
+    const plain = await makeFirmware();
+    expect(validateManifest(plain.manifest, "v0.2.0", false).builds[0]!.update.app_only).toBeUndefined();
+    expect(await rejects((_m, b) => Object.assign(b.update, { app_only: "yes" }))).toMatch(/app_only is not a boolean/);
+  });
+
   it("rejects a profile id that is not in the policy", async () => {
     expect(await rejects((_m, b) => (b.profile_id = "esp32s3-2mb"))).toMatch(/profile_id/);
   });
@@ -84,7 +92,7 @@ describe("validateManifest (schema 2)", () => {
 
   it("rejects an image that overlaps a protected partition", async () => {
     expect(await rejects((_m, b) => (b.images[1]!.size = 0x10000))).toMatch(/larger than|overlaps/);
-    expect(await rejects((_m, b) => (b.images[2]!.size = 0x1f0000))).toMatch(/factory|overlaps/);
+    expect(await rejects((_m, b) => (b.images[2]!.size = 0x1f0000))).toMatch(/larger than 1966080 bytes/);
   });
 
   it("rejects a missing app", async () => {

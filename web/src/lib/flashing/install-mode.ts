@@ -1,6 +1,6 @@
 // Every data-safety decision of the web installer lives here. Rules (docs/SECURITY.md, "Web installer trust model"):
 //  1. blank flash                                  -> first-install
-//  2. matching layout, same MultiKeys image        -> update (declared compatible) or update-unverified
+//  2. matching layout, same MultiKeys image        -> update (declared compatible) or blocked (storage-unverified)
 //  3. matching layout, the other MultiKeys image   -> switch-image
 //  4. matching layout, no / non-MultiKeys app      -> replace-compatible-layout
 //  5. foreign layout, no MultiKeys app             -> repurpose (clears nvs + part0 first, typed confirmation)
@@ -19,7 +19,6 @@ import type { TableResult } from "./partition-table";
 export type InstallMode =
   | "first-install"
   | "update"
-  | "update-unverified"
   | "switch-image"
   | "replace-compatible-layout"
   | "repurpose"
@@ -28,7 +27,6 @@ export type InstallMode =
 export type AckId =
   | "dev-firmware"
   | "experimental-image"
-  | "update-unverified"
   | "switch-image"
   | "switch-image-typed"
   | "replace-layout"
@@ -90,12 +88,14 @@ export function decideInstallMode(input: {
           reason: `installed ${app.version} is within the declared data-compatible range ${build.update.data_preserving_from}..${build.version}`,
         };
       }
+      // Not shown compatible (older than the declared range, newer than this release, or not a version): nothing is
+      // written. The application-only update page covers the compatible case; there is no bypass.
       return {
-        mode: "update-unverified",
-        allowed: true,
-        acks: acks("dev-firmware", "update-unverified"),
-        writes: images,
-        reason: `installed version ${app.version || "(unknown)"} is outside the declared data-compatible range ${build.update.data_preserving_from}..${build.version}`,
+        mode: "blocked",
+        allowed: false,
+        acks: [],
+        writes: [],
+        reason: "storage-unverified",
       };
     }
     if (runsMultiKeys) {

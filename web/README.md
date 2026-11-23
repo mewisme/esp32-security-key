@@ -87,6 +87,8 @@ fallback; `public/_headers` sets CSP (`connect-src 'self'`), `Permissions-Policy
   install mode in `src/lib/flashing/install-mode.ts`. Only "repurpose" (a foreign layout, typed `REPURPOSE` confirmation)
   writes 0xFF over `nvs` and `part0`; it never erases the whole chip and never touches eFuses.
 - After writing, every region is read back by MD5 before the installer reports success.
+- The Update firmware page writes only the app image (see Architecture) and never the bootloader, partition table, `nvs`,
+  `phy_init` or `part0`.
 
 ## Architecture
 
@@ -94,6 +96,13 @@ fallback; `public/_headers` sets CSP (`connect-src 'self'`), `Permissions-Policy
 - `src/hooks/useInstaller.ts`: performs side effects (driver, download, decisions) and dispatches events; the choices made
   before connecting (release, device name) live in `config`, persisted per tab in `sessionStorage`
   (`src/lib/installer-config.ts`: release tag, image, requested name; never a PIN).
+- `src/hooks/useUpdater.ts` and `src/lib/flashing/app-update.ts`: the application-only **Update firmware** page (`/update`).
+  `decideAppUpdate` is pure and returns at most one write, the app image at 0x20000; it refuses unless the release declares
+  `update.app_only`, the device layout equals the release's, the flash sizes agree and the installed MultiKeys image is of the
+  same family within the declared data-compatible range (no downgrades, no override). The hook re-decides on the open
+  connection right before the write, keeps `multikeys-pending-update` in `localStorage` until the flash MD5 matches, and after
+  the replug reports what could be checked (`update-report.ts`); FIDO credentials and the PIN are never read. It is not atomic
+  and not hardware verified: see `docs/SECURITY.md`.
 - `src/lib/flashing/driver.ts`: `FlashDriver` interface; `esptool-driver.ts` implements it with esptool-js and also reads the
   flash type (quad/octal) from eFuse `EFUSE_RD_REPEAT_DATA3_REG` bit 9 on the ESP32-S3.
 - `src/lib/compatibility/profiles.ts`: `selectProfile(chip, builds, image)` picks the build by exact flash size and says how well

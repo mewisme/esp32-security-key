@@ -1,0 +1,258 @@
+// Every safety decision of the application-only firmware update lives here (docs/SECURITY.md, "Application-only update").
+// The update writes exactly one region: the app image inside the `factory` partition. It never touches the bootloader,
+// the partition table, nvs, phy_init or part0, and it is not atomic (a single slot: an interrupted write leaves the key
+// unbootable until the app is written again from download mode). It is allowed only when the release declares
+// `update.app_only`, the device layout equals the release layout, and the installed image is the same MultiKeys family
+// at a version whose stored data the release declares compatible. Anything not shown compatible is refused.
+import { type FlashPolicy, policy as defaultPolicy } from "../firmware/policy";
+import type { Build } from "../firmware/types";
+import { compareSemver } from "../firmware/version";
+import { parseAppDescriptor } from "./app-descriptor";
+import type { Write } from "./install-mode";
+import { parsePartitionTable } from "./partition-table";
+
+export type AppUpdateOutcome =
+  | "safe-update"
+  | "repair"
+  | "already-current"
+  | "downgrade"
+  | "incompatible"
+  | "unknown"
+  | "different-family"
+  | "not-multikeys"
+  | "release-unsupported";
+
+export type AppUpdateReason =
+  | "ok"
+  | "interrupted-write"
+  | "same-version-different-image"
+  | "current"
+  | "downgrade"
+  | "storage"
+  | "layout"
+  | "app-too-large"
+  | "protected-overlap"
+  | "flash-profile"
+  | "different-family"
+  | "different-key"
+  | "not-multikeys"
+  | "release-unsupported"
+  | "unreadable-bootloader"
+  | "unreadable-descriptor"
+  | "unparsable-version";
+
+export type UpdateAckId = "update-confirm" | "untested-hardware" | "experimental-image" | "repair-typed";
+
+/** Acknowledgements given by typing a word, with the word to type. */
+export const UPDATE_TYPED_ACKS = { "repair-typed": "REPAIR" } as const;
+export type TypedUpdateAckId = keyof typeof UPDATE_TYPED_ACKS;
+
+/** Written before the app write starts and removed after the flash MD5 matched: its presence means a write may be incomplete. */
+export interface PendingUpdate {
+  project: string;
+  fromVersion: string | null;
+  toVersion: string;
+  tag: string;
+  profileId: string;
+  appSha256: string;
+  startedAt: string;
+}
+
+/** What the running firmware told the page over WebUSB before the key was put into download mode. */
+export interface UpdateBaseline {
+  project: string | null;
+  version: string | null;
+  flashSize: string | null;
+}
+
+export interface AppUpdateDecision {
+  mode: "app-only-update" | "blocked";
+  outcome: AppUpdateOutcome;
+  allowed: boolean;
+  reason: AppUpdateReason;
+  /** English diagnostic for the details line. */
+  detail: string;
+  acks: UpdateAckId[];
+  /** Length 0 or 1: the app image, role "app". */
+  writes: Write[];
+  installed: { project: string | null; version: string | null };
+  target: { project: string; version: string; tag: string };
+}
+
+export interface AppUpdateInput {
+  /** Bytes read at policy.partition_table.offset. */
+  table: Uint8Array;
+  /** Bytes read at policy.app_descriptor.offset. */
+  appDesc: Uint8Array;
+  /** First 16 bytes of the flash (the bootloader image header). */
+  bootHeader: Uint8Array;
+  /** MD5 of the flash at the app offset over the target image length, or null when it could not be read. */
+  installedAppMd5: string | null;
+  /** MD5 of the target app image as downloaded and verified. */
+  targetAppMd5: string;
+  /** First 16 bytes of the target app image. */
+  targetAppHeader: Uint8Array;
+  build: Build;
+  /** Release tag the build comes from (the manifest's `tag`). */
+  tag: string;
+  pending?: PendingUpdate | null;
+  baseline?: UpdateBaseline | null;
+  /** The board's flash size is not hardware verified (4 and 8 MB): the person must acknowledge it first. */
+  untestedHardware?: boolean;
+  policy?: FlashPolicy;
+}
+
+const IMAGE_MAGIC = 0xe9;
+const TABLE_SECTOR = 0x1000;
+const APP_PARTITION = "factory";
+
+function overlaps(aStart: number, aEnd: number, bStart: number, bEnd: number): boolean {
+  return aStart < bEnd && aEnd > bStart;
+}
+
+export function decideAppUpdate(input: AppUpdateInput): AppUpdateDecision {
+  const { build, pending = null, baseline = null, untestedHardware = false } = input;
+  const p = input.policy ?? defaultPolicy;
+  const appImage = build.images.find((i) => i.role === "app");
+  const rule = p.allowed_writes.find((w) => w.role === "app");
+  const desc = parseAppDescriptor(input.appDesc);
+  const installed = { project: desc?.project_name ?? null, version: desc?.version ?? null };
+  const target = { project: build.project_name, version: build.version, tag: input.tag };
+
+  const refuse = (outcome: AppUpdateOutcome, reason: AppUpdateReason, detail: string): AppUpdateDecision => ({
+    mode: "blocked",
+    outcome,
+    allowed: false,
+    reason,
+    detail,
+    acks: [],
+    writes: [],
+    installed,
+    target,
+  });
+
+  // 1. The release must declare the capability; an absent field is never read as compatible.
+  if (build.update.app_only !== true || !appImage || !rule || appImage.offset !== rule.offset) {
+    return refuse("release-unsupported", "release-unsupported", `release ${build.version} does not declare an application-only update`);
+  }
+  if (rule.max_size !== undefined && appImage.size > rule.max_size) {
+    return refuse("release-unsupported", "release-unsupported", `app image is larger than ${rule.max_size} bytes`);
+  }
+
+  // 2. The device layout must be this release's layout, with the app partition where the image goes.
+  const table = parsePartitionTable(input.table, build.partitions, p);
+  if (table.status === "blank" || table.status === "garbage") {
+    return refuse("not-multikeys", "not-multikeys", table.detail);
+  }
+  if (table.status !== "match" || !table.entries) return refuse("incompatible", "layout", table.detail);
+  const factory = table.entries.get(APP_PARTITION);
+  if (!factory || factory.type !== 0 || factory.offset !== appImage.offset) {
+    return refuse("incompatible", "layout", `the device has no app partition "${APP_PARTITION}" at 0x${appImage.offset.toString(16)}`);
+  }
+  if (appImage.size > factory.size) {
+    return refuse("incompatible", "app-too-large", `app image ${appImage.size} bytes, partition ${factory.size} bytes`);
+  }
+
+  // 3. Defence in depth: the single write must stay clear of the bootloader, the table and every protected partition.
+  const start = appImage.offset;
+  const end = start + appImage.size;
+  if (start < p.partition_table.offset + TABLE_SECTOR) {
+    return refuse("incompatible", "protected-overlap", "the write would reach the bootloader or the partition table");
+  }
+  for (const name of p.protected_partitions) {
+    const e = table.entries.get(name);
+    if (!e || overlaps(start, end, e.offset, e.offset + e.size)) {
+      return refuse("incompatible", "protected-overlap", `the write would reach ${name}`);
+    }
+  }
+
+  // 4. The bootloader on the key and the new app must be for the same flash size.
+  const boot = input.bootHeader;
+  const head = input.targetAppHeader;
+  if (boot.length < 4 || boot[0] !== IMAGE_MAGIC) {
+    return refuse("unknown", "unreadable-bootloader", "the bootloader image header is missing");
+  }
+  if (head.length < 4 || head[0] !== IMAGE_MAGIC || head[3]! >> 4 !== boot[3]! >> 4) {
+    return refuse("incompatible", "flash-profile", "the flash size in the bootloader differs from the flash size of this build");
+  }
+
+  // 5. The installed app: valid descriptor, a MultiKeys image, the family of this build, the key that was inspected.
+  const inst = installed.version;
+  if (!desc || !inst) {
+    const interrupted = pending !== null && pending.project === build.project_name && pending.profileId === build.profile_id;
+    if (!interrupted) return refuse("unknown", "unreadable-descriptor", "the installed application has no readable descriptor");
+    return {
+      mode: "app-only-update",
+      outcome: "repair",
+      allowed: true,
+      reason: "interrupted-write",
+      detail: "an earlier application write did not finish",
+      acks: acksFor("repair", build, untestedHardware),
+      writes: [appWrite(appImage)],
+      installed,
+      target,
+    };
+  }
+  if (!desc.project_name.startsWith("multikey-")) {
+    return refuse("not-multikeys", "not-multikeys", `installed application is ${desc.project_name}`);
+  }
+  if (baseline && ((baseline.version !== null && baseline.version !== desc.version) || (baseline.project !== null && baseline.project !== desc.project_name) ||
+    (baseline.flashSize !== null && baseline.flashSize !== build.flash_size))) {
+    return refuse("unknown", "different-key", "the key in download mode differs from the key that was inspected");
+  }
+  if (desc.project_name !== build.project_name) {
+    return refuse("different-family", "different-family", `installed ${desc.project_name}, this build is ${build.project_name}`);
+  }
+
+  // 6. The flash content, not the version string, says whether there is anything to do.
+  if (input.installedAppMd5 !== null && input.installedAppMd5 === input.targetAppMd5) {
+    return refuse("already-current", "current", `installed ${inst} is byte-identical to this build`);
+  }
+
+  // 7. Version order and the release's declared data compatibility.
+  const order = compareSemver(inst, build.version);
+  if (order === null) return refuse("unknown", "unparsable-version", `installed version ${inst} is not a version number`);
+  if (order > 0) return refuse("downgrade", "downgrade", `installed ${inst} is newer than ${build.version}`);
+  if (order === 0) {
+    return {
+      mode: "app-only-update",
+      outcome: "repair",
+      allowed: true,
+      reason: "same-version-different-image",
+      detail: `installed ${inst} has the same version as this build but different content`,
+      acks: acksFor("repair", build, untestedHardware),
+      writes: [appWrite(appImage)],
+      installed,
+      target,
+    };
+  }
+  const from = compareSemver(inst, build.update.data_preserving_from);
+  if (from === null || from < 0) {
+    return refuse("incompatible", "storage", `installed ${inst} is older than ${build.update.data_preserving_from}, the oldest version whose stored data this release declares compatible`);
+  }
+
+  // 8. Compatible.
+  return {
+    mode: "app-only-update",
+    outcome: "safe-update",
+    allowed: true,
+    reason: "ok",
+    detail: `${inst} to ${build.version}`,
+    acks: acksFor("safe-update", build, untestedHardware),
+    writes: [appWrite(appImage)],
+    installed,
+    target,
+  };
+}
+
+function appWrite(image: { offset: number; size: number }): Write {
+  return { offset: image.offset, length: image.size, kind: "image", role: "app" };
+}
+
+function acksFor(outcome: "safe-update" | "repair", build: Build, untestedHardware: boolean): UpdateAckId[] {
+  const acks: UpdateAckId[] = ["update-confirm"];
+  if (untestedHardware) acks.push("untested-hardware");
+  if (build.image === "openpgp") acks.push("experimental-image");
+  if (outcome === "repair") acks.push("repair-typed");
+  return acks;
+}

@@ -9,7 +9,7 @@ import { PHASES, type Phase } from "@/lib/flashing/machine";
 import { formatBytes } from "@/lib/format";
 import { CheckRow, CompatibilityBadge, type RowState, StageCard } from "./StageCard";
 
-function BootSequence() {
+export function BootSequence() {
   const { t } = useI18n();
   const boot = t.install.connect.boot;
   return (

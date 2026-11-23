@@ -16,7 +16,7 @@ export interface Scenario {
   port?: "native" | "uart";
   chooser?: "ok" | "cancel";
   connectError?: boolean;
-  device?: "blank" | "fido-0.1.0-dev" | "fido-0.2.0" | "foreign";
+  device?: "blank" | "fido-0.1.0-dev" | "fido-0.2.0" | "fido-0.3.1" | "openpgp-0.3.1" | "fido-garbled" | "foreign";
   disconnectAt?: number;
   checker?: "ok" | "throw";
   key?: {

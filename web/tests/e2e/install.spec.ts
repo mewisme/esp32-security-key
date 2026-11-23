@@ -39,16 +39,15 @@ test("A: first install on a blank board, key detected", async ({ page }) => {
   }
 });
 
-test("B: board running 0.1.0-dev needs the update-unverified acknowledgement", async ({ page }) => {
+test("B: board running 0.1.0-dev is refused: its stored keys are not shown to work, nothing is written", async ({ page }) => {
   await setup(page, { device: "fido-0.1.0-dev" });
   await toChooser(page);
-  await expect(page.getByTestId("install-mode")).toHaveText("Update (stored keys not guaranteed)");
-  const install = page.getByRole("button", { name: "Install firmware" });
-  await page.getByLabel(/experimental development firmware/).check();
-  await expect(install).toBeDisabled();
-  await page.getByLabel(/may not be usable after this update/).check();
-  await expect(install).toBeEnabled();
-  await expect(page.getByText("Never touched: nvs, phy_init, part0 (your keys)")).toBeVisible();
+  const panel = page.getByTestId("error-panel");
+  await expect(panel).toHaveAttribute("data-error-code", "storage-unverified");
+  await expect(panel).toContainText("Nothing was written");
+  await expect(page.getByRole("button", { name: "Install firmware" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Try again" })).toHaveCount(0);
+  expect(await flashWrites(page)).toEqual([]);
 });
 
 test("C: another chip stops before anything is written", async ({ page }) => {

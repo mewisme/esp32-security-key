@@ -1,5 +1,6 @@
 import { Info, ShieldAlert, TriangleAlert } from "lucide-react";
 import { useState } from "react";
+import { Link } from "react-router";
 import { Alert, AlertDescription, AlertTitle } from "@/components/reui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -122,6 +123,19 @@ export function ReviewStage({ inst, headingRef }: { inst: Installer; headingRef:
           <AlertTitle>{t.install.review.switchWarning.title}</AlertTitle>
           <AlertDescription>
             <p>{t.install.review.switchWarning.text}</p>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {decision.mode === "update" && build.update.app_only === true && (
+        <Alert>
+          <Info aria-hidden />
+          <AlertTitle>{t.install.review.updateHint.title}</AlertTitle>
+          <AlertDescription>
+            <p>{t.install.review.updateHint.text}</p>
+            <Button asChild variant="link">
+              <Link to="/update">{t.install.review.updateHint.link}</Link>
+            </Button>
           </AlertDescription>
         </Alert>
       )}

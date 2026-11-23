@@ -4,17 +4,21 @@ import type { ManifestPartition } from "../firmware/types";
 
 export type TableStatus = "blank" | "match" | "mismatch" | "garbage";
 
-export interface TableResult {
-  status: TableStatus;
-  detail: string;
-}
-
-interface Entry {
+export interface TableEntry {
   type: number;
   subtype: number;
   offset: number;
   size: number;
 }
+
+export interface TableResult {
+  status: TableStatus;
+  detail: string;
+  /** Every entry of the device table; present only when `status` is "match". */
+  entries?: ReadonlyMap<string, TableEntry>;
+}
+
+type Entry = TableEntry;
 
 const hex = (n: number) => `0x${n.toString(16)}`;
 
@@ -62,5 +66,5 @@ export function parsePartitionTable(blob: Uint8Array, partitions: ManifestPartit
   if (cred.type !== c.type || cred.subtype !== c.subtype) {
     return { status: "mismatch", detail: `${c.name} on the device has an unexpected type/subtype` };
   }
-  return { status: "match", detail: "device partition table matches this firmware" };
+  return { status: "match", detail: "device partition table matches this firmware", entries };
 }

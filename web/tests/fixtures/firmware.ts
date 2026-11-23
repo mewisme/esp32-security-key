@@ -96,6 +96,8 @@ interface Options {
   version?: string;
   tag?: string;
   extraMember?: boolean;
+  /** Declare `update.app_only` (published by releases after v0.3.2). Default: absent, like v0.3.0 to v0.3.2. */
+  appOnly?: boolean;
 }
 
 type Common = Pick<
@@ -120,7 +122,7 @@ function common(version: string, image: ImageName = "fido"): Common {
     protected_partitions: ["nvs", "phy_init", "part0"],
     repurpose_fill: ["nvs", "part0"],
     update: { data_preserving_from: "0.2.0" },
-    install_modes: ["first-install", "update", "update-unverified", "switch-image", "replace-compatible-layout", "repurpose"],
+    install_modes: ["first-install", "update", "switch-image", "replace-compatible-layout", "repurpose"],
   };
 }
 
@@ -174,9 +176,11 @@ async function pack(
   };
 }
 
-function v2Entry(version: string, prof: HardwareProfile, image: ImageName): Omit<RawBuild, "package" | "images"> {
+function v2Entry(version: string, prof: HardwareProfile, image: ImageName, appOnly: boolean): Omit<RawBuild, "package" | "images"> {
+  const base = common(version, image);
   return {
-    ...common(version, image),
+    ...base,
+    update: appOnly ? { ...base.update, app_only: true } : base.update,
     id: `${prof.id}-${image}-dev`,
     board: prof.board,
     flash_size: prof.flash_size,
@@ -203,7 +207,7 @@ export async function makeFirmware(opts: Options & { profiles?: string[]; images
     for (const id of ids) {
       const prof = policy.profiles.find((p) => p.id === id)!;
       const name = `multikey-firmware-v${version}-${prof.id}-${image}-dev.zip`;
-      const p = await pack(v2Entry(version, prof, image), name, prof.flash_size, { ...opts, version, image });
+      const p = await pack(v2Entry(version, prof, image, opts.appOnly ?? false), name, prof.flash_size, { ...opts, version, image });
       packed.push({ raw: p.published as unknown as RawBuild, zip: p.zip, images: p.images });
     }
   }

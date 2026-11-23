@@ -17,6 +17,7 @@ import "./styles/index.css";
 
 // The installer pulls in esptool-js; keep it out of the landing page bundle.
 const InstallPage = lazy(() => import("@/pages/Install").then((m) => ({ default: m.InstallPage })));
+const UpdatePage = lazy(() => import("@/pages/Update").then((m) => ({ default: m.UpdatePage })));
 
 function InstallFallback() {
   const { t } = useI18n();
@@ -43,6 +44,14 @@ createRoot(document.getElementById("root")!).render(
               element={
                 <Suspense fallback={<InstallFallback />}>
                   <InstallPage />
+                </Suspense>
+              }
+            />
+            <Route
+              path="update"
+              element={
+                <Suspense fallback={<InstallFallback />}>
+                  <UpdatePage />
                 </Suspense>
               }
             />

@@ -4,7 +4,7 @@ import { type FlashEvent, type FlashState, flashReducer, initialState } from "@/
 
 const chip = { chipName: "ESP32-S3", description: "ESP32-S3", features: [], mac: null, flashSize: "16MB", flashType: "quad" as const, secureDownloadMode: false };
 const decision = (acks: InstallDecision["acks"] = ["dev-firmware"]): InstallDecision => ({
-  mode: "update-unverified",
+  mode: "switch-image",
   allowed: true,
   acks,
   writes: [],
@@ -27,14 +27,14 @@ const TO_CONFIRM: FlashEvent[] = [
   { type: "MANIFEST_READY" },
   { type: "DOWNLOADED" },
   { type: "INTEGRITY_OK" },
-  { type: "SAFETY_DECIDED", decision: decision(["dev-firmware", "update-unverified"]) },
+  { type: "SAFETY_DECIDED", decision: decision(["dev-firmware", "switch-image"]) },
 ];
 
 describe("flashReducer", () => {
   it("happy path reaches completed with every milestone", () => {
     const s = run([
       ...TO_CONFIRM,
-      { type: "CONFIRMED", acks: ["dev-firmware", "update-unverified"] },
+      { type: "CONFIRMED", acks: ["dev-firmware", "switch-image"] },
       { type: "PROGRESS", written: 5, total: 10 },
       { type: "WRITTEN" },
       { type: "FLASH_VERIFIED" },
@@ -58,7 +58,7 @@ describe("flashReducer", () => {
   });
 
   it("ignores CANCEL while flashing and verifying", () => {
-    const flashing = run([...TO_CONFIRM, { type: "CONFIRMED", acks: ["dev-firmware", "update-unverified"] }]);
+    const flashing = run([...TO_CONFIRM, { type: "CONFIRMED", acks: ["dev-firmware", "switch-image"] }]);
     expect(flashing.phase).toBe("flashing");
     expect(run([{ type: "CANCEL" }], flashing).phase).toBe("flashing");
     const verifying = run([{ type: "WRITTEN" }], flashing);
@@ -71,21 +71,21 @@ describe("flashReducer", () => {
   });
 
   it("FAIL during flashing -> failed, not written", () => {
-    const s = run([...TO_CONFIRM, { type: "CONFIRMED", acks: ["dev-firmware", "update-unverified"] }, { type: "FAIL", code: "disconnected-during-flash", message: "x" }]);
+    const s = run([...TO_CONFIRM, { type: "CONFIRMED", acks: ["dev-firmware", "switch-image"] }, { type: "FAIL", code: "disconnected-during-flash", message: "x" }]);
     expect(s.phase).toBe("failed");
     expect(s.milestones.written).toBe(false);
     expect(s.error?.phase).toBe("flashing");
   });
 
   it("DEVICE_NOT_DETECTED -> completed without deviceDetected", () => {
-    const s = run([...TO_CONFIRM, { type: "CONFIRMED", acks: ["dev-firmware", "update-unverified"] }, { type: "WRITTEN" }, { type: "FLASH_VERIFIED" }, { type: "REBOOTED" }, { type: "DEVICE_NOT_DETECTED" }]);
+    const s = run([...TO_CONFIRM, { type: "CONFIRMED", acks: ["dev-firmware", "switch-image"] }, { type: "WRITTEN" }, { type: "FLASH_VERIFIED" }, { type: "REBOOTED" }, { type: "DEVICE_NOT_DETECTED" }]);
     expect(s.phase).toBe("completed");
     expect(s.milestones.flashVerified).toBe(true);
     expect(s.milestones.deviceDetected).toBe(false);
   });
 
   it("cannot skip verification to completed", () => {
-    const s = run([...TO_CONFIRM, { type: "CONFIRMED", acks: ["dev-firmware", "update-unverified"] }, { type: "WRITTEN" }, { type: "REBOOTED" }, { type: "DEVICE_NOT_DETECTED" }]);
+    const s = run([...TO_CONFIRM, { type: "CONFIRMED", acks: ["dev-firmware", "switch-image"] }, { type: "WRITTEN" }, { type: "REBOOTED" }, { type: "DEVICE_NOT_DETECTED" }]);
     expect(s.phase).toBe("verifying-flash");
   });
 
@@ -93,6 +93,12 @@ describe("flashReducer", () => {
     const s = run([...TO_CONFIRM.slice(0, -1), { type: "SAFETY_DECIDED", decision: { ...decision([]), mode: "blocked", allowed: false } }]);
     expect(s.phase).toBe("failed");
     expect(s.error?.code).toBe("storage-incompatible");
+  });
+
+  it("an installed version that is not shown compatible fails with storage-unverified", () => {
+    const s = run([...TO_CONFIRM.slice(0, -1), { type: "SAFETY_DECIDED", decision: { ...decision([]), mode: "blocked", allowed: false, reason: "storage-unverified" } }]);
+    expect(s.phase).toBe("failed");
+    expect(s.error?.code).toBe("storage-unverified");
   });
 
   it("RETRY after a connection failure returns to device selection, keeps the release and clears the attempt", () => {
@@ -125,7 +131,7 @@ describe("BACK", () => {
       const before = run(events);
       expect(run([{ type: "BACK" }], before)).toBe(before);
     }
-    const flashing = run([...TO_CONFIRM, { type: "CONFIRMED", acks: ["dev-firmware", "update-unverified"] }]);
+    const flashing = run([...TO_CONFIRM, { type: "CONFIRMED", acks: ["dev-firmware", "switch-image"] }]);
     expect(run([{ type: "BACK" }], flashing).phase).toBe("flashing");
   });
 });

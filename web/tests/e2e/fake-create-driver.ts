@@ -1,6 +1,7 @@
 // e2e-only FlashDriver: a simulated ESP32-S3 whose flash is a sparse map. Swapped in by vite.config.ts in --mode e2e.
 import type { ChipInfo, FlashDriver, PortInfo } from "@/lib/flashing/driver";
 import { md5Hex } from "@/lib/flashing/md5";
+import { parseAppDescriptor } from "@/lib/flashing/app-descriptor";
 import { appImage, partitionTable } from "../fixtures/firmware";
 import { readScenario } from "./scenario";
 
@@ -18,9 +19,19 @@ class FakeDriver implements FlashDriver {
 
   constructor() {
     const d = this.s.device ?? "blank";
+    // A bootloader image header (e9, segments, dio, flash size | 80 MHz) for every board that already runs something.
+    const sizeNibble = ({ "4MB": 2, "8MB": 3 } as Record<string, number>)[this.s.flashSize ?? "16MB"] ?? 4;
+    if (d !== "blank") this.flash.set(0, Uint8Array.from([0xe9, 3, 2, (sizeNibble << 4) | 0xf]));
     if (d === "fido-0.1.0-dev" || d === "fido-0.2.0") {
       this.flash.set(0x8000, partitionTable());
       this.flash.set(0x20000, appImage(d === "fido-0.2.0" ? "0.2.0" : "0.1.0-dev"));
+    } else if (d === "fido-0.3.1" || d === "openpgp-0.3.1") {
+      this.flash.set(0x8000, partitionTable());
+      this.flash.set(0x20000, appImage("0.3.1", d === "fido-0.3.1" ? "multikey-fido" : "multikey-openpgp"));
+    } else if (d === "fido-garbled") {
+      // An application whose descriptor is unreadable, as after an interrupted write.
+      this.flash.set(0x8000, partitionTable());
+      this.flash.set(0x20000, new Uint8Array(0x4000).fill(0x5a));
     } else if (d === "foreign") {
       this.flash.set(0x8000, partitionTable({ part0Offset: 0x310000 }));
       this.flash.set(0x20000, appImage("1.0.0", "esp-factory-demo"));
@@ -82,6 +93,16 @@ class FakeDriver implements FlashDriver {
       offsets.push(w.offset);
       Reflect.set(window, "__flashWrites", offsets);
       this.flash.set(w.offset, w.data.slice());
+      if (w.offset === 0x20000) {
+        // What a real key would report from BUILD_INFO once it runs this image (read by fake-create-key-connector.ts).
+        const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", w.data as Uint8Array<ArrayBuffer>));
+        const desc = parseAppDescriptor(w.data.subarray(0, 256));
+        Reflect.set(window, "__flashedApp", {
+          sha256: Array.from(digest, (b) => b.toString(16).padStart(2, "0")).join(""),
+          version: desc?.version ?? "",
+          project: desc?.project_name ?? "",
+        });
+      }
     }
   }
 

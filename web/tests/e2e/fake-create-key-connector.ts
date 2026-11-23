@@ -111,7 +111,13 @@ async function handle(apdu: Uint8Array): Promise<Uint8Array> {
     const flags = (s.custom ? 1 : 0) | (s.name !== s.enumerated ? 2 : 0) | (k.renameSupported === false ? 0 : 4);
     return sw([flags, ...new TextEncoder().encode(s.name)], 0x9000);
   }
-  if (same(apdu, buildInfoApdu())) return k.build ? sw(encodeBuildInfo(k.build), 0x9000) : sw([], 0x6d00);
+  if (same(apdu, buildInfoApdu())) {
+    if (!k.build) return sw([], 0x6d00);
+    // After the simulated board was flashed, the key reports the image that is now in its flash.
+    const flashed: unknown = Reflect.get(window, "__flashedApp");
+    const f = flashed as { sha256?: string; version?: string } | undefined;
+    return sw(encodeBuildInfo(f?.sha256 ? { ...k.build, imageSha256: f.sha256, version: f.version } : k.build), 0x9000);
+  }
   if (apdu[0] !== 0x80 || apdu[1] !== 0x06 || (apdu[2] !== 1 && apdu[2] !== 2)) return sw([], 0x6d00);
   if (k.renameSupported === false) return sw([], 0x6985);
   const lc = apdu[4] ?? 0;

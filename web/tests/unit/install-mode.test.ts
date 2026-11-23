@@ -26,18 +26,13 @@ describe("decideInstallMode", () => {
     expect(decide({ table: T("match"), app: app("0.2.0") }).mode).toBe("update");
   });
 
-  it("match + 0.1.0-dev -> update-unverified with its ack", () => {
-    const d = decide({ table: T("match"), app: app("0.1.0-dev") });
-    expect(d.mode).toBe("update-unverified");
-    expect(d.acks).toContain("update-unverified");
-  });
-
-  it("match + newer 0.3.0 (downgrade) -> update-unverified", () => {
-    expect(decide({ table: T("match"), app: app("0.3.0") }).mode).toBe("update-unverified");
-  });
-
-  it("match + non-semver version -> update-unverified", () => {
-    expect(decide({ table: T("match"), app: app("1.89") }).mode).toBe("update-unverified");
+  it.each([
+    ["0.1.0-dev (older than the declared data-compatible range)", "0.1.0-dev"],
+    ["0.3.0 (newer than this release: a downgrade)", "0.3.0"],
+    ["1.89 (not a version number)", "1.89"],
+  ])("match + %s -> blocked storage-unverified, nothing written, no bypass", (_label, version) => {
+    const d = decide({ table: T("match"), app: app(version) });
+    expect(d).toMatchObject({ mode: "blocked", allowed: false, reason: "storage-unverified", acks: [], writes: [] });
   });
 
   it("match + openpgp -> switch-image, which also needs SWITCH typed", () => {
@@ -110,7 +105,6 @@ describe("decideInstallMode on hardware that is not verified", () => {
   const CASES: [string, TableResult, AppDescriptor | null][] = [
     ["first-install", T("blank"), null],
     ["update", T("match"), app("0.2.0")],
-    ["update-unverified", T("match"), app("0.1.0-dev")],
     ["switch-image", T("match"), app("0.2.0", "multikey-openpgp")],
     ["replace-compatible-layout", T("match"), null],
     ["repurpose", T("mismatch"), app("1.0", "esp-demo")],
