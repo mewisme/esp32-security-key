@@ -54,8 +54,9 @@ fallback; `public/_headers` sets CSP (`connect-src 'self'`), `Permissions-Policy
 
 ## Known limitations
 
-- Hardware coverage: one update on one board, 16 MB (`docs/hw-reports/2026-11-23-web-installer.md`); 4 and 8 MB builds were
-  never run on a board, and renaming from the browser was never run against a real key (simulated key only). esptool-js only
+- Hardware coverage: updates on one board, 16 MB (`docs/hw-reports/2026-11-23-web-installer.md`,
+  `docs/hw-reports/2026-11-23-profiles-and-personalization.md`), and renaming from the browser on that board (Windows 11, Chrome).
+  4 and 8 MB builds were never run on a board; a key with a management PIN was only run against the simulated key. esptool-js only
   offers an RTS `hard_reset` after writing, which left the native-USB board in download mode (as with the developer script, which
   uses `--after watchdog_reset`); the finish stage therefore tells the user to replug. No watchdog-reset workaround is
   implemented without a further hardware test.
@@ -95,8 +96,11 @@ fallback; `public/_headers` sets CSP (`connect-src 'self'`), `Permissions-Policy
   verifies it, `hooks/useKeyName.ts` tracks the outcome for the UI. Flow: after the verified flash the person presses **Check my
   key**, picks the key in the browser's USB chooser, and the page reads the current name; if it differs it sends SET (or CLEAR for
   "reset to the default name") with the re-enumerate flag, asks for the BOOT button (15 s) and, if the key has a management PIN,
-  for the PIN (never stored), waits for the key to reappear and reads the name and the USB product string back. "Applied and
-  verified" is shown only when both match. Failures show the same change as a `multikey device rename ...` command.
+  for the PIN (never stored), waits for the key to reappear, pauses 1 s and reads the name and the USB product string back (up to
+  6 reads, each on a fresh claim of the interface: on hardware the first command sent right after the key came back was never
+  answered). "Applied and verified" is shown only when both match; a key that says nothing is never reported as a missed BOOT press
+  (only its own status word 6300 is), and a write that got no answer is checked by reading the name. Failures show the same change
+  as a `multikey device rename ...` command.
 - Languages (`src/i18n/`): English and Vietnamese, no library. The header's language menu saves the choice in
   `localStorage["multikeys-locale"]`; without a choice the site follows `navigator.languages` (the first `vi` or `en` entry,
   otherwise English) and never saves that guess. `I18nProvider` keeps `<html lang>`, the title and the meta description in step.

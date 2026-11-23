@@ -101,6 +101,9 @@ can and cannot do:
 - **Verified, not assumed.** After the key re-enumerates the page reads the stored name (GET) and the USB product string again; it
   says "Applied and verified" only when both equal the request and no re-enumeration is pending. Otherwise it says the name was
   not confirmed and points to First use.
+- **A silent key is not a missed button.** Only the key's own status word 6300 is shown as "BOOT button wasn't pressed in time". A key that
+  does not answer (seen on hardware right after a restart of its USB connection) is waited for and read again; if the write itself got no
+  answer the page reads the name back and reports success only if the key says it changed (`docs/hw-reports/2026-11-23-profiles-and-personalization.md`).
 - **A label only.** As in the threat table, a rename can mislead a human about which key is which; it cannot change keys,
   credentials, VID/PID or the AAGUID. For a schema-1 release (v0.2.0) the page does not attempt a rename and says it is not
   available.
