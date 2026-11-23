@@ -264,7 +264,7 @@ export const en = {
     skipToContent: "Skip to content",
     mainNav: "Main",
     mobileNav: "Mobile",
-    nav: { install: "Install", firstUse: "First use", passkeys: "Passkeys", keyInfo: "Your key", help: "Help", releases: "Releases" },
+    nav: { install: "Install", update: "Update", firstUse: "First use", passkeys: "Passkeys", keyInfo: "Your key", help: "Help", releases: "Releases" },
     githubRepository: "GitHub repository",
     github: "GitHub",
     openMenu: "Open menu",

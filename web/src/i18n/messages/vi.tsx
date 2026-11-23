@@ -251,7 +251,7 @@ export const vi: Messages = {
     skipToContent: "Chuyển đến nội dung",
     mainNav: "Điều hướng chính",
     mobileNav: "Điều hướng di động",
-    nav: { install: "Cài đặt", firstUse: "Dùng lần đầu", passkeys: "Passkey", keyInfo: "Khóa của bạn", help: "Trợ giúp", releases: "Bản phát hành" },
+    nav: { install: "Cài đặt", update: "Cập nhật", firstUse: "Dùng lần đầu", passkeys: "Passkey", keyInfo: "Khóa của bạn", help: "Trợ giúp", releases: "Bản phát hành" },
     githubRepository: "Kho mã GitHub",
     github: "GitHub",
     openMenu: "Mở menu",

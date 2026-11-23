@@ -11,6 +11,7 @@ import { ThemeToggle } from "./ThemeToggle";
 
 const LINKS = [
   { to: "/install", key: "install" },
+  { to: "/update", key: "update" },
   { to: "/first-use", key: "firstUse" },
   { to: "/passkeys", key: "passkeys" },
   { to: "/key", key: "keyInfo" },
