@@ -192,7 +192,11 @@ enum PinCmd {
 #[derive(Subcommand)]
 enum CredCmd {
     /// List discoverable credentials (asks for the PIN).
-    List,
+    List {
+        /// Read the PIN as one line from standard input instead of prompting.
+        #[arg(long)]
+        pin_stdin: bool,
+    },
     /// Delete one credential by id (asks for the PIN, then for confirmation).
     Delete {
         /// Credential id in hex, from `credentials list`.
@@ -201,6 +205,9 @@ enum CredCmd {
         /// Skip the typed confirmation.
         #[arg(long)]
         yes: bool,
+        /// Read the PIN as one line from standard input instead of prompting (requires --yes).
+        #[arg(long)]
+        pin_stdin: bool,
     },
 }
 
@@ -253,7 +260,7 @@ fn supports_json(cmd: &Cmd) -> bool {
         Cmd::Fido { cmd } => match cmd {
             FidoCmd::Info => true,
             FidoCmd::Pin { cmd } => matches!(cmd, PinCmd::Status),
-            FidoCmd::Credentials { cmd } => matches!(cmd, CredCmd::List),
+            FidoCmd::Credentials { cmd } => matches!(cmd, CredCmd::List { .. }),
         },
         Cmd::Mkauth { cmd } => matches!(cmd, MkauthCmd::Status | MkauthCmd::List { .. }),
         Cmd::Enroll { .. } | Cmd::Auth { .. } | Cmd::Revoke { .. } => false,
@@ -369,8 +376,10 @@ fn run_fido(cmd: FidoCmd, a: &dyn Authenticator, c: &mut dyn Console, json: bool
             PinCmd::Change { pin_stdin } => cmd_fido::pin_change(a, c, pin_stdin),
         },
         FidoCmd::Credentials { cmd } => match cmd {
-            CredCmd::List => cmd_fido::creds_list(a, c, json),
-            CredCmd::Delete { id, yes } => cmd_fido::creds_delete(a, c, &id, yes),
+            CredCmd::List { pin_stdin } => cmd_fido::creds_list(a, c, json, pin_stdin),
+            CredCmd::Delete { id, yes, pin_stdin } => {
+                cmd_fido::creds_delete(a, c, &id, yes, pin_stdin)
+            }
         },
     }
 }
@@ -427,8 +436,16 @@ mod tests {
             &["fido", "pin", "status"],
             &["fido", "pin", "set", "--yes", "--pin-stdin"],
             &["fido", "pin", "change"],
-            &["fido", "credentials", "list"],
-            &["fido", "credentials", "delete", "--id", "aabb", "--yes"],
+            &["fido", "credentials", "list", "--pin-stdin"],
+            &[
+                "fido",
+                "credentials",
+                "delete",
+                "--id",
+                "aabb",
+                "--yes",
+                "--pin-stdin",
+            ],
             &["mkauth", "status"],
             &["mkauth", "enroll", "--user", "u", "--yes"],
             &["mkauth", "auth", "--user", "u", "--timeout", "5"],

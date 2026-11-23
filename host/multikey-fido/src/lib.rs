@@ -13,6 +13,7 @@ use serde::Serialize;
 
 mod hid;
 pub mod mock;
+mod quiet;
 
 pub use hid::{list_devices, HidAuthenticator};
 

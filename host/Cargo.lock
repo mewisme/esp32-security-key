@@ -676,8 +676,10 @@ name = "multikey-fido"
 version = "0.1.0"
 dependencies = [
  "ctap-hid-fido2",
+ "libc",
  "serde",
  "thiserror 1.0.69",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

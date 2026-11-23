@@ -6,6 +6,7 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use ctap_hid_fido2::public_key_credential_descriptor::PublicKeyCredentialDescriptor;
 use ctap_hid_fido2::{FidoKeyHid, HidInfo, HidParam, LibCfg};
 
+use crate::quiet::quiet;
 use crate::{
     classify_error, pin_status_from_options, validate_new_pin, Authenticator, CredEntry, FidoError,
     FidoInfo, HidDevice, PinState, PinStatus,
@@ -38,7 +39,7 @@ fn path_of(info: &HidInfo) -> Option<String> {
 /// FIDO HID interfaces (usage page 0xF1D0) in enumeration order. Devices whose OS path cannot be
 /// represented as text are skipped because they cannot be opened unambiguously.
 pub fn list_devices() -> Vec<HidDevice> {
-    let found = guarded(ctap_hid_fido2::get_fidokey_devices).unwrap_or_default();
+    let found = guarded(|| quiet(ctap_hid_fido2::get_fidokey_devices)).unwrap_or_default();
     found
         .iter()
         .filter_map(|d| {
@@ -73,11 +74,11 @@ impl HidAuthenticator {
         let mut cfg = LibCfg::init().with_keep_alive_msg_to_stderr(true);
         cfg.keep_alive_msg = "Touch the key's button now...".to_string();
         let params = [HidParam::Path(path.to_string())];
-        let mut key = guarded(|| FidoKeyHid::new(&params, &cfg))?
+        let mut key = guarded(|| quiet(|| FidoKeyHid::new(&params, &cfg)))?
             .map_err(|e| classify_error(&e.to_string()))?;
         // The transport crate defaults to the 0x41 preview credential-management command; use the final
         // 0x0A command whenever the authenticator advertises credMgmt.
-        let info = key.get_info().map_err(|e| classify_error(&e.to_string()))?;
+        let info = quiet(|| key.get_info()).map_err(|e| classify_error(&e.to_string()))?;
         if info.options.iter().any(|(k, v)| k == "credMgmt" && *v) {
             key.use_pre_credential_management = false;
         }
@@ -85,10 +86,7 @@ impl HidAuthenticator {
     }
 
     fn read(&self) -> Result<FidoInfo, FidoError> {
-        let i = self
-            .key
-            .get_info()
-            .map_err(|e| classify_error(&e.to_string()))?;
+        let i = quiet(|| self.key.get_info()).map_err(|e| classify_error(&e.to_string()))?;
         Ok(FidoInfo {
             versions: i.versions.clone(),
             aaguid: i.aaguid.iter().map(|b| format!("{b:02x}")).collect(),
@@ -124,10 +122,8 @@ impl Authenticator for HidAuthenticator {
         let info = self.read()?;
         let mut st = pin_status_from_options(&info.options, None);
         if st.client_pin == PinState::Set {
-            let r = self
-                .key
-                .get_pin_retries()
-                .map_err(|e| classify_error(&e.to_string()))?;
+            let r =
+                quiet(|| self.key.get_pin_retries()).map_err(|e| classify_error(&e.to_string()))?;
             st.retries = u32::try_from(r).ok();
         }
         Ok(st)
@@ -146,9 +142,7 @@ impl Authenticator for HidAuthenticator {
             PinState::NotSet => {}
         }
         validate_new_pin(new_pin, info.min_pin_length)?;
-        self.key
-            .set_new_pin(new_pin)
-            .map_err(|e| classify_error(&e.to_string()))?;
+        quiet(|| self.key.set_new_pin(new_pin)).map_err(|e| classify_error(&e.to_string()))?;
         // Never report success without reading the state back.
         match self.pin_status()?.client_pin {
             PinState::Set => Ok(()),
@@ -166,9 +160,7 @@ impl Authenticator for HidAuthenticator {
             PinState::Set => {}
         }
         validate_new_pin(new, info.min_pin_length)?;
-        self.key
-            .change_pin(current, new)
-            .map_err(|e| self.pin_error(e))
+        quiet(|| self.key.change_pin(current, new)).map_err(|e| self.pin_error(e))
     }
 
     fn list_credentials(&self, pin: &str) -> Result<Vec<CredEntry>, FidoError> {
@@ -184,13 +176,24 @@ impl Authenticator for HidAuthenticator {
         }
         let key = &self.key;
         let mut out = Vec::new();
-        let rps = key
-            .credential_management_enumerate_rps(Some(pin))
-            .map_err(|e| self.pin_error(e))?;
+        // CTAP2_ERR_NO_CREDENTIALS means "nothing stored", not a failure.
+        let rps = match quiet(|| key.credential_management_enumerate_rps(Some(pin))) {
+            Ok(r) => r,
+            Err(e) => match self.pin_error(e) {
+                FidoError::NotFound => return Ok(out),
+                other => return Err(other),
+            },
+        };
         for rp in rps {
-            let creds = key
-                .credential_management_enumerate_credentials(Some(pin), &rp.rpid_hash)
-                .map_err(|e| self.pin_error(e))?;
+            let creds = match quiet(|| {
+                key.credential_management_enumerate_credentials(Some(pin), &rp.rpid_hash)
+            }) {
+                Ok(c) => c,
+                Err(e) => match self.pin_error(e) {
+                    FidoError::NotFound => continue,
+                    other => return Err(other),
+                },
+            };
             for c in creds {
                 out.push(CredEntry {
                     rp_id: rp.public_key_credential_rp_entity.id.clone(),
@@ -220,9 +223,11 @@ impl Authenticator for HidAuthenticator {
             id,
             ctype: "public-key".to_string(),
         };
-        self.key
-            .credential_management_delete_credential(Some(pin), pkcd)
-            .map_err(|e| self.pin_error(e))?;
+        quiet(|| {
+            self.key
+                .credential_management_delete_credential(Some(pin), pkcd)
+        })
+        .map_err(|e| self.pin_error(e))?;
         let after = self.list_credentials(pin)?;
         if after.iter().any(|c| c.credential_id == want) {
             return Err(FidoError::Other(

@@ -229,7 +229,8 @@ pub struct VersionReport {
     pub ctap_versions: Vec<String>,
     pub usb_vid: Option<u16>,
     pub usb_pid: Option<u16>,
-    pub usb_product: Option<String>,
+    /// The HID interface string of the FIDO interface (`<device name> FIDO`), not the device product string.
+    pub hid_interface: Option<String>,
     pub note: &'static str,
 }
 
@@ -249,7 +250,7 @@ pub fn build_version(
         ctap_versions: fido.map(|f| f.versions.clone()).unwrap_or_default(),
         usb_vid: hid.map(|h| h.vid),
         usb_pid: hid.map(|h| h.pid),
-        usb_product: hid.map(|h| h.product.clone()),
+        hid_interface: hid.map(|h| h.product.clone()),
         note: VERSION_NOTE,
     }
 }
@@ -280,8 +281,11 @@ pub fn version(c: &mut dyn Console, args: &SelectArgs, json: bool) -> Res {
             )?,
             None => writeln!(w, "CTAP fw version  : unavailable")?,
         }
-        if let (Some(vid), Some(pid), Some(p)) = (r.usb_vid, r.usb_pid, &r.usb_product) {
-            writeln!(w, "USB              : {vid:04x}:{pid:04x} \"{p}\"")?;
+        if let (Some(vid), Some(pid), Some(p)) = (r.usb_vid, r.usb_pid, &r.hid_interface) {
+            writeln!(
+                w,
+                "USB              : {vid:04x}:{pid:04x} (FIDO interface \"{p}\")"
+            )?;
         }
         writeln!(w, "note             : {}", r.note)
     })

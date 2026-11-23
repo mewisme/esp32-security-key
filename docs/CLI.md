@@ -19,8 +19,8 @@
 | `fido info`, `fido pin status` | reads | yes | HID |
 | `fido pin set [--yes] [--pin-stdin]` | **sets the FIDO PIN** (see below) | no | HID, PIN |
 | `fido pin change [--pin-stdin]` | changes the FIDO PIN (one attempt) | no | HID, PIN |
-| `fido credentials list` | reads discoverable credentials | yes | HID, PIN set |
-| `fido credentials delete --id HEX [--yes]` | deletes one credential | no | HID, PIN |
+| `fido credentials list [--pin-stdin]` | reads discoverable credentials | yes | HID, PIN set |
+| `fido credentials delete --id HEX [--yes] [--pin-stdin]` | deletes one credential (`--pin-stdin` needs `--yes`) | no | HID, PIN |
 | `mkauth status`, `mkauth list` | reads | yes | PC/SC / trust store |
 | `mkauth enroll --user U [--yes]` | creates the device key, sets the MKAUTH PIN, writes the trust store | no | PC/SC, button |
 | `mkauth auth --user U [--timeout S]` | challenge-response | no | PC/SC, button |
@@ -67,6 +67,12 @@ part of any error text (tests assert this).
 `credentials delete` lists the match, shows relying party and user, requires typing `delete` (or `--yes`), deletes, lists again and
 prints "deleted and verified absent" only when the credential is gone. Credential management needs a PIN, so these commands only work
 on a key that has one.
+
+## Hardware status
+
+On one board (Windows 11, elevated terminal for HID) the commands above were run against a real key, see
+[hw-reports/2026-11-23-management-cli-and-webusb.md](hw-reports/2026-11-23-management-cli-and-webusb.md). Interactive typed confirmations
+and no-echo FIDO PIN prompts were only unit-tested (the hardware runs used `--yes --pin-stdin`); Linux and macOS were not tested.
 
 ## `device version`
 

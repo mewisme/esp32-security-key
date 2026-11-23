@@ -165,8 +165,17 @@ pub fn pin_change(a: &dyn Authenticator, c: &mut dyn Console, pin_stdin: bool) -
     Ok(())
 }
 
-pub fn creds_list(a: &dyn Authenticator, c: &mut dyn Console, json: bool) -> Res {
-    let pin = c.secret("FIDO PIN: ")?;
+/// Read the existing PIN: prompt without echo, or one line of stdin with `--pin-stdin`.
+fn read_pin(c: &mut dyn Console, pin_stdin: bool) -> Result<Zeroizing<String>, CliError> {
+    if pin_stdin {
+        c.stdin_secret()
+    } else {
+        c.secret("FIDO PIN: ")
+    }
+}
+
+pub fn creds_list(a: &dyn Authenticator, c: &mut dyn Console, json: bool, pin_stdin: bool) -> Res {
+    let pin = read_pin(c, pin_stdin)?;
     let creds: Vec<CredEntry> = a.list_credentials(&pin)?;
     emit(c.out(), json, &creds, |w| {
         if creds.is_empty() {
@@ -183,8 +192,19 @@ pub fn creds_list(a: &dyn Authenticator, c: &mut dyn Console, json: bool) -> Res
     })
 }
 
-pub fn creds_delete(a: &dyn Authenticator, c: &mut dyn Console, id: &str, yes: bool) -> Res {
-    let pin = c.secret("FIDO PIN: ")?;
+pub fn creds_delete(
+    a: &dyn Authenticator,
+    c: &mut dyn Console,
+    id: &str,
+    yes: bool,
+    pin_stdin: bool,
+) -> Res {
+    if pin_stdin && !yes {
+        return Err(CliError::Usage(
+            "--pin-stdin requires --yes (there is no prompt to confirm on)".into(),
+        ));
+    }
+    let pin = read_pin(c, pin_stdin)?;
     let want = id.to_ascii_lowercase();
     let creds = a.list_credentials(&pin)?;
     let Some(hit) = creds.iter().find(|e| e.credential_id == want) else {
@@ -348,7 +368,7 @@ mod tests {
         m.state.borrow_mut().credentials.push(cred("aabb"));
         let mut c = TestConsole::interactive();
         c.secrets.push_back(SECRET.to_string());
-        creds_list(&m, &mut c, true).unwrap();
+        creds_list(&m, &mut c, true, false).unwrap();
         let v: serde_json::Value = serde_json::from_str(&c.stdout()).unwrap();
         assert_eq!(v[0]["credential_id"], "aabb");
         assert_eq!(v[0]["rp_id"], "example.org");
@@ -363,7 +383,7 @@ mod tests {
         c.secrets.push_back(SECRET.to_string());
         c.lines.push_back("no".into());
         assert!(matches!(
-            creds_delete(&m, &mut c, "AABB", false),
+            creds_delete(&m, &mut c, "AABB", false, false),
             Err(CliError::Cancelled)
         ));
         assert_eq!(m.state.borrow().credentials.len(), 1);
@@ -371,7 +391,7 @@ mod tests {
         let mut c = TestConsole::interactive();
         c.secrets.push_back(SECRET.to_string());
         c.lines.push_back("delete".into());
-        creds_delete(&m, &mut c, "AABB", false).unwrap();
+        creds_delete(&m, &mut c, "AABB", false, false).unwrap();
         assert!(m.state.borrow().credentials.is_empty());
         assert!(c.stdout().contains("verified absent"));
         assert!(!c.everything().contains(SECRET));
@@ -382,8 +402,29 @@ mod tests {
         let m = MockAuthenticator::with_pin(SECRET);
         let mut c = TestConsole::interactive();
         c.secrets.push_back(SECRET.to_string());
-        let e = creds_delete(&m, &mut c, "ff", true).unwrap_err();
+        let e = creds_delete(&m, &mut c, "ff", true, false).unwrap_err();
         assert!(matches!(e, CliError::Fido(FidoError::NotFound)));
+    }
+
+    #[test]
+    fn creds_pin_stdin_list_and_delete() {
+        let m = MockAuthenticator::with_pin(SECRET);
+        m.state.borrow_mut().credentials.push(cred("aabb"));
+        let mut c = TestConsole::default();
+        c.stdin.push_back(SECRET.to_string());
+        creds_list(&m, &mut c, false, true).unwrap();
+        assert!(c.stdout().contains("aabb"));
+        // --pin-stdin without --yes is refused before anything is read
+        let mut c = TestConsole::default();
+        c.stdin.push_back(SECRET.to_string());
+        assert!(matches!(
+            creds_delete(&m, &mut c, "aabb", false, true),
+            Err(CliError::Usage(_))
+        ));
+        assert_eq!(m.state.borrow().credentials.len(), 1);
+        creds_delete(&m, &mut c, "aabb", true, true).unwrap();
+        assert!(m.state.borrow().credentials.is_empty());
+        assert!(!c.everything().contains(SECRET));
     }
 
     #[test]

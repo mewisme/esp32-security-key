@@ -102,8 +102,12 @@ jobs:
       - name: Missing ESP-IDF stops with the one-time-setup message (exit 2)
         shell: pwsh
         run: |
-          foreach ($extra in @(@(), @('-App', 'openpgp'))) {
-            $out = & ./tools/flash-dev.ps1 -DryRun -IdfPath C:\nonexistent @extra *>&1 | Out-String
-            if ($LASTEXITCODE -ne 2) { Write-Error "expected exit 2, got $LASTEXITCODE"; exit 1 }
-            if ($out -notmatch 'ESP-IDF v5\.5\.x not found\. One-time setup: install ESP-IDF v5\.5\.6') { Write-Error "message missing: $out"; exit 1 }
+          $cases = @('-DryRun -IdfPath C:\nonexistent', '-DryRun -App openpgp -IdfPath C:\nonexistent')
+          foreach ($c in $cases) {
+            $out = pwsh -NoProfile -Command "& ./tools/flash-dev.ps1 $c; exit `$LASTEXITCODE" *>&1 | Out-String
+            $code = $LASTEXITCODE
+            Write-Host "[$c] exit=$code"
+            Write-Host $out
+            if ($code -ne 2) { Write-Host "expected exit 2"; exit 1 }
+            if ($out -notmatch 'ESP-IDF v5\.5\.x not found\. One-time setup: install ESP-IDF v5\.5\.6') { Write-Host "message missing"; exit 1 }
           }

@@ -79,7 +79,7 @@ credentials survive reboot. Status: pending hardware.
 
 ## Host CLI, flash script and release pipeline (no hardware)
 
-- `cd host && cargo test --locked`: 101 tests (proto 13, host 40, fido 17, cli 31). The FIDO PIN and credential
+- `cd host && cargo test --locked`: 102 tests (proto 13, host 40, fido 17, cli 32). The FIDO PIN and credential
   flows run against `MockAuthenticator`, including assertions that no PIN appears in any output. The real HID path of
   `ctap-hid-fido2` has no emulator coverage here (pico-fido's emulation speaks a virtual transport, not HID): `fido *` against a real key
   is a hardware test and is only partly done (see ROADMAP).
