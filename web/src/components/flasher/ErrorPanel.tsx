@@ -37,8 +37,8 @@ export function ErrorPanel(props: {
       <div className="flex flex-col gap-2">
         <h3 className="font-medium">{t.flasher.whatToDo}</h3>
         <ol className="flex list-decimal flex-col gap-1 pl-5">
-          {info.next.map((n) => (
-            <li key={n}>{n}</li>
+          {info.next.map((n, i) => (
+            <li key={i}>{n}</li>
           ))}
         </ol>
       </div>

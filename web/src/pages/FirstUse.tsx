@@ -5,21 +5,25 @@ import { Page } from "@/components/layout/Page";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useI18n } from "@/i18n/context";
 import { REPO_URL } from "@/lib/status";
 
+/** One numbered step of the checklist; the number is shown by the list, the text wraps freely in either language. */
 function Step({ n, title, description, children }: { n: number; title: string; description?: React.ReactNode; children?: React.ReactNode }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>
-          {n}. {title}
-        </CardTitle>
-        {description && <CardDescription>{description}</CardDescription>}
-      </CardHeader>
-      {children && <CardContent>{children}</CardContent>}
-    </Card>
+    <li className="flex min-w-0 gap-3">
+      <span aria-hidden className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/15 text-sm font-medium text-primary">
+        {n}
+      </span>
+      <div className="flex min-w-0 flex-1 flex-col gap-2">
+        <div className="flex flex-col gap-1">
+          <h2 className="break-words font-medium">{title}</h2>
+          {description && <p className="break-words text-sm text-muted-foreground">{description}</p>}
+        </div>
+        {children}
+      </div>
+    </li>
   );
 }
 
@@ -50,28 +54,34 @@ export function FirstUsePage() {
     <Page width="flow">
       <PageHeader title={f.title} description={f.lead} />
       <ExperimentalNotice />
-      <Step n={1} title={f.reconnect.title} description={f.reconnect.text} />
-      <Step n={2} title={f.presence.title} description={f.presence.text} />
-      <Step n={3} title={f.pin.title} description={f.pin.text}>
-        <ul className="flex list-disc flex-col gap-1 pl-5 text-sm">
-          <li>{f.pin.windows(<strong>Windows:</strong>)}</li>
-          <li>{f.pin.macos(<strong>macOS:</strong>)}</li>
-          <li>{f.pin.linux(<strong>Linux:</strong>)}</li>
-        </ul>
-      </Step>
-      <Step n={4} title={f.check.title} description={f.check.text}>
-        <Button asChild>
-          <Link to="/key">{f.check.cta}</Link>
-        </Button>
-      </Step>
-      <Step n={5} title={f.rename.title} description={f.rename.text}>
-        <RenameKey />
-      </Step>
-      <Step n={6} title={f.tryPasskeys.title} description={f.tryPasskeys.text}>
-        <Button asChild>
-          <Link to="/passkeys">{f.tryPasskeys.cta}</Link>
-        </Button>
-      </Step>
+      <Card>
+        <CardContent>
+          <ol className="flex flex-col gap-6">
+            <Step n={1} title={f.reconnect.title} description={f.reconnect.text} />
+            <Step n={2} title={f.presence.title} description={f.presence.text} />
+            <Step n={3} title={f.pin.title} description={f.pin.text}>
+              <ul className="flex list-disc flex-col gap-1 pl-5 text-sm">
+                <li>{f.pin.windows(<strong>Windows:</strong>)}</li>
+                <li>{f.pin.macos(<strong>macOS:</strong>)}</li>
+                <li>{f.pin.linux(<strong>Linux:</strong>)}</li>
+              </ul>
+            </Step>
+            <Step n={4} title={f.check.title} description={f.check.text}>
+              <Button asChild>
+                <Link to="/key">{f.check.cta}</Link>
+              </Button>
+            </Step>
+            <Step n={5} title={f.rename.title} description={f.rename.text}>
+              <RenameKey />
+            </Step>
+            <Step n={6} title={f.tryPasskeys.title} description={f.tryPasskeys.text}>
+              <Button asChild>
+                <Link to="/passkeys">{f.tryPasskeys.cta}</Link>
+              </Button>
+            </Step>
+          </ol>
+        </CardContent>
+      </Card>
       <Card>
         <CardHeader>
           <CardTitle>{f.more.title}</CardTitle>

@@ -135,9 +135,9 @@ function Details({ info }: { info: BuildInfo }) {
     });
   }
   return (
-    <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-[max-content_1fr]">
-      {rows.map((r) => (
-        <div key={r.label} className="contents">
+    <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-[max-content_minmax(0,1fr)]">
+      {rows.map((r, i) => (
+        <div key={i} className="contents">
           <dt className="text-muted-foreground">{r.label}</dt>
           <dd className="min-w-0">{r.value}</dd>
         </div>

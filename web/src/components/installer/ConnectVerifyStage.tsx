@@ -17,7 +17,7 @@ export function BootSequence() {
       <p>{boot.intro}</p>
       <ol className="flex flex-col gap-3">
         {boot.sequence.map((s, i) => (
-          <li key={s} className="flex gap-3">
+          <li key={i} className="flex gap-3">
             <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/15 font-medium text-primary">{i + 1}</span>
             <span className="pt-0.5">{s}</span>
           </li>
@@ -30,8 +30,8 @@ export function BootSequence() {
             <p className="font-medium">{t.errors[c].title}</p>
             <p className="text-muted-foreground">{t.errors[c].what}</p>
             <ul className="list-disc pl-5 text-muted-foreground">
-              {t.errors[c].next.map((n) => (
-                <li key={n}>{n}</li>
+              {t.errors[c].next.map((n, i) => (
+                <li key={i}>{n}</li>
               ))}
             </ul>
           </div>

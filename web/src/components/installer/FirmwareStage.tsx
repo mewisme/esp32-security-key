@@ -190,8 +190,8 @@ function FirmwareSection({ inst, selected }: { inst: Installer; selected: Catalo
           <AlertTitle>{t.install.firmware.openpgpWarning.title}</AlertTitle>
           <AlertDescription>
             <ul className="list-disc pl-5">
-              {t.install.firmware.openpgpWarning.items.map((item) => (
-                <li key={item}>{item}</li>
+              {t.install.firmware.openpgpWarning.items.map((item, i) => (
+                <li key={i}>{item}</li>
               ))}
             </ul>
           </AlertDescription>

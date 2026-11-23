@@ -138,8 +138,8 @@ export function FinishStage({ inst, headingRef }: { inst: Installer; headingRef:
             <p className="font-medium">{t.install.finish.key.unverifiedTitle}</p>
             <p className="text-sm text-muted-foreground">{t.install.finish.key.unverifiedText}</p>
             <ul className="list-disc pl-5 text-sm text-muted-foreground">
-              {t.errors["no-reenumeration"].next.map((n) => (
-                <li key={n}>{n}</li>
+              {t.errors["no-reenumeration"].next.map((n, i) => (
+                <li key={i}>{n}</li>
               ))}
             </ul>
           </div>
