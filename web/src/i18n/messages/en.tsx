@@ -13,6 +13,7 @@ import { DEVICE_NAME_MAX, FALLBACK_DEFAULT_NAME, type NameProblem } from "@/lib/
 import type { NameRequest } from "@/lib/device/mkauth";
 import type { ErrorCode, ErrorGroup, ErrorText } from "@/lib/errors/catalog";
 import type { AckId, InstallMode } from "@/lib/flashing/install-mode";
+import type { LabCheck, LabErrorId } from "@/lib/passkey/lab";
 import type { StepId } from "@/lib/wizard-steps";
 import { flashSizeList } from "./shared";
 
@@ -254,7 +255,7 @@ export const en = {
     skipToContent: "Skip to content",
     mainNav: "Main",
     mobileNav: "Mobile",
-    nav: { install: "Install", firstUse: "First use", help: "Help", releases: "Releases" },
+    nav: { install: "Install", firstUse: "First use", passkeys: "Passkeys", help: "Help", releases: "Releases" },
     githubRepository: "GitHub repository",
     github: "GitHub",
     openMenu: "Open menu",
@@ -528,7 +529,7 @@ export const en = {
 
   firstUse: {
     title: "First use",
-    lead: "Five short steps after the installer has finished.",
+    lead: "Six short steps after the installer has finished.",
     reconnect: {
       title: "Reconnect",
       text: "The serial (COM) port you used for installing disappears. That is normal: the board now presents itself as a security key. Unplug it and plug it into the native USB connector (usually labelled USB or OTG).",
@@ -549,6 +550,11 @@ export const en = {
     rename: {
       title: "Rename your key",
       text: "Choose the name your computer shows for the key. You will press BOOT on the key to confirm.",
+    },
+    tryPasskeys: {
+      title: "Try your passkeys",
+      text: "The Passkey lab registers a test passkey on your key and signs in with it, so you can see that the key works. Nothing leaves your computer.",
+      cta: "Open the Passkey lab",
     },
     more: {
       title: "More about your key",
@@ -571,6 +577,142 @@ export const en = {
         title: "Recovery",
         text: "If the key stops responding, put the board in download mode (unplug, hold BOOT, plug in, release) and run the installer again. It detects the existing MultiKeys installation and doesn't write the area that holds your keys.",
       },
+    },
+  },
+
+  // The Passkey lab (pages/PasskeyLab): WebAuthn tests that run in the browser.
+  passkeyLab: {
+    title: "Passkey lab",
+    lead: "Try your key as a passkey without making an account. This page registers a test passkey on your key and signs in with it, so you can see what the key reports.",
+    localOnly: "Local test only: the checks run in your browser, and nothing is sent or saved anywhere. The test passkey stays on your key until you delete it (see Cleaning up).",
+    pressBoot: "Press BOOT",
+    doNotPress: "Don't press BOOT",
+    keyVisual: {
+      title: "ESP32-S3 board with the BOOT button highlighted",
+      desc: "A development board seen from above. The BOOT button next to the USB connector is the one you press when the key asks for a touch.",
+      idle: "Your key",
+      success: "Done",
+      failed: "Something is off",
+    },
+    testsLabel: "Passkey tests",
+    scoreLabel: "Passkey tests passed",
+    tests: {
+      register: {
+        title: "Register a passkey",
+        text: "Creates a test passkey on your key for this site. Press BOOT when the browser asks.",
+      },
+      signIn: {
+        title: "Sign in with this passkey",
+        text: "Asks the key to sign a fresh challenge with the passkey you just made. Press BOOT; the page checks the signature.",
+      },
+      discoverable: {
+        title: "Sign in without choosing",
+        text: "No account is named: the key finds the passkey by itself, as a “Sign in with a passkey” button does. Press BOOT.",
+      },
+      refusal: {
+        title: "Don't touch",
+        text: "Do not press BOOT. Wait 15 s or cancel the browser's dialog. A key that signs without a touch would be unsafe, so this test passes when nothing is signed.",
+      },
+    },
+    needsRegister: "Register a passkey first.",
+    status: {
+      notRun: "Not run",
+      waiting: "Waiting for touch",
+      waitingRefusal: "Waiting, don't touch",
+      passed: "Passed",
+      failed: "Failed",
+    },
+    run: "Run",
+    runAgain: "Run again",
+    score: (n: number, total: number) => `${n} of ${total} passed`,
+    allPassed: {
+      title: "Your key works as a passkey",
+      text: "It registered a passkey, signed in with and without naming an account, and refused to sign without a touch.",
+    },
+    refusal: {
+      passed: "Nothing was signed: the key waited for BOOT and the browser gave up.",
+      failed: "A signature came back. If you did not press BOOT, the key does not enforce user presence.",
+    },
+    inspector: {
+      title: "What your key reported",
+      empty: "Run a test to see what the key reported.",
+      flagsLabel: "Flags",
+      flags: {
+        up: { label: "UP", tip: "User present: the key was touched, which on this key means the BOOT button was pressed." },
+        uv: { label: "UV", tip: "User verified: the key checked a PIN. Expected only if you set a FIDO PIN." },
+        be: { label: "BE", tip: "Backup eligible: the passkey may be copied elsewhere. A passkey that lives on a hardware key normally is not." },
+        bs: { label: "BS", tip: "Backed up: the passkey currently has a copy elsewhere. Normally off for a hardware key." },
+      },
+      aaguid: "AAGUID",
+      algorithm: "Algorithm",
+      counter: "Sign counter",
+      transports: "Transports",
+      none: "None reported",
+      credentialId: "Credential ID",
+      copy: "Copy credential ID",
+      copied: "Copied",
+      discoverable: "Stored on key (discoverable)",
+      yes: "Yes",
+      no: "No",
+      unknown: "Unknown",
+      checksLabel: "Checks",
+    },
+    checks: {
+      clientData: "Browser data matches the request",
+      rpId: "Bound to this site",
+      signature: "Signature is valid",
+      userPresence: "Key reported a touch (UP)",
+      credential: "Same passkey as registered",
+      counter: "Sign counter went up",
+      residentKey: "Stored on the key",
+    } satisfies Record<LabCheck["id"], string>,
+    errors: {
+      cancelledOrTimeout: {
+        title: "No touch, or the request was cancelled",
+        what: "The browser reports that the request timed out or was cancelled. That is what happens when BOOT is not pressed in time or the dialog is closed.",
+        next: ["Run the test again and press BOOT when the browser asks.", "If the browser never asked, check that the key is plugged into the USB or OTG connector."],
+      },
+      alreadyRegistered: {
+        title: "The key already has this passkey",
+        what: "The key says it already holds a matching passkey.",
+        next: ["Use the sign-in tests, or delete the old test passkey (see Cleaning up) and register again."],
+      },
+      notSupported: {
+        title: "This browser or key can't do that",
+        what: "The browser or the key doesn't support the kind of passkey this test asks for (an ES256 passkey stored on the key).",
+        next: ["Use a current desktop version of Chrome or Edge.", "Check that the key runs the MultiKeys FIDO firmware."],
+      },
+      security: {
+        title: "The browser blocked this page",
+        what: "Passkeys only work on a secure page whose address matches the site they belong to.",
+        next: ["Open https://multikeys.mewis.me directly instead of a copy or a proxy."],
+      },
+      verification: {
+        title: "The key's answer failed a check",
+        what: "The key answered, but a value it returned could not be read or verified.",
+        next: ["Run the test again.", "If it keeps failing, report it on GitHub."],
+      },
+      unknown: {
+        title: "The test failed",
+        what: "The browser reported an error this page does not recognise.",
+        next: ["Unplug the key, plug it in again and run the test again."],
+      },
+    } satisfies Record<LabErrorId, { title: string; what: string; next: string[] }>,
+    cleanup: {
+      title: "Cleaning up",
+      intro: "A web page can't delete passkeys from your key. The test passkey stays on the key until you remove it yourself:",
+      // `os` is the bold operating-system name with its colon, supplied by the page.
+      windows: (os: ReactNode) => <>{os} Settings → Accounts → Sign-in options → Security key → Manage (this only offers resetting the whole key).</>,
+      chrome: (os: ReactNode) => <>{os} open Settings → Privacy and security → Security → Manage security keys → Sign-in data.</>,
+      cli: (list: ReactNode, remove: ReactNode) => (
+        <>
+          Command line: {list}, then {remove}. Both ask for the FIDO PIN.
+        </>
+      ),
+    },
+    notSupported: {
+      title: "This browser can't do passkeys",
+      text: "WebAuthn isn't available here. Use a current version of Chrome or Edge on a computer.",
     },
   },
 

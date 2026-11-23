@@ -1,7 +1,8 @@
 # MultiKeys web installer (`web/`)
 
 The site at https://multikeys.mewis.me: a beginner installer that flashes MultiKeys firmware from desktop Chrome/Edge over
-Web Serial, plus first-use, help and release pages.
+Web Serial, plus first-use, help and release pages, and a Passkey lab (`/passkeys`) that registers a test passkey on the key and
+signs in with it through the browser's WebAuthn API: everything is checked in the browser, nothing is sent or stored.
 
 Stack: React 19 + Vite 8 + TypeScript 6 + Tailwind CSS 4 + shadcn/ui (Radix) with [ReUI](https://reui.io) components
 (`src/components/reui/`, installed as shipped), `esptool-js` 0.7.1 for the serial protocol, hosted on Cloudflare Workers with
@@ -144,6 +145,7 @@ or an instant change; progress bars, loaders (they pulse) and chevrons keep goin
 | `.shake-on-invalid` | a refused management PIN shakes once | none |
 | theme icon, install progress | the icon turns into the new one; the full bar pulses while the key is read back and restarted | fade; pulse kept |
 | `GroupRail` | the installed `Scrollspy` scrolls smoothly unless the OS asks otherwise (`usePrefersReducedMotion`) | instant |
+| Passkey lab (`pages/PasskeyLab`) | the BOOT ring (`.pulse-ring-svg`) and a linear `.countdown` over the request's timeout while a test waits for a touch; the inspector replays `.enter-reveal` for each result and its checks draw (`DrawnCheck`); the page rides on the one `.enter-page` | ring hidden (the BOOT outline stays thick), countdown kept, reveal fades, checks instant |
 
 Installed overlays (menus, tooltips, the sheet, dialogs) keep their 100 to 200 ms fade, zoom and slide; under reduced motion a block
 at the end of `index.css` zeroes their zoom and slide (WCAG 2.3.3) and the accordion opens at once. New motion reuses the kit,

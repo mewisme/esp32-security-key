@@ -244,7 +244,7 @@ export const vi: Messages = {
     skipToContent: "Chuyển đến nội dung",
     mainNav: "Điều hướng chính",
     mobileNav: "Điều hướng di động",
-    nav: { install: "Cài đặt", firstUse: "Dùng lần đầu", help: "Trợ giúp", releases: "Bản phát hành" },
+    nav: { install: "Cài đặt", firstUse: "Dùng lần đầu", passkeys: "Passkey", help: "Trợ giúp", releases: "Bản phát hành" },
     githubRepository: "Kho mã GitHub",
     github: "GitHub",
     openMenu: "Mở menu",
@@ -516,7 +516,7 @@ export const vi: Messages = {
 
   firstUse: {
     title: "Dùng lần đầu",
-    lead: "Năm bước ngắn sau khi trình cài đặt hoàn tất.",
+    lead: "Sáu bước ngắn sau khi trình cài đặt hoàn tất.",
     reconnect: {
       title: "Cắm lại",
       text: "Cổng nối tiếp (COM) bạn dùng để cài đặt sẽ biến mất. Điều đó là bình thường: giờ bo mạch xuất hiện như một khóa bảo mật. Rút nó ra và cắm vào cổng USB gốc (thường có nhãn USB hoặc OTG).",
@@ -536,6 +536,11 @@ export const vi: Messages = {
     rename: {
       title: "Đổi tên khóa của bạn",
       text: "Chọn tên mà máy tính hiển thị cho khóa. Bạn sẽ nhấn BOOT trên khóa để xác nhận.",
+    },
+    tryPasskeys: {
+      title: "Thử passkey của bạn",
+      text: "Phòng thử passkey đăng ký một passkey thử nghiệm trên khóa của bạn rồi đăng nhập bằng nó, để bạn thấy khóa hoạt động. Không có gì rời khỏi máy tính của bạn.",
+      cta: "Mở phòng thử passkey",
     },
     more: {
       title: "Tìm hiểu thêm về khóa của bạn",
@@ -558,6 +563,140 @@ export const vi: Messages = {
         title: "Khôi phục",
         text: "Nếu khóa ngừng phản hồi, hãy đưa bo mạch vào chế độ nạp (rút ra, giữ BOOT, cắm vào, thả) và chạy lại trình cài đặt. Nó phát hiện bản cài MultiKeys hiện có và không ghi vào vùng chứa các khóa của bạn.",
       },
+    },
+  },
+
+  passkeyLab: {
+    title: "Phòng thử passkey",
+    lead: "Thử khóa của bạn như một passkey mà không cần tạo tài khoản. Trang này đăng ký một passkey thử nghiệm trên khóa rồi đăng nhập bằng nó, để bạn thấy khóa báo cáo những gì.",
+    localOnly: "Chỉ là thử nghiệm cục bộ: các bước kiểm tra chạy ngay trong trình duyệt của bạn, không có gì được gửi đi hay lưu lại. Passkey thử nghiệm nằm trên khóa cho đến khi bạn xóa nó (xem Dọn dẹp).",
+    pressBoot: "Nhấn BOOT",
+    doNotPress: "Đừng nhấn BOOT",
+    keyVisual: {
+      title: "Bo mạch ESP32-S3 với nút BOOT được làm nổi bật",
+      desc: "Bo mạch phát triển nhìn từ trên xuống. Nút BOOT cạnh cổng USB là nút bạn nhấn khi khóa yêu cầu chạm.",
+      idle: "Khóa của bạn",
+      success: "Xong",
+      failed: "Có gì đó không ổn",
+    },
+    testsLabel: "Các bài thử passkey",
+    scoreLabel: "Số bài thử passkey đã đạt",
+    tests: {
+      register: {
+        title: "Đăng ký một passkey",
+        text: "Tạo một passkey thử nghiệm trên khóa của bạn cho trang này. Nhấn BOOT khi trình duyệt yêu cầu.",
+      },
+      signIn: {
+        title: "Đăng nhập bằng passkey này",
+        text: "Yêu cầu khóa ký một thử thách mới bằng passkey bạn vừa tạo. Nhấn BOOT; trang sẽ kiểm tra chữ ký.",
+      },
+      discoverable: {
+        title: "Đăng nhập không cần chọn",
+        text: "Không nêu tên tài khoản nào: khóa tự tìm passkey, giống nút “Đăng nhập bằng passkey”. Nhấn BOOT.",
+      },
+      refusal: {
+        title: "Đừng chạm",
+        text: "Đừng nhấn BOOT. Chờ 15 giây hoặc hủy hộp thoại của trình duyệt. Khóa ký mà không cần chạm sẽ không an toàn, nên bài thử này đạt khi không có gì được ký.",
+      },
+    },
+    needsRegister: "Hãy đăng ký một passkey trước.",
+    status: {
+      notRun: "Chưa chạy",
+      waiting: "Đang chờ chạm",
+      waitingRefusal: "Đang chờ, đừng chạm",
+      passed: "Đạt",
+      failed: "Không đạt",
+    },
+    run: "Chạy",
+    runAgain: "Chạy lại",
+    score: (n: number, total: number) => `Đạt ${n} trên ${total}`,
+    allPassed: {
+      title: "Khóa của bạn hoạt động như một passkey",
+      text: "Nó đã đăng ký passkey, đăng nhập có và không nêu tên tài khoản, và từ chối ký khi không có cú chạm.",
+    },
+    refusal: {
+      passed: "Không có gì được ký: khóa đã chờ BOOT và trình duyệt đã bỏ cuộc.",
+      failed: "Một chữ ký đã được trả về. Nếu bạn không nhấn BOOT, khóa không bắt buộc sự hiện diện của người dùng.",
+    },
+    inspector: {
+      title: "Khóa của bạn đã báo cáo gì",
+      empty: "Chạy một bài thử để xem khóa đã báo cáo gì.",
+      flagsLabel: "Cờ",
+      flags: {
+        up: { label: "UP", tip: "User present (có người dùng): khóa đã được chạm, với khóa này nghĩa là nút BOOT đã được nhấn." },
+        uv: { label: "UV", tip: "User verified (đã xác minh người dùng): khóa đã kiểm tra mã PIN. Chỉ xuất hiện nếu bạn đã đặt mã PIN FIDO." },
+        be: { label: "BE", tip: "Backup eligible (có thể sao lưu): passkey có thể được sao chép đi nơi khác. Passkey nằm trên khóa phần cứng thường không như vậy." },
+        bs: { label: "BS", tip: "Backed up (đã sao lưu): passkey hiện có bản sao ở nơi khác. Thường tắt với khóa phần cứng." },
+      },
+      aaguid: "AAGUID",
+      algorithm: "Thuật toán",
+      counter: "Bộ đếm chữ ký",
+      transports: "Kênh truyền",
+      none: "Không báo cáo",
+      credentialId: "ID thông tin xác thực",
+      copy: "Sao chép ID thông tin xác thực",
+      copied: "Đã sao chép",
+      discoverable: "Lưu trên khóa (discoverable)",
+      yes: "Có",
+      no: "Không",
+      unknown: "Không rõ",
+      checksLabel: "Kiểm tra",
+    },
+    checks: {
+      clientData: "Dữ liệu trình duyệt khớp với yêu cầu",
+      rpId: "Gắn với trang này",
+      signature: "Chữ ký hợp lệ",
+      userPresence: "Khóa báo đã được chạm (UP)",
+      credential: "Cùng passkey với lúc đăng ký",
+      counter: "Bộ đếm chữ ký đã tăng",
+      residentKey: "Được lưu trên khóa",
+    },
+    errors: {
+      cancelledOrTimeout: {
+        title: "Không có cú chạm, hoặc yêu cầu đã bị hủy",
+        what: "Trình duyệt báo yêu cầu đã hết thời gian hoặc bị hủy. Điều này xảy ra khi BOOT không được nhấn kịp lúc hoặc hộp thoại bị đóng.",
+        next: ["Chạy lại bài thử và nhấn BOOT khi trình duyệt yêu cầu.", "Nếu trình duyệt không hề yêu cầu, hãy kiểm tra khóa đã cắm vào cổng USB hoặc OTG chưa."],
+      },
+      alreadyRegistered: {
+        title: "Khóa đã có passkey này",
+        what: "Khóa cho biết nó đã giữ một passkey phù hợp.",
+        next: ["Dùng các bài thử đăng nhập, hoặc xóa passkey thử nghiệm cũ (xem Dọn dẹp) rồi đăng ký lại."],
+      },
+      notSupported: {
+        title: "Trình duyệt hoặc khóa không làm được việc này",
+        what: "Trình duyệt hoặc khóa không hỗ trợ loại passkey mà bài thử này yêu cầu (passkey ES256 lưu trên khóa).",
+        next: ["Dùng Chrome hoặc Edge bản mới cho máy tính.", "Kiểm tra khóa đang chạy firmware FIDO của MultiKeys."],
+      },
+      security: {
+        title: "Trình duyệt đã chặn trang này",
+        what: "Passkey chỉ hoạt động trên trang an toàn có địa chỉ khớp với trang mà passkey thuộc về.",
+        next: ["Mở trực tiếp https://multikeys.mewis.me, không dùng bản sao hay proxy."],
+      },
+      verification: {
+        title: "Câu trả lời của khóa không qua được một bước kiểm tra",
+        what: "Khóa đã trả lời, nhưng một giá trị nó trả về không thể đọc hoặc xác minh.",
+        next: ["Chạy lại bài thử.", "Nếu vẫn lỗi, hãy báo trên GitHub."],
+      },
+      unknown: {
+        title: "Bài thử không thành công",
+        what: "Trình duyệt báo một lỗi mà trang này không nhận ra.",
+        next: ["Rút khóa ra, cắm lại rồi chạy lại bài thử."],
+      },
+    },
+    cleanup: {
+      title: "Dọn dẹp",
+      intro: "Một trang web không thể xóa passkey khỏi khóa của bạn. Passkey thử nghiệm nằm trên khóa cho đến khi bạn tự xóa:",
+      windows: (os: ReactNode) => <>{os} Cài đặt → Tài khoản → Tùy chọn đăng nhập → Khóa bảo mật → Quản lý (mục này chỉ cho phép đặt lại toàn bộ khóa).</>,
+      chrome: (os: ReactNode) => <>{os} mở Cài đặt → Quyền riêng tư và bảo mật → Bảo mật → Quản lý khóa bảo mật → Dữ liệu đăng nhập.</>,
+      cli: (list: ReactNode, remove: ReactNode) => (
+        <>
+          Dòng lệnh: {list}, rồi {remove}. Cả hai đều hỏi mã PIN FIDO.
+        </>
+      ),
+    },
+    notSupported: {
+      title: "Trình duyệt này không hỗ trợ passkey",
+      text: "WebAuthn không có ở đây. Hãy dùng Chrome hoặc Edge bản mới trên máy tính.",
     },
   },
 

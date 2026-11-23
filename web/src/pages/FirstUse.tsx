@@ -1,8 +1,10 @@
+import { Link } from "react-router";
 import { ExperimentalNotice } from "@/components/common/ExperimentalNotice";
 import { KeyCheck } from "@/components/first-use/KeyCheck";
 import { RenameKey } from "@/components/first-use/RenameKey";
 import { Page } from "@/components/layout/Page";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useI18n } from "@/i18n/context";
 import { REPO_URL } from "@/lib/status";
@@ -65,6 +67,11 @@ export function FirstUsePage() {
       </Step>
       <Step n={5} title={f.rename.title} description={f.rename.text}>
         <RenameKey />
+      </Step>
+      <Step n={6} title={f.tryPasskeys.title} description={f.tryPasskeys.text}>
+        <Button asChild>
+          <Link to="/passkeys">{f.tryPasskeys.cta}</Link>
+        </Button>
       </Step>
       <Card>
         <CardHeader>
