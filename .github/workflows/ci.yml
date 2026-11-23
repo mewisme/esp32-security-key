@@ -111,3 +111,4 @@ jobs:
             if ($code -ne 2) { Write-Host "expected exit 2"; exit 1 }
             if ($out -notmatch 'ESP-IDF v5\.5\.x not found\. One-time setup: install ESP-IDF v5\.5\.6') { Write-Host "message missing"; exit 1 }
           }
+          exit 0
