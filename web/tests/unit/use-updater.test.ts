@@ -128,7 +128,7 @@ const keyBefore = (over: Partial<KeyState> = {}): KeyState => ({
 beforeAll(async () => {
   fx = await makeFirmware({ appOnly: true, version: "0.3.3", tag: "v0.3.3" });
   catalog = {
-    releases: [{ tag: "v0.3.3", name: "v0.3.3", prerelease: false, publishedAt: null, notesUrl: null, manifest: validateManifest(fx.manifest, "v0.3.3", false) }],
+    releases: [{ tag: "v0.3.3", name: "v0.3.3", prerelease: false, publishedAt: null, notesUrl: null, manifest: validateManifest(fx.manifest, "v0.3.3", false), authentication: { status: "unsigned" } }],
     rejected: [],
   };
   Object.assign(TIMING, { settleMs: 0, pauseMs: 0 });

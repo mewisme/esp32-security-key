@@ -1,0 +1,8 @@
+{
+ "_comment": "TEST ONLY. The seed is public and is not a MultiKeys release key. Produced by tools/sign_manifest.py; tests/release/test_sign_manifest.py checks it is still what the tool produces and web/tests/unit/signature.test.ts verifies it with the site's verifier.",
+ "seed_base64": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+ "public_base64": "A6EHv/POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg=",
+ "key_id": "test-vector-key",
+ "manifest": "{\n  \"schema_version\": 2,\n  \"tag\": \"v9.9.9\",\n  \"note\": \"test vector, not a release\"\n}\n",
+ "signature_file": "{\n  \"v\": 1,\n  \"alg\": \"ed25519\",\n  \"key_id\": \"test-vector-key\",\n  \"manifest_sha256\": \"6d361c01554e3b3e2ce0429caab66410fde43a3082d6d59c4672c8382ca94314\",\n  \"sig\": \"m8acwzk10jej9DUi0HUAsWJqykS9iGWW+YlfQZHeQY/8ku4RRRf4CZAbk/EjnfFUFILAOON2bFQnDP6Kk3TABg==\"\n}\n"
+}

@@ -1,5 +1,7 @@
 import { FirmwareError } from "../errors/firmware-error";
 import { validateManifest } from "./manifest";
+import type { ReleaseKey } from "./release-keys";
+import { type Authentication, authenticateManifest } from "./signature";
 import type { Build, Manifest } from "./types";
 import { compareSemver } from "./version";
 
@@ -10,6 +12,8 @@ export interface CatalogRelease {
   publishedAt: string | null;
   notesUrl: string | null;
   manifest: Manifest;
+  /** Whether the manifest carries a valid signature by a key built into the site; releases from before signing are `unsigned`. */
+  authentication: Authentication;
 }
 
 export interface Catalog {
@@ -26,7 +30,11 @@ interface ReleaseSummary {
   html_url: string | null;
 }
 
-export async function fetchCatalog(fetchImpl: typeof fetch = fetch): Promise<Catalog> {
+export async function fetchCatalog(
+  fetchImpl: typeof fetch = fetch,
+  /** Trust anchors; the built-in ones unless a test supplies its own. */
+  auth: { keys?: readonly ReleaseKey[]; requiredFrom?: string | null } = {},
+): Promise<Catalog> {
   let list: ReleaseSummary[];
   try {
     const res = await fetchImpl("/api/releases");
@@ -40,10 +48,24 @@ export async function fetchCatalog(fetchImpl: typeof fetch = fetch): Promise<Cat
   const results = await Promise.all(
     list.map(async (r): Promise<CatalogRelease | null> => {
       try {
-        const res = await fetchImpl(`/api/firmware/${encodeURIComponent(r.tag)}/firmware-manifest.json`);
+        const base = `/api/firmware/${encodeURIComponent(r.tag)}`;
+        const res = await fetchImpl(`${base}/firmware-manifest.json`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const manifest = validateManifest(await res.json(), r.tag);
-        return { tag: r.tag, name: r.name, prerelease: r.prerelease, publishedAt: r.published_at, notesUrl: r.html_url, manifest };
+        const bytes = new Uint8Array(await res.arrayBuffer());
+        // The signature is judged on the manifest's exact bytes before anything in it is trusted. Only a 404 means
+        // "this release has no signature"; any other failure to fetch it refuses the release instead of downgrading it.
+        const sigRes = await fetchImpl(`${base}/firmware-manifest.json.sig`);
+        if (!sigRes.ok && sigRes.status !== 404) throw new Error(`signature: HTTP ${sigRes.status}`);
+        const signature = sigRes.ok ? new Uint8Array(await sigRes.arrayBuffer()) : null;
+        const authentication = await authenticateManifest({ tag: r.tag, manifest: bytes, signature }, auth.keys, auth.requiredFrom);
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(new TextDecoder().decode(bytes));
+        } catch {
+          throw new FirmwareError("manifest-invalid", "firmware-manifest.json is not JSON");
+        }
+        const manifest = validateManifest(parsed, r.tag);
+        return { tag: r.tag, name: r.name, prerelease: r.prerelease, publishedAt: r.published_at, notesUrl: r.html_url, manifest, authentication };
       } catch (e) {
         rejected.push({ tag: r.tag, detail: e instanceof Error ? e.message : String(e) });
         return null;

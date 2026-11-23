@@ -1153,6 +1153,13 @@ export const vi: Messages = {
     "build-verified": "Đã kiểm chứng bản dựng — chưa thử trên phần cứng",
   },
 
+  authentication: {
+    row: "Chữ ký bản phát hành",
+    signed: "Đã ký",
+    unsigned: "Chưa xác thực",
+    unsignedNote: "Bản phát hành này không có chữ ký. Mã băm chỉ cho thấy các tệp khớp với manifest của nó, không cho biết ai đã phát hành.",
+  },
+
   levels: {
     "hardware-verified": "Đã kiểm chứng trên phần cứng",
     "build-verified": "Đã kiểm chứng bản dựng",

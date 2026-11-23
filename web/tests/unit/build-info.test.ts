@@ -87,7 +87,7 @@ describe("matchPublished", () => {
     const manifest = validateManifest(fw.manifest, fw.manifest.tag, false);
     const appSha: Record<string, string> = {};
     for (const b of manifest.builds) appSha[b.profile_id] = b.images.find((i) => i.role === "app")!.sha256;
-    return { list: [{ tag: manifest.tag, name: "r", prerelease: false, publishedAt: null, notesUrl: null, manifest }], appSha };
+    return { list: [{ tag: manifest.tag, name: "r", prerelease: false, publishedAt: null, notesUrl: null, manifest, authentication: { status: "unsigned" } }], appSha };
   }
 
   it("matches the app image of exactly one build, whatever the letter case", async () => {

@@ -32,6 +32,8 @@ export async function setupUpdate(
   await page.route("**/api/releases", (r) =>
     r.fulfill({ json: [{ tag: TAG, name: `MultiKeys ${TAG}`, prerelease: false, published_at: "2026-11-24T00:00:00Z", html_url: "https://example.invalid/notes" }] }),
   );
+  // Releases before signing have no signature file: the proxy answers 404 and the page marks them "Not authenticated".
+  await page.route("**/firmware-manifest.json.sig", (r) => r.fulfill({ status: 404, json: { error: "not_found" } }));
   await page.route(`**/api/firmware/${TAG}/firmware-manifest.json`, (r) => r.fulfill({ json: fw.manifest }));
   for (const [name, bytes] of fw.zips) {
     const zip = Buffer.from(bytes);

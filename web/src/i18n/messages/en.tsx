@@ -1173,6 +1173,15 @@ export const en = {
     "build-verified": "Build verified — not hardware tested",
   } satisfies Record<Support, string>,
 
+  // Whether a release's manifest carries a valid signature (installer and updater review tables).
+  authentication: {
+    row: "Release signature",
+    signed: "Signed",
+    unsigned: "Not authenticated",
+    unsignedNote:
+      "This release has no signature. Its checksums show that the files match its manifest, not who published it.",
+  },
+
   // The home page's compatibility table; rows mirror docs/HARDWARE.md.
   levels: {
     "hardware-verified": "Hardware verified",

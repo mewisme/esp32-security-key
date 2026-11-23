@@ -1,7 +1,7 @@
 // MultiKeys web installer Worker: static assets (handled by the platform) plus a read-only proxy for GitHub
 // release metadata and firmware assets, which GitHub serves without CORS headers. No secrets, no tokens; the only
 // user-controlled inputs are the two path segments validated in routes.ts.
-import { MAX_ASSET_BYTES, REPOSITORY, contentTypeFor, parseFirmwareRoute, parseReleasesAtom } from "./routes";
+import { MAX_ASSET_BYTES, REPOSITORY, cacheKeyUrl, contentTypeFor, parseFirmwareRoute, parseReleasesAtom } from "./routes";
 
 const JSON_HEADERS = { "Content-Type": "application/json", "Cache-Control": "no-store" };
 
@@ -9,9 +9,9 @@ function error(status: number, code: string): Response {
   return new Response(JSON.stringify({ error: code }), { status, headers: JSON_HEADERS });
 }
 
-async function cached(request: Request, ctx: ExecutionContext, produce: () => Promise<Response>): Promise<Response> {
+async function cached(keyUrl: string, ctx: ExecutionContext, produce: () => Promise<Response>): Promise<Response> {
   const cache = caches.default;
-  const key = new Request(new URL(request.url).toString(), { method: "GET" });
+  const key = new Request(keyUrl, { method: "GET" });
   const hit = await cache.match(key);
   if (hit) return hit;
   const res = await produce();
@@ -69,9 +69,9 @@ export default {
     const isFirmware = url.pathname.startsWith("/api/firmware/");
     if (!isReleases && !isFirmware) return error(404, "not_found");
     if (request.method !== "GET" && request.method !== "HEAD") return error(405, "method_not_allowed");
-    if (isReleases) return cached(request, ctx, releases);
+    if (isReleases) return cached(cacheKeyUrl(request.url, null), ctx, releases);
     const route = parseFirmwareRoute(url.pathname);
     if (!route) return error(400, "bad_request");
-    return cached(request, ctx, () => firmware(route.tag, route.asset));
+    return cached(cacheKeyUrl(request.url, route), ctx, () => firmware(route.tag, route.asset));
   },
 } satisfies ExportedHandler;

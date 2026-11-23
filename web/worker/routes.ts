@@ -7,7 +7,7 @@ export const MAX_ASSET_BYTES = 16 * 1024 * 1024;
 export const TAG_RE = /^v\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?$/;
 // `n16r8` is accepted only so the v0.2.0 assets (schema 1) stay downloadable; new releases name the flash size.
 export const ASSET_RE =
-  /^(firmware-manifest\.json|SHA256SUMS|multikey-firmware-v(?<version>\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)-esp32s3-(?<hw>n16r8|4mb|8mb|16mb)-(?<image>fido|openpgp)-dev\.zip)$/;
+  /^(firmware-manifest\.json|firmware-manifest\.json\.sig|SHA256SUMS|multikey-firmware-v(?<version>\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)-esp32s3-(?<hw>n16r8|4mb|8mb|16mb)-(?<image>fido|openpgp)-dev\.zip)$/;
 
 export type FirmwareRoute = { tag: string; asset: string };
 
@@ -30,8 +30,18 @@ export function parseFirmwareRoute(pathname: string): FirmwareRoute | null {
   return { tag, asset };
 }
 
+/**
+ * The cache key for a response: the origin plus the validated path, never the query string or fragment, so
+ * `/api/releases?x=1` and `/api/firmware/v1.2.3/SHA256SUMS?x=2` cannot each create another cache entry for the same
+ * content. `route` is the parsed firmware route, or null for `/api/releases`.
+ */
+export function cacheKeyUrl(requestUrl: string, route: FirmwareRoute | null): string {
+  const { origin } = new URL(requestUrl);
+  return route ? `${origin}/api/firmware/${route.tag}/${route.asset}` : `${origin}/api/releases`;
+}
+
 export function contentTypeFor(asset: string): string {
-  if (asset.endsWith(".json")) return "application/json";
+  if (asset.endsWith(".json") || asset.endsWith(".sig")) return "application/json";
   if (asset.endsWith(".zip")) return "application/zip";
   return "text/plain; charset=utf-8";
 }

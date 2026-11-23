@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseFirmwareRoute, parseReleasesAtom } from "../../worker/routes";
+import { cacheKeyUrl, contentTypeFor, parseFirmwareRoute, parseReleasesAtom } from "../../worker/routes";
 
 describe("parseFirmwareRoute", () => {
   it("allows the release assets", () => {
@@ -11,6 +11,14 @@ describe("parseFirmwareRoute", () => {
     expect(parseFirmwareRoute("/api/firmware/v0.3.0-rc.1/multikey-firmware-v0.3.0-rc.1-esp32s3-4mb-fido-dev.zip")).not.toBeNull();
     for (const hw of ["4mb", "8mb", "16mb"]) {
       expect(parseFirmwareRoute(`/api/firmware/v0.4.0/multikey-firmware-v0.4.0-esp32s3-${hw}-openpgp-dev.zip`)).not.toBeNull();
+    }
+  });
+
+  it("serves the detached manifest signature, as JSON, and nothing that merely ends in .sig", () => {
+    expect(parseFirmwareRoute("/api/firmware/v0.3.3/firmware-manifest.json.sig")).toEqual({ tag: "v0.3.3", asset: "firmware-manifest.json.sig" });
+    expect(contentTypeFor("firmware-manifest.json.sig")).toBe("application/json");
+    for (const p of ["/api/firmware/v0.3.3/other.sig", "/api/firmware/v0.3.3/firmware-manifest.json.sig.sig", "/api/firmware/v0.3.3/firmware-manifest.sig"]) {
+      expect(parseFirmwareRoute(p), p).toBeNull();
     }
   });
 
@@ -75,5 +83,23 @@ describe("parseReleasesAtom", () => {
     const xml = `<feed>${entry("nightly", "x")}${entry("..%2Fx", "y")}${entry("%E0%A4%A", "z")}</feed>`;
     expect(parseReleasesAtom(xml)).toEqual([]);
     expect(parseReleasesAtom("rate limited")).toEqual([]);
+  });
+});
+
+describe("cacheKeyUrl", () => {
+  it("is the origin plus the validated path: a query string or fragment never makes another entry", () => {
+    const route = parseFirmwareRoute("/api/firmware/v0.3.3/SHA256SUMS");
+    const plain = cacheKeyUrl("https://multikeys.example/api/firmware/v0.3.3/SHA256SUMS", route);
+    expect(plain).toBe("https://multikeys.example/api/firmware/v0.3.3/SHA256SUMS");
+    expect(cacheKeyUrl("https://multikeys.example/api/firmware/v0.3.3/SHA256SUMS?a=1&b=2", route)).toBe(plain);
+    expect(cacheKeyUrl("https://multikeys.example/api/firmware/v0.3.3/SHA256SUMS?cache=bust#x", route)).toBe(plain);
+    expect(cacheKeyUrl("https://multikeys.example/api/releases?x=1", null)).toBe("https://multikeys.example/api/releases");
+  });
+
+  it("keeps different origins and different assets apart", () => {
+    const a = parseFirmwareRoute("/api/firmware/v0.3.3/SHA256SUMS");
+    const b = parseFirmwareRoute("/api/firmware/v0.3.3/firmware-manifest.json");
+    expect(cacheKeyUrl("https://one.example/api/firmware/v0.3.3/SHA256SUMS", a)).not.toBe(cacheKeyUrl("https://two.example/api/firmware/v0.3.3/SHA256SUMS", a));
+    expect(cacheKeyUrl("https://one.example/api/firmware/v0.3.3/SHA256SUMS", a)).not.toBe(cacheKeyUrl("https://one.example/api/firmware/v0.3.3/firmware-manifest.json", b));
   });
 });

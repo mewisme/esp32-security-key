@@ -1,6 +1,7 @@
 import { Info, ShieldAlert, TriangleAlert } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router";
+import { ReleaseAuthentication } from "@/components/common/ReleaseAuthentication";
 import { Alert, AlertDescription, AlertTitle } from "@/components/reui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -79,6 +80,12 @@ export function ReviewStage({ inst, headingRef }: { inst: Installer; headingRef:
             <TableHead scope="row">{t.install.review.rows.compatibility}</TableHead>
             <TableCell className="whitespace-normal">
               <CompatibilityBadge support={support} />
+            </TableCell>
+          </TableRow>
+          <TableRow>
+            <TableHead scope="row">{t.authentication.row}</TableHead>
+            <TableCell className="whitespace-normal">
+              <ReleaseAuthentication authentication={release.authentication} />
             </TableCell>
           </TableRow>
           <TableRow>

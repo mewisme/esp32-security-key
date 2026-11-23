@@ -127,6 +127,9 @@ test("I: a board with the tested N16R8 configuration is not labelled hardware ve
   await expect(page.getByText(/Same configuration as the hardware-verified N16R8/).first()).toBeVisible();
   await expect(page.getByText("Hardware verified (ESP32-S3 N16R8)")).toHaveCount(0);
   await expect(page.getByLabel(/hasn't been tested with MultiKeys/)).toBeVisible();
+  // No release is signed yet: the review says so instead of implying the release is authenticated.
+  await expect(page.getByTestId("release-authentication")).toHaveAttribute("data-status", "unsigned");
+  await expect(page.getByText("Not authenticated")).toBeVisible();
   expect(downloads).toEqual(["multikey-firmware-v0.2.0-esp32s3-16mb-fido-dev.zip"]);
 });
 

@@ -34,6 +34,8 @@ export async function setup(
       ],
     }),
   );
+  // Releases before signing have no signature file: the proxy answers 404 and the page marks them "Not authenticated".
+  await page.route("**/firmware-manifest.json.sig", (r) => r.fulfill({ status: 404, json: { error: "not_found" } }));
   await page.route("**/api/firmware/v0.2.0/firmware-manifest.json", (r) => r.fulfill({ json: fw.manifest }));
   for (const e of extras) {
     const extra = await makeFirmware({ images: scenario.images, version: e.version });
