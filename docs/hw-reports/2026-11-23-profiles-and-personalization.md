@@ -89,7 +89,7 @@ board start with new name, but web return the boot button wasnot pressed in the 
 
 Read-only WebCCID probe over libusb (IccPowerOn, SELECT, name GET, GET_INFO, ten more GETs): every answer 9.9-10.1 ms.
 
-Write probe over libusb (`build-diag/webccid_write_probe.py`, not committed; round A without touching BOOT, B and C with a BOOT press at the cue).
+Write probe over libusb (a throwaway script of about 150 lines, not kept: it sends the web installer's APDUs in the same CCID framing; round A without touching BOOT, B and C with a BOOT press at the cue).
 Round B started from the default name, so it re-enumerated the key without changing the name; round C set "Mew's Security Key":
 
 ```
