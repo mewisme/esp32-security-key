@@ -1,0 +1,272 @@
+name: release
+
+# Builds the host-tool release assets (no firmware) and, only for a v* tag, publishes them as a GitHub Release.
+# Pull requests, pushes to main and manual runs build and verify everything but never reach the `release` job.
+on:
+  pull_request:
+    paths:
+      - 'host/**'
+      - 'tools/package_release.py'
+      - 'tools/gen_notices.py'
+      - 'tools/check_pe_imports.py'
+      - 'packaging/**'
+      - 'tests/release/**'
+      - 'LICENSE'
+      - '.github/workflows/release.yml'
+  # No path filter on push: GitHub's handling of paths together with tag filters is easy to get wrong, and a
+  # tag push must always build.
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  meta:
+    runs-on: ubuntu-22.04
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      is_release: ${{ steps.v.outputs.is_release }}
+      prerelease: ${{ steps.v.outputs.prerelease }}
+      source_date_epoch: ${{ steps.v.outputs.source_date_epoch }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Release script tests
+        run: python3 -m unittest discover tests/release
+      - name: Version, tag and notes consistency
+        id: v
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF: ${{ github.ref }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          version=$(cargo metadata --no-deps --locked --format-version 1 --manifest-path host/Cargo.toml | python3 -c '
+          import json, sys
+          pkgs = {p["name"]: p["version"] for p in json.load(sys.stdin)["packages"]}
+          want = ["multikey-proto", "multikey-host", "multikey-fido", "multikey-cli", "multikey-pam"]
+          missing = [n for n in want if n not in pkgs]
+          if missing:
+              sys.exit("missing workspace crates: %s" % missing)
+          versions = {pkgs[n] for n in want}
+          if len(versions) != 1:
+              sys.exit("workspace crate versions differ: %s" % {n: pkgs[n] for n in want})
+          print(versions.pop())
+          ')
+          version="${version%$'\r'}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          is_release=false
+          if [[ "$REF" == refs/tags/v* ]]; then
+            is_release=true
+            if ! [[ "$REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$ ]]; then
+              echo "tag $REF_NAME is not vMAJOR.MINOR.PATCH[-suffix]"; exit 1
+            fi
+            if [[ "${REF_NAME#v}" != "$version" ]]; then
+              echo "tag $REF_NAME does not match workspace version $version"; exit 1
+            fi
+            if [[ ! -f "docs/releases/v$version.md" ]]; then
+              echo "docs/releases/v$version.md (release notes) is missing"; exit 1
+            fi
+            if gh release view "$REF_NAME" >/dev/null 2>&1; then
+              echo "a release for $REF_NAME already exists; refusing to touch it"; exit 1
+            fi
+          fi
+          echo "is_release=$is_release" >> "$GITHUB_OUTPUT"
+          if [[ "$version" == *-* ]]; then echo "prerelease=true" >> "$GITHUB_OUTPUT"; else echo "prerelease=false" >> "$GITHUB_OUTPUT"; fi
+          echo "source_date_epoch=$(git log -1 --format=%ct)" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: meta
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-x86_64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            kind: cli
+            py: python
+          - name: linux-x86_64
+            os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            kind: cli
+            py: python3
+          - name: pam-linux-x86_64
+            os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            kind: pam
+            py: python3
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      VERSION: ${{ needs.meta.outputs.version }}
+      SOURCE_DATE_EPOCH: ${{ needs.meta.outputs.source_date_epoch }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+          components: clippy, rustfmt
+      - name: Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpcsclite-dev libpcsclite1 pcscd
+          if [[ "${{ matrix.kind }}" == "pam" ]]; then sudo apt-get install -y libpam0g-dev pamtester; fi
+      - name: Format, lint, test
+        working-directory: host
+        run: |
+          cargo fmt --check
+          cargo clippy --all-targets --locked --target ${{ matrix.target }} -- -D warnings
+          if [[ "${{ matrix.kind }}" == "pam" ]]; then
+            cargo test --locked --target ${{ matrix.target }} -p multikey-pam
+          else
+            cargo test --locked --target ${{ matrix.target }}
+          fi
+      - name: Build
+        working-directory: host
+        run: |
+          if [[ "${{ matrix.kind }}" == "pam" ]]; then
+            cargo build --release --locked --target ${{ matrix.target }} -p multikey-pam
+          else
+            cargo build --release --locked --target ${{ matrix.target }} -p multikey-cli
+          fi
+      - name: Third-party notices
+        run: ${{ matrix.py }} tools/gen_notices.py
+      - name: Package
+        run: |
+          set -euo pipefail
+          t=host/target/${{ matrix.target }}/release
+          case "${{ matrix.name }}" in
+            windows-x86_64)   args="--kind cli --os windows --binary $t/multikey.exe" ;;
+            linux-x86_64)     args="--kind cli --os linux --binary $t/multikey" ;;
+            pam-linux-x86_64) args="--kind pam --os linux --binary $t/libpam_multikey.so" ;;
+          esac
+          ${{ matrix.py }} tools/package_release.py $args --arch x86_64 --version "$VERSION" \
+            --out dist --source-date-epoch "$SOURCE_DATE_EPOCH"
+          test "$(ls dist | wc -l)" -eq 1
+          echo "ASSET=$(ls dist)" >> "$GITHUB_ENV"
+      - name: Verify the packaged artifact (not the build tree)
+        run: |
+          set -euo pipefail
+          rm -rf verify && mkdir verify
+          case "$ASSET" in
+            *.zip)    ${{ matrix.py }} -m zipfile -e "dist/$ASSET" verify ;;
+            *.tar.gz) tar -xzf "dist/$ASSET" -C verify ;;
+          esac
+          cd verify/*/
+          if [[ "${{ matrix.kind }}" == "cli" ]]; then
+            exe=./multikey; [[ "${{ runner.os }}" == "Windows" ]] && exe=./multikey.exe
+            out=$($exe --version); echo "$out"
+            [[ "$out" == "multikey $VERSION" ]] || { echo "version output '$out' != 'multikey $VERSION'"; exit 1; }
+            $exe --help >/dev/null
+            $exe device --help >/dev/null
+            $exe fido --help >/dev/null
+            $exe mkauth --help >/dev/null
+            $exe fido pin set --help >/dev/null
+          fi
+      - name: Windows - no Visual C++ runtime dependency
+        if: runner.os == 'Windows'
+        run: python tools/check_pe_imports.py verify/*/multikey.exe
+      - name: Linux CLI - shared libraries resolve
+        if: runner.os == 'Linux' && matrix.kind == 'cli'
+        run: |
+          ldd verify/*/multikey | tee ldd.txt
+          ! grep -q 'not found' ldd.txt
+      - name: PAM module - symbols, dependencies, load, fail-closed smoke
+        if: matrix.kind == 'pam'
+        run: |
+          set -euo pipefail
+          so="$(realpath verify/*/pam_multikey.so)"
+          readelf -d "$so" | tee needed.txt
+          grep -q 'libpam.so.0' needed.txt
+          grep -q 'libpcsclite.so.1' needed.txt
+          nm -D --defined-only "$so" | tee syms.txt
+          grep -q 'pam_sm_authenticate' syms.txt
+          grep -q 'pam_sm_setcred' syms.txt
+          python3 -c "import ctypes,sys; ctypes.CDLL(sys.argv[1]); print('dlopen ok')" "$so"
+          # The service file is removed again below (if: always()); no other PAM file is touched.
+          printf 'auth required %s\naccount required pam_permit.so\n' "$so" | sudo tee /etc/pam.d/multikey-ci >/dev/null
+          sudo systemctl stop pcscd.socket pcscd.service 2>/dev/null || true
+          set +e
+          out=$(pamtester multikey-ci "$USER" authenticate 2>&1 </dev/null); rc=$?
+          set -e
+          echo "$out"; echo "pamtester exit status: $rc"
+          if grep -qi 'undefined symbol' <<<"$out"; then echo "module failed to load"; exit 1; fi
+          if [[ $rc -ne 1 ]]; then echo "expected authentication failure (exit 1) without a key, got $rc"; exit 1; fi
+      - name: PAM smoke cleanup
+        if: always() && matrix.kind == 'pam'
+        run: sudo rm -f /etc/pam.d/multikey-ci
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: asset-${{ matrix.name }}
+          path: dist/${{ env.ASSET }}
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+  release:
+    needs: [meta, build]
+    if: needs.meta.outputs.is_release == 'true' && needs.build.result == 'success'
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.meta.outputs.version }}
+      PRERELEASE: ${{ needs.meta.outputs.prerelease }}
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: asset-windows-x86_64
+          path: dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: asset-linux-x86_64
+          path: dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: asset-pam-linux-x86_64
+          path: dist
+      - name: Exactly the expected assets, checksums
+        run: |
+          set -euo pipefail
+          cd dist
+          expected=$(printf '%s\n' \
+            "multikey-pam-v$VERSION-linux-x86_64.tar.gz" \
+            "multikey-v$VERSION-linux-x86_64.tar.gz" \
+            "multikey-v$VERSION-windows-x86_64.zip" | sort)
+          actual=$(ls -1 | sort)
+          if [[ "$expected" != "$actual" ]]; then
+            echo "asset set mismatch"; echo "expected:"; echo "$expected"; echo "actual:"; echo "$actual"; exit 1
+          fi
+          sha256sum multikey-* > SHA256SUMS
+          sha256sum -c SHA256SUMS
+          cat SHA256SUMS
+      - name: Create the GitHub Release
+        run: |
+          set -euo pipefail
+          flags=()
+          if [[ "$PRERELEASE" == "true" ]]; then flags+=(--prerelease); fi
+          gh release create "$TAG" dist/* --verify-tag --title "multikey $TAG" \
+            --notes-file "docs/releases/v$VERSION.md" "${flags[@]}"

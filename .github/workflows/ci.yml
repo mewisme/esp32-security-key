@@ -71,14 +71,39 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libpcsclite-dev
       - run: cargo fmt --check
         working-directory: host
-      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo clippy --all-targets --locked -- -D warnings
         working-directory: host
-      - run: cargo test
+      - run: cargo test --locked
         working-directory: host
       - name: PAM module builds and tests (Linux only)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get install -y libpam0g-dev
-          cargo build --release -p multikey-pam
-          cargo test -p multikey-pam
+          cargo build --release --locked -p multikey-pam
+          cargo test --locked -p multikey-pam
         working-directory: host
+
+  flash-script:
+    # Hardware-free checks of the Windows flash script and its Python safety logic.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Python unit tests (flash safety logic, USB descriptor tool, release packaging)
+        run: |
+          python -m unittest discover tests/flash
+          python -m unittest discover tests/release
+      - name: flash-dev.ps1 -Help
+        shell: pwsh
+        run: |
+          ./tools/flash-dev.ps1 -Help | Out-Null
+          if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne $null) { exit 1 }
+      - name: Missing ESP-IDF stops with the one-time-setup message (exit 2)
+        shell: pwsh
+        run: |
+          foreach ($extra in @(@(), @('-App', 'openpgp'))) {
+            $out = & ./tools/flash-dev.ps1 -DryRun -IdfPath C:\nonexistent @extra 2>&1 | Out-String
+            if ($LASTEXITCODE -ne 2) { Write-Error "expected exit 2, got $LASTEXITCODE"; exit 1 }
+            if ($out -notmatch 'ESP-IDF v5\.5\.x not found\. One-time setup: install ESP-IDF v5\.5\.6') { Write-Error "message missing: $out"; exit 1 }
+          }

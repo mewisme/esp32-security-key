@@ -7,6 +7,8 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub enum Error {
     #[error("no matching smart-card reader / device found")]
     NoDevice,
+    #[error("several devices match; choose one with --device N, --reader or --hid-path:\n{}", .0.join("\n"))]
+    Ambiguous(Vec<String>),
     #[error("PC/SC service unavailable: {0}")]
     NoService(String),
     #[error("device was removed or reset during the operation")]

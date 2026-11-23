@@ -5,9 +5,15 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+rust-version.workspace = true
+
+[features]
+# Device inventory (FIDO HID + PC/SC pairing). Off by default so the PAM module does not link HID code.
+inventory = ["dep:multikey-fido"]
 
 [dependencies]
 multikey-proto.workspace = true
+multikey-fido = { workspace = true, optional = true }
 pcsc = "2"
 getrandom = "0.2"
 subtle = "2"

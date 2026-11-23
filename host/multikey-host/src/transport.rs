@@ -63,7 +63,7 @@ impl PcscTransport {
     }
 }
 
-fn matches_reader(name: &str, wanted: Option<&str>) -> bool {
+pub(crate) fn matches_reader(name: &str, wanted: Option<&str>) -> bool {
     let n = name.to_lowercase();
     match wanted {
         Some(w) => name == w || n.contains(&w.to_lowercase()),

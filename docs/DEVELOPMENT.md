@@ -65,3 +65,16 @@ vectors in `host/multikey-proto/tests/vectors.json`.
 `cd host && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test` (+ `cargo test -p multikey-pam`).
 `tools/run_emulation_tests.sh` (WSL/Linux) runs the FIDO UV-policy suite against the patched pico-fido emulation build.
 The firmware itself has no on-target unit tests; hardware procedures are in TESTING.md.
+
+### Current stacked patches
+
+`patches/pico-keys-sdk/0001-0004` (board/LED/VID-PID/user presence, no automatic eFuse writes, USB identity, WebUSB landing page) and
+`patches/pico-fido/0001-0003` (user presence, project AAGUID, makeCredUvNotRqd default). A new patch is generated from the submodule after
+`git -C <sub> add -A` as the baseline (the diff then contains only the new edits), then `git -C <sub> reset -q`.
+
+## Script and packaging tests (no hardware)
+
+```
+python -m unittest discover tests/flash      # flash_dev.py safety logic, USB descriptor tool
+python -m unittest discover tests/release    # archives, notices, PE import checker
+```

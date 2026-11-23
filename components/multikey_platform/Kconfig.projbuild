@@ -117,6 +117,26 @@ menu "MultiKey board and USB identity"
             credentials, PINs, VID/PID or the AAGUID. When disabled, the name is fixed at build
             time and INS 06 is rejected.
 
+    config MULTIKEY_WEBUSB_LANDING_ENABLED
+        bool "Advertise a WebUSB landing page"
+        default y
+        help
+            Adds the WebUSB platform capability to the BOS descriptor and answers the WebUSB GET_URL
+            request with MULTIKEY_WEBUSB_LANDING_URL. Chrome-based browsers may then offer a
+            notification linking to that page when the key is plugged in. Disable to drop the WebUSB
+            capability entirely (the Microsoft OS 2.0 descriptor that binds WinUSB to the CCID
+            interface stays).
+
+    config MULTIKEY_WEBUSB_LANDING_URL
+        string "WebUSB landing page URL"
+        default "https://github.com/mewisme/esp32-security-key"
+        depends on MULTIKEY_WEBUSB_LANDING_ENABLED
+        help
+            Must start with https:// followed by 1..200 printable ASCII characters without spaces
+            (percent-encode anything else). WebUSB only supports http/https; http is not accepted here.
+            This is only a link shown by the browser: the device does not fetch it and it grants the
+            page no access to the key.
+
     config MULTIKEY_AAGUID
         string "FIDO AAGUID (32 hex digits) (DEVELOPMENT VALUE)"
         default "0a63b9948ba65e749e5a0f894cc35c4d"

@@ -68,6 +68,22 @@ Protocol: MKAUTH INS `06` (docs/PROTOCOLS.md). Properties:
   are stored there. Nothing in this test required clearing it. If a tool still shows an old name, unplug and replug (or
   `multikey device reenumerate`), and as a last resort remove the device instance in Device Manager.
 
+## WebUSB landing page
+
+The BOS descriptor advertises a WebUSB landing page so Chromium-based browsers can show a notification that links to the project page
+when the key is plugged in. It is only a link: the device never fetches it and the page gets no access to the key.
+
+| Kconfig | Default | Meaning |
+|---|---|---|
+| `MULTIKEY_WEBUSB_LANDING_ENABLED` | `y` | `n` removes the WebUSB capability from the BOS descriptor (BOS 33 bytes, 1 capability; the Microsoft OS 2.0 descriptor that binds WinUSB stays) |
+| `MULTIKEY_WEBUSB_LANDING_URL` | `https://github.com/mewisme/esp32-security-key` | must be `https://` plus 1..200 printable ASCII characters without spaces; `http://` is rejected at configure time |
+
+Enabled, the BOS is 57 bytes with 2 capabilities (5 header + 24 WebUSB + 28 Microsoft OS 2.0). The WebUSB `GET_URL` request is
+answered only for `wValue == 1` (iLandingPage) and `wIndex == 2`; anything else stalls. Previously the firmware advertised upstream's
+`www.picokeys.com`. Check a build with `python tools/check_usb_descriptors.py` (static, prints the expected descriptor) and a running key
+with `python tools/check_usb_descriptors.py --live` (read-only requests; needs pyusb/libusb access to the WinUSB interface). The static check
+is verified on both configurations; the live check and the browser notification have not been run on hardware.
+
 ## FIDO authenticator identity (AAGUID and attestation)
 
 - Before this change the key reported **Pico FIDO's AAGUID** `89fb94b7-06c9-3673-9b7e-30526d968145` (first 16 bytes of

@@ -3,3 +3,6 @@
 fido2>=2.0,<3
 esptool>=4.7
 cryptography>=42
+# Only for tools/check_usb_descriptors.py --live (read-only USB requests)
+pyusb>=1.2
+libusb-package>=1.0

@@ -15,3 +15,6 @@ sdkconfig.*.old
 *.key
 signing*.bin
 .venv/
+dist/
+THIRD_PARTY_LICENSES.txt
+sdkconfig.*.generated

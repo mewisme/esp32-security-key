@@ -1,0 +1,13 @@
+[package]
+name = "multikey-fido"
+description = "FIDO2/CTAP2 management (info, PIN, credential management) for the multikey tool"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+ctap-hid-fido2 = "=3.6.1"
+serde = { version = "1", features = ["derive"] }
+thiserror = "1"

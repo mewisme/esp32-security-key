@@ -29,3 +29,19 @@ if(DEFINED CONFIG_MULTIKEY_AAGUID)
         message(FATAL_ERROR "CONFIG_MULTIKEY_AAGUID is upstream Pico FIDO's AAGUID. Do not reuse another project's identifier.")
     endif()
 endif()
+
+# WebUSB landing page URL: https only, printable ASCII without spaces, 1..200 characters after the scheme
+# (the descriptor stores the scheme in bScheme and the rest as bytes; bLength must stay <= 255).
+if(DEFINED CONFIG_MULTIKEY_WEBUSB_LANDING_ENABLED AND DEFINED CONFIG_MULTIKEY_WEBUSB_LANDING_URL)
+    set(_mk_url "${CONFIG_MULTIKEY_WEBUSB_LANDING_URL}")
+    if(NOT _mk_url MATCHES "^https://[!-~]+$")
+        message(FATAL_ERROR
+            "CONFIG_MULTIKEY_WEBUSB_LANDING_URL=\"${_mk_url}\" is invalid: it must be https:// followed by "
+            "printable ASCII without spaces (percent-encode other characters).")
+    endif()
+    string(LENGTH "${_mk_url}" _mk_url_len)
+    math(EXPR _mk_url_tail "${_mk_url_len} - 8")
+    if(_mk_url_tail GREATER 200)
+        message(FATAL_ERROR "CONFIG_MULTIKEY_WEBUSB_LANDING_URL is too long (${_mk_url_tail} > 200 characters after https://).")
+    endif()
+endif()
