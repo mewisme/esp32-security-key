@@ -70,7 +70,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.firmware == 'true' || startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
-    container: espressif/idf:v5.5.6
+    container: espressif/idf:v5.5.6@sha256:bf72fe7a15c22849a9a94147301165a545fb8905d97c176cf748e3e4614cac84
     strategy:
       fail-fast: false
       matrix:

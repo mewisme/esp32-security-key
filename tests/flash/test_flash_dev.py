@@ -1,3 +1,4 @@
+import hashlib
 import json
 import sys
 import unittest
@@ -18,8 +19,8 @@ def entry(label, typ, sub, off, size):
 def table(part0=(0x200000, 0x100000), nvs=(0x11000, 0x6000), phy=(0x17000, 0x1000), end=True):
     t = entry("nvs", 1, 2, *nvs) + entry("phy_init", 1, 1, *phy) + entry("factory", 0, 0, 0x20000, 0x1E0000) + \
         entry("part0", 0x40, 1, *part0)
-    if end:
-        t += b"\xeb\xeb" + b"\xff" * 30
+    if end:  # ESP-IDF's end entry: magic, padding, MD5 of the entries before it
+        t += b"\xeb\xeb" + b"\xff" * 14 + hashlib.md5(t).digest()
     return t.ljust(fd.PARTITION_TABLE_LEN, b"\xff")
 
 
@@ -89,7 +90,7 @@ class DeviceTable(unittest.TestCase):
         self.assertIn("part0", detail)
 
     def test_resized_nvs(self):
-        self.assertEqual(fd.parse_device_table(table(nvs=(0x11000, 0x8000)), PARTS)[0], "mismatch")
+        self.assertEqual(fd.parse_device_table(table(nvs=(0x11000, 0x5000)), PARTS)[0], "mismatch")
 
     def test_garbage(self):
         self.assertEqual(fd.parse_device_table(bytes(range(256)) * 12, PARTS)[0], "garbage")

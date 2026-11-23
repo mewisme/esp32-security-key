@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { type AppUpdateInput, decideAppUpdate, type PendingUpdate } from "@/lib/flashing/app-update";
 import { md5Hex } from "@/lib/flashing/md5";
-import { appImage, type FirmwareFixture, makeFirmware, partitionTable } from "../fixtures/firmware";
+import { appImage, entry, type FirmwareFixture, makeFirmware, partitionTable } from "../fixtures/firmware";
 
 let fx: FirmwareFixture;
 let appOnly: FirmwareFixture;
@@ -31,11 +31,7 @@ function input(over: Partial<AppUpdateInput> = {}, installed = "0.3.1"): AppUpda
 
 /** The table with the `factory` entry's size replaced. */
 function withFactorySize(size: number): Uint8Array {
-  const t = partitionTable();
-  for (let at = 0; at + 32 <= t.length; at += 32) {
-    if (new TextDecoder().decode(t.subarray(at + 12, at + 19)) === "factory") new DataView(t.buffer).setUint32(at + 8, size, true);
-  }
-  return t;
+  return partitionTable({ factorySize: size });
 }
 
 const summary = (d: ReturnType<typeof decideAppUpdate>) => ({ outcome: d.outcome, reason: d.reason, allowed: d.allowed, writes: d.writes.map((w) => w.offset) });
@@ -120,10 +116,23 @@ describe("decideAppUpdate", () => {
     expect(summary(decideAppUpdate(input({ build })))).toEqual({ outcome: "release-unsupported", reason: "release-unsupported", allowed: false, writes: [] });
   });
 
-  it("refuses an app image larger than the device's app partition", () => {
-    expect(summary(decideAppUpdate(input({ table: withFactorySize(0x1000) })))).toEqual({
-      outcome: "incompatible", reason: "app-too-large", allowed: false, writes: [],
-    });
+  it("refuses a device whose app partition is smaller than this release's, as a layout difference", () => {
+    const d = decideAppUpdate(input({ table: withFactorySize(0x1000) }));
+    expect(summary(d)).toEqual({ outcome: "incompatible", reason: "layout", allowed: false, writes: [] });
+    expect(d.detail).toContain("factory");
+  });
+
+  it("refuses a table with an extra partition even when every protected partition matches", () => {
+    const extra = entry("extra", 1, 6, 0x300000, 0x1000);
+    const d = decideAppUpdate(input({ table: partitionTable({ extra: [extra] }) }));
+    expect(summary(d)).toEqual({ outcome: "incompatible", reason: "layout", allowed: false, writes: [] });
+    expect(d.detail).toContain("extra");
+  });
+
+  it("refuses a table whose checksum entry does not match, as not a MultiKeys table", () => {
+    const t = partitionTable();
+    t[4 * 32 + 20] = ~t[4 * 32 + 20]! & 0xff;
+    expect(decideAppUpdate(input({ table: t })).outcome).toBe("not-multikeys");
   });
 
   it("refuses an app image above the policy size limit", () => {

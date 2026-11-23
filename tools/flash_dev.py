@@ -206,14 +206,60 @@ def parse_app_descriptor(blob: bytes) -> dict | None:
             "date": cstr(96, 16), "idf_ver": cstr(112, 32)}
 
 
-def parse_device_table(blob: bytes, parts: dict) -> tuple[str, str]:
-    """Judge the partition table read from the device. Returns (status, detail); status is
-    'blank' | 'match' | 'mismatch' | 'garbage'. Only blank and match allow flashing."""
+TABLE_SECTOR = 0x1000
+
+# ESP-IDF partition type and subtype names (gen_esp32part.py) that the layouts here may use; mirrors
+# web/src/lib/flashing/partition-table.ts.
+_TYPE_CODES = {"app": 0x00, "data": 0x01}
+_SUBTYPE_CODES = {
+    "app": {"factory": 0x00, "test": 0x20},
+    "data": {"ota": 0x00, "phy": 0x01, "nvs": 0x02, "coredump": 0x03, "nvs_keys": 0x04, "efuse": 0x05, "undefined": 0x06},
+}
+
+
+def _code(value: str, names: dict | None) -> int | None:
+    if re.fullmatch(r"0x[0-9a-fA-F]+|\d+", value):
+        return int(value, 0)
+    return (names or {}).get(value)
+
+
+def _flash_bytes(flash_size: str | None) -> int | None:
+    m = re.fullmatch(r"(\d+)MB", flash_size or "")
+    return int(m.group(1)) * 1024 * 1024 if m else None
+
+
+def layout_difference(entries: dict, parts: dict) -> str | None:
+    """None when the device table equals the build layout entry for entry (names, type, subtype, offset, size, nothing
+    extra); otherwise the first difference. This is the question the application-only update asks."""
+    for name, w in parts.items():
+        g = entries.get(name)
+        if g is None:
+            return f"the device table has no {name} partition"
+        typ = _code(w["type"], _TYPE_CODES)
+        sub = None if typ is None else _code(w["subtype"], _SUBTYPE_CODES.get(w["type"]))
+        if typ is None or sub is None:
+            return f"{name} has a type this check cannot compare ({w['type']}/{w['subtype']})"
+        if g["type"] != typ or g["subtype"] != sub:
+            return f"{name} on the device has another type or subtype than this firmware"
+        if g["offset"] != w["offset"] or g["size"] != w["size"]:
+            return (f"{name} on the device is [{g['offset']:#x}, size {g['size']:#x}] but this firmware expects "
+                    f"[{w['offset']:#x}, size {w['size']:#x}]")
+    for name in entries:
+        if name not in parts:
+            return f"the device table has a partition this firmware does not define ({name})"
+    return None
+
+
+def judge_device_table(blob: bytes, parts: dict, flash_size: str | None = None) -> tuple[str, str, bool | None, str | None]:
+    """Judge the partition table read from the device. Returns (status, detail, exact, layout_detail).
+    status is 'blank' | 'match' | 'mismatch' | 'garbage'. 'match' means the protected partitions are where this build
+    expects them (a full install may then rewrite the rest); `exact` (only for 'match') says the whole table equals the
+    build layout. A table that is not well formed is 'garbage'. Same vectors as the web installer."""
     if not blob:
-        return "garbage", "no data read"
+        return "garbage", "no data read", None, None
     if set(blob) == {0xFF}:
-        return "blank", "flash is blank, nothing to preserve"
-    entries = {}
+        return "blank", "flash is blank, nothing to preserve", None, None
+    entries: dict = {}
     pos = 0
     saw_end = False
     while pos + 32 <= len(blob):
@@ -224,28 +270,60 @@ def parse_device_table(blob: bytes, parts: dict) -> tuple[str, str]:
             off = int.from_bytes(e[4:8], "little")
             size = int.from_bytes(e[8:12], "little")
             label = e[12:28].split(b"\x00", 1)[0].decode("ascii", "replace")
+            if label in entries:
+                return "garbage", f"the partition name {label} appears twice", None, None
             entries[label] = {"type": typ, "subtype": sub, "offset": off, "size": size}
-        elif e[:2] == b"\xeb\xeb" or set(e) == {0xFF}:
+        elif e[:2] == b"\xeb\xeb":
+            # ESP-IDF's checksum entry: the MD5 of every entry before it.
+            if e[16:32] != hashlib.md5(blob[:pos - 32]).digest():
+                return "garbage", "the partition table checksum does not match its entries", None, None
+            saw_end = True
+            break
+        elif set(e) == {0xFF}:
             saw_end = True
             break
         else:
-            return "garbage", f"unrecognised entry at table offset {pos - 32:#x}"
+            return "garbage", f"unrecognised entry at table offset {pos - 32:#x}", None, None
     if not entries or not saw_end:
-        return "garbage", "partition table is not terminated or empty"
+        return "garbage", "partition table is not terminated or empty", None, None
+    if set(blob[pos:]) - {0xFF}:
+        return "garbage", "there is data after the end of the partition table", None, None
+    first = PARTITION_TABLE_OFFSET + TABLE_SECTOR
+    limit = _flash_bytes(flash_size) or 0x1_0000_0000
+    for name, g in entries.items():
+        if g["size"] == 0:
+            return "garbage", f"{name} has size 0", None, None
+        if g["offset"] < first:
+            return "garbage", f"{name} starts inside the bootloader or the partition table ({g['offset']:#x})", None, None
+        if g["offset"] + g["size"] > limit:
+            return "garbage", f"{name} ends at {g['offset'] + g['size']:#x}, beyond the flash", None, None
+    ordered = sorted(entries.items(), key=lambda kv: kv[1]["offset"])
+    for (an, a), (bn, b) in zip(ordered, ordered[1:]):
+        if a["offset"] + a["size"] > b["offset"]:
+            return "garbage", f"{an} overlaps {bn}", None, None
     for name in PROTECTED:
         want = parts.get(name)
         got = entries.get(name)
         if want is None:
-            return "mismatch", f"partitions.csv has no {name}"
+            return "mismatch", f"partitions.csv has no {name}", None, None
         if got is None:
-            return "mismatch", f"device table has no {name} partition"
+            return "mismatch", f"device table has no {name} partition", None, None
         if got["offset"] != want["offset"] or got["size"] != want["size"]:
             return "mismatch", (f"{name} on the device is [{got['offset']:#x}, size {got['size']:#x}] but this build "
-                                f"expects [{want['offset']:#x}, size {want['size']:#x}]")
-    p0 = entries[CREDENTIAL_PARTITION["name"]]
-    if p0["type"] != CREDENTIAL_PARTITION["type"] or p0["subtype"] != CREDENTIAL_PARTITION["subtype"]:
-        return "mismatch", "part0 on the device has an unexpected type/subtype"
-    return "match", "device partition table matches this build"
+                                f"expects [{want['offset']:#x}, size {want['size']:#x}]"), None, None
+    p0 = entries.get(CREDENTIAL_PARTITION["name"])
+    if p0 is None or p0["type"] != CREDENTIAL_PARTITION["type"] or p0["subtype"] != CREDENTIAL_PARTITION["subtype"]:
+        return "mismatch", "part0 on the device has an unexpected type/subtype", None, None
+    difference = layout_difference(entries, parts)
+    if difference is None:
+        return "match", "device partition table matches this build", True, None
+    return "match", "the protected partitions match, but the layout is not identical to this build", False, difference
+
+
+def parse_device_table(blob: bytes, parts: dict, flash_size: str | None = None) -> tuple[str, str]:
+    """(status, detail) of judge_device_table. Only blank and match allow flashing."""
+    status, detail, _exact, _layout = judge_device_table(blob, parts, flash_size)
+    return status, detail
 
 
 def classify_port(vid: int, pid: int, name: str = "") -> str:
@@ -503,7 +581,7 @@ def run_flash(args: argparse.Namespace) -> int:
         if r.returncode != 0 or not tmp.is_file():
             raise Stop(EXIT_STORAGE, "could not read the device partition table; credential preservation cannot be "
                                      "established; no flash performed")
-        status, detail = parse_device_table(tmp.read_bytes(), parts)
+        status, detail = parse_device_table(tmp.read_bytes(), parts, profile(args.hw)["flash_size"])
     finally:
         tmp.unlink(missing_ok=True)
     if status not in ("blank", "match"):

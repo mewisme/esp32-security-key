@@ -1,6 +1,33 @@
 import { describe, expect, it } from "vitest";
 import { parsePartitionTable } from "@/lib/flashing/partition-table";
+import type { ManifestPartition } from "@/lib/firmware/types";
+import vectorsJson from "../../../tests/vectors/partition_tables.json" with { type: "json" };
 import { PARTITIONS, partitionTable } from "../fixtures/firmware";
+
+interface Vectors {
+  pad_to: number;
+  flash_size: string;
+  layout: ManifestPartition[];
+  cases: { id: string; why: string; table_hex: string; pad: boolean; status: string; exact?: boolean }[];
+}
+
+// The same file is judged by tools/flash_dev.py in tests/flash/test_partition_vectors.py.
+const vectors = vectorsJson as Vectors;
+
+describe("shared partition table vectors", () => {
+  for (const c of vectors.cases) {
+    it(`${c.id}: ${c.why}`, () => {
+      const bytes = Uint8Array.from(c.table_hex.match(/../g) ?? [], (h) => parseInt(h, 16));
+      const blob = c.pad ? Uint8Array.from({ length: vectors.pad_to }, (_, i) => bytes[i] ?? 0xff) : bytes;
+      const r = parsePartitionTable(blob, vectors.layout, undefined, vectors.flash_size);
+      expect(r.status, r.detail).toBe(c.status);
+      if (c.exact !== undefined) {
+        expect(r.exact, r.layoutDetail).toBe(c.exact);
+        expect(r.layoutDetail === undefined).toBe(c.exact);
+      }
+    });
+  }
+});
 
 // Same vectors as tests/flash/test_flash_dev.py (DeviceTable).
 describe("parsePartitionTable", () => {
@@ -32,8 +59,6 @@ describe("parsePartitionTable", () => {
   });
 
   it("part0 with the wrong type -> mismatch", () => {
-    const t = partitionTable();
-    t[3 * 32 + 2] = 0x01;
-    expect(parsePartitionTable(t, PARTITIONS).status).toBe("mismatch");
+    expect(parsePartitionTable(partitionTable({ part0Type: 0x01 }), PARTITIONS).status).toBe("mismatch");
   });
 });

@@ -39,7 +39,8 @@ def entry(label, typ, sub, off, size):
 def ptable(part0_off=0x200000):
     t = entry("nvs", 1, 2, 0x11000, 0x6000) + entry("phy_init", 1, 1, 0x17000, 0x1000) + \
         entry("factory", 0, 0, 0x20000, 0x1E0000) + entry("part0", 0x40, 1, part0_off, 0x100000)
-    return (t + b"\xeb\xeb" + b"\xff" * 30).ljust(0xC00, b"\xff")
+    # ESP-IDF's end entry: magic, padding, MD5 of the entries before it
+    return (t + b"\xeb\xeb" + b"\xff" * 14 + hashlib.md5(t).digest()).ljust(0xC00, b"\xff")
 
 
 def image_header(flash_size="16MB", mode=2, freq=0xF):

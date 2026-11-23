@@ -203,7 +203,7 @@ export function useInstaller(): Installer {
       const tableBlob = await d.readFlash(policy.partition_table.offset, policy.partition_table.read_length);
       const appBlob = await d.readFlash(policy.app_descriptor.offset - APP_DESC_IMAGE_OFFSET, policy.app_descriptor.read_length);
       const decision = decideInstallMode({
-        table: parsePartitionTable(tableBlob, b.partitions),
+        table: parsePartitionTable(tableBlob, b.partitions, policy, b.flash_size),
         app: parseAppDescriptor(appBlob),
         build: b,
         untestedHardware: !BOARD_IDENTITY_VERIFIED,

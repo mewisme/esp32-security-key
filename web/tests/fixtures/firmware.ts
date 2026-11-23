@@ -2,6 +2,7 @@
 import { zipSync } from "fflate";
 import { FALLBACK_DEFAULT_NAME } from "../../src/lib/device/device-name";
 import { type HardwareProfile, policy } from "../../src/lib/firmware/policy";
+import { md5Hex } from "../../src/lib/flashing/md5";
 import type { Build, Manifest, ManifestPartition } from "../../src/lib/firmware/types";
 
 export const PARTITIONS: ManifestPartition[] = [
@@ -14,7 +15,7 @@ export const PARTITIONS: ManifestPartition[] = [
 const LAYOUT_ID = "mk16-6cd2ee28a4a9";
 const SIZE_CODE: Record<string, number> = { "4MB": 2, "8MB": 3, "16MB": 4 };
 
-function entry(label: string, type: number, subtype: number, offset: number, size: number): Uint8Array {
+export function entry(label: string, type: number, subtype: number, offset: number, size: number): Uint8Array {
   const e = new Uint8Array(32);
   const v = new DataView(e.buffer);
   e.set([0xaa, 0x50, type, subtype]);
@@ -25,17 +26,24 @@ function entry(label: string, type: number, subtype: number, offset: number, siz
 }
 
 /** A partition table as stored at 0x8000 (0xC00 bytes, 0xFF padded). */
-export function partitionTable(opts: { part0Offset?: number; terminated?: boolean } = {}): Uint8Array {
+export function partitionTable(
+  opts: { part0Offset?: number; part0Type?: number; factorySize?: number; terminated?: boolean; checksum?: boolean; extra?: Uint8Array[] } = {},
+): Uint8Array {
   const out = new Uint8Array(0xc00).fill(0xff);
   const rows = [
     entry("nvs", 1, 2, 0x11000, 0x6000),
     entry("phy_init", 1, 1, 0x17000, 0x1000),
-    entry("factory", 0, 0, 0x20000, 0x1e0000),
-    entry("part0", 0x40, 1, opts.part0Offset ?? 0x200000, 0x100000),
+    entry("factory", 0, 0, 0x20000, opts.factorySize ?? 0x1e0000),
+    entry("part0", opts.part0Type ?? 0x40, 1, opts.part0Offset ?? 0x200000, 0x100000),
+    ...(opts.extra ?? []),
   ];
   rows.forEach((r, i) => out.set(r, i * 32));
   if (opts.terminated !== false) {
+    // ESP-IDF's end entry: magic, 0xFF padding, then the MD5 of every entry before it.
+    if (opts.checksum === false) return out; // no checksum entry: the table ends with 0xFF
     out.set([0xeb, 0xeb], rows.length * 32);
+    const digest = md5Hex(out.subarray(0, rows.length * 32));
+    out.set(Uint8Array.from(digest.match(/../g)!, (h) => parseInt(h, 16)), rows.length * 32 + 16);
   } else {
     // fill the remainder with valid-looking entries so no terminator is ever seen
     for (let i = rows.length; i < 0xc00 / 32; i++) out.set(entry(`x${i}`, 1, 1, 0x300000 + i * 0x1000, 0x1000), i * 32);

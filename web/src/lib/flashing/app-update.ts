@@ -139,12 +139,14 @@ export function decideAppUpdate(input: AppUpdateInput): AppUpdateDecision {
     return refuse("release-unsupported", "release-unsupported", `app image is larger than ${rule.max_size} bytes`);
   }
 
-  // 2. The device layout must be this release's layout, with the app partition where the image goes.
-  const table = parsePartitionTable(input.table, build.partitions, p);
+  // 2. The device layout must be this release's layout entry for entry (not merely compatible in its protected
+  //    partitions), with the app partition where the image goes.
+  const table = parsePartitionTable(input.table, build.partitions, p, build.flash_size);
   if (table.status === "blank" || table.status === "garbage") {
     return refuse("not-multikeys", "not-multikeys", table.detail);
   }
   if (table.status !== "match" || !table.entries) return refuse("incompatible", "layout", table.detail);
+  if (!table.exact) return refuse("incompatible", "layout", table.layoutDetail ?? table.detail);
   const factory = table.entries.get(APP_PARTITION);
   if (!factory || factory.type !== 0 || factory.offset !== appImage.offset) {
     return refuse("incompatible", "layout", `the device has no app partition "${APP_PARTITION}" at 0x${appImage.offset.toString(16)}`);

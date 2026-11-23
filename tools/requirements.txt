@@ -1,8 +1,26 @@
 # Host-side test/inspection tools. Install into a venv: python -m venv .venv && .venv/bin/pip install -r tools/requirements.txt
-# Checked against fido2 2.2.1 and esptool 5.6.0 (the latter provides the read-only `espefuse` used by provision_check.py).
-fido2>=2.0,<3
-esptool>=4.7
-cryptography>=42
+# Every line is an exact == pin (tools/check_pins.py enforces this): the five direct dependencies, then the transitive
+# closure they resolved to on 2026-11-23 (fido2 2.2.1, esptool 5.6.0). Update procedure: docs/DEPENDENCIES.md.
+# esptool also provides the read-only `espefuse` used by provision_check.py.
+fido2==2.2.1
+esptool==5.6.0
+cryptography==50.0.2
 # Only for tools/check_usb_descriptors.py --live (read-only USB requests)
-pyusb>=1.2
-libusb-package>=1.0
+pyusb==1.3.1
+libusb-package==1.0.30.1
+# transitive
+cffi==2.1.1
+click==8.5.1
+colorama==0.4.6
+esp-pylib==1.2.1
+importlib_resources==7.1.0
+intelhex==2.3.0
+markdown-it-py==4.3.0
+mdurl==0.1.2
+pycparser==3.12
+Pygments==2.21.0
+pyserial==3.5
+PyYAML==6.0.4
+reedsolo==1.7.0
+rich==15.0.0
+rich-click==1.9.9
