@@ -168,3 +168,10 @@ same commit (warm caches) and the tag run (cold, no caches) produced byte-identi
 Windows archive differs: 24 of 2,458,112 bytes of `multikey.exe`, the first being the PE link timestamp (offset 0x118); the others, from
 0x20dc94, were not identified. The published firmware zips were not flashed on a board (the hardware runs used a local build of the same
 sources, version stamp `0.2.0-dev`).
+
+v0.3.1 (tag on commit `46a4698`, `release` run 45164624117, published 2026-11-23 11:27 UTC as Stable and Latest): every job of the tag run
+passed. Checked on the published assets: 8 files; `sha256sum -c SHA256SUMS` OK; `package_firmware.py verify` OK for the three zips; in each
+zip the app descriptor says `0.3.1`, the stamped source commit is `46a469886a47` (no `+dirty`: the build container checks out cleanly) and
+the SHA-256 of `multikey-fido.bin` equals the manifest's app-image hash. Production (`multikeys.mewis.me`) lists v0.3.1, v0.3.0 and v0.2.0
+and returns the v0.3.1 16 MB zip byte for byte. Not done: flashing a published v0.3.1 zip on a board (the hardware run used a local build of
+the same sources), and a reproducibility comparison against the `main` run.
