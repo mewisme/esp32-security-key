@@ -91,18 +91,74 @@ describe("decideAppUpdate", () => {
     expect(decideAppUpdate(input({ bootHeader: new Uint8Array(16).fill(0xff) })).reason).toBe("unreadable-bootloader");
   });
 
-  it("refuses an unreadable descriptor unless an interrupted write is on record", () => {
+  it("refuses an unreadable descriptor when no interrupted write is on record", () => {
     expect(summary(decideAppUpdate(input({ appDesc: new Uint8Array(256), installedAppMd5: null })))).toEqual({
       outcome: "unknown", reason: "unreadable-descriptor", allowed: false, writes: [],
     });
-    const pending: PendingUpdate = {
-      project: "multikey-fido", fromVersion: "0.3.1", toVersion: "0.3.3", tag: "v0.3.3", profileId: "esp32s3-16mb", appSha256: "0".repeat(64), startedAt: "2026-11-24T00:00:00Z",
+  });
+
+  describe("recovery of an interrupted write", () => {
+    const MAC = "80:b5:4e:c8:22:78";
+    const NOW = Date.parse("2026-11-24T12:00:00Z");
+    const unreadable = (pending: PendingUpdate | null, over: Partial<AppUpdateInput> = {}) => {
+      const i = input({ appDesc: new Uint8Array(256), installedAppMd5: null });
+      return decideAppUpdate({ ...i, pending, chipMac: MAC, now: NOW, ...over });
     };
-    const d = decideAppUpdate(input({ appDesc: new Uint8Array(256), installedAppMd5: null, pending }));
-    expect(summary(d)).toEqual({ outcome: "repair", reason: "interrupted-write", allowed: true, writes: [0x20000] });
-    expect(d.acks).toEqual(["update-confirm", "repair-typed"]);
-    const other = decideAppUpdate(input({ appDesc: new Uint8Array(256), installedAppMd5: null, pending: { ...pending, profileId: "esp32s3-4mb" } }));
-    expect(other.outcome).toBe("unknown");
+    const record = (over: Partial<PendingUpdate> = {}): PendingUpdate => {
+      const sha = input().build.images.find((x) => x.role === "app")!.sha256;
+      return {
+        v: 2, project: "multikey-fido", imageFamily: "fido", fromVersion: "0.3.1", toVersion: "0.3.3", tag: "v0.3.3",
+        profileId: "esp32s3-16mb", appSha256: sha, chipMac: MAC, startedAt: new Date(NOW - 3_600_000).toISOString(), ...over,
+      };
+    };
+    const refused = (d: ReturnType<typeof unreadable>) => {
+      expect(summary(d)).toEqual({ outcome: "unknown", reason: "recovery-unverified", allowed: false, writes: [] });
+      return d.detail;
+    };
+
+    it("repairs a chip it saw the write start on, for the same release and image, after REPAIR is typed", () => {
+      const d = unreadable(record());
+      expect(summary(d)).toEqual({ outcome: "repair", reason: "interrupted-write", allowed: true, writes: [0x20000] });
+      expect(d.acks).toEqual(["update-confirm", "repair-typed"]);
+    });
+
+    it("matches the MAC regardless of letter case", () => {
+      expect(unreadable(record({ chipMac: MAC.toUpperCase() })).allowed).toBe(true);
+    });
+
+    it("refuses a record from an older page that did not name the chip (legacy v1)", () => {
+      expect(refused(unreadable(record({ v: 1, imageFamily: null, chipMac: null })))).toContain("older version");
+    });
+
+    it("refuses a stale record", () => {
+      expect(refused(unreadable(record({ startedAt: new Date(NOW - 8 * 24 * 3_600_000).toISOString() })))).toContain("older than 7 days");
+      expect(refused(unreadable(record({ startedAt: "yesterday" })))).toContain("no valid date");
+      expect(refused(unreadable(record({ startedAt: new Date(NOW + 3_600_000).toISOString() })))).toContain("older than 7 days or has no valid date");
+    });
+
+    it("refuses a record whose application hash is not the one offered (modified or other image)", () => {
+      expect(refused(unreadable(record({ appSha256: "0".repeat(64) })))).toContain("choose that release");
+    });
+
+    it("refuses a record for another release", () => {
+      expect(refused(unreadable(record({ tag: "v0.3.2" })))).toContain("v0.3.2");
+    });
+
+    it("refuses a record for another board profile or image family", () => {
+      refused(unreadable(record({ profileId: "esp32s3-4mb" })));
+      refused(unreadable(record({ imageFamily: "openpgp" })));
+      refused(unreadable(record({ project: "multikey-openpgp" })));
+    });
+
+    it("refuses a different chip", () => {
+      expect(refused(unreadable(record({ chipMac: "80:b5:4e:c8:22:79" })))).toContain("not the chip");
+    });
+
+    it("refuses when either MAC is unknown", () => {
+      expect(refused(unreadable(record({ chipMac: null })))).toContain("MAC address could not be read");
+      expect(refused(unreadable(record(), { chipMac: null }))).toContain("MAC address could not be read");
+      expect(refused(unreadable(record(), { chipMac: undefined }))).toContain("MAC address could not be read");
+    });
   });
 
   it("repairs when the same version holds different content", () => {
@@ -164,7 +220,14 @@ describe("decideAppUpdate", () => {
   it("every allowed decision writes only the app region, clear of the bootloader, the table and every protected partition", () => {
     const cases: AppUpdateInput[] = [
       input(), input({}, "0.3.0-dev"), input({ installedAppMd5: "0".repeat(32) }, "0.3.3"),
-      input({ appDesc: new Uint8Array(256), pending: { project: "multikey-fido", fromVersion: null, toVersion: "0.3.3", tag: "v0.3.3", profileId: "esp32s3-16mb", appSha256: "", startedAt: "" } }),
+      input({
+        appDesc: new Uint8Array(256), chipMac: "80:b5:4e:c8:22:78", now: Date.parse("2026-11-24T12:00:00Z"),
+        pending: {
+          v: 2, project: "multikey-fido", imageFamily: "fido", fromVersion: null, toVersion: "0.3.3", tag: "v0.3.3", profileId: "esp32s3-16mb",
+          appSha256: appOnly.builds.find((b) => b.image === "fido" && b.profile_id === "esp32s3-16mb")!.images.find((x) => x.role === "app")!.sha256,
+          chipMac: "80:b5:4e:c8:22:78", startedAt: "2026-11-24T11:00:00Z",
+        },
+      }),
     ];
     for (const c of cases) {
       const d = decideAppUpdate(c);

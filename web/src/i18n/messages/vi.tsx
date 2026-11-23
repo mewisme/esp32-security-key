@@ -717,7 +717,7 @@ export const vi: Messages = {
         ok: { title: "Cập nhật tương thích", text: "Bản phát hành này khai báo có thể dùng dữ liệu do phiên bản đang cài lưu. Chỉ ứng dụng bị thay thế." },
         "interrupted-write": {
           title: "Một lần cập nhật trước chưa hoàn tất",
-          text: "Trình duyệt này đã ghi nhận một lần ghi ứng dụng được bắt đầu nhưng chưa được xác minh. Ghi lại ứng dụng sẽ sửa lỗi này. Không ghi gì khác.",
+          text: "Trình duyệt này đã ghi nhận một lần ghi ứng dụng của chính bản phát hành này được bắt đầu nhưng chưa được xác minh, trên chip có cùng địa chỉ MAC với chip này. Ghi lại ứng dụng sẽ sửa lỗi này. Không ghi gì khác.",
         },
         "same-version-different-image": {
           title: "Cùng phiên bản, nội dung khác",
@@ -766,12 +766,17 @@ export const vi: Messages = {
           title: "Không đọc được ứng dụng đang cài",
           text: "Khóa không có mô tả ứng dụng đọc được. Việc này có thể xảy ra sau khi ghi bị gián đoạn, nhưng trình duyệt này không có ghi nhận nào như vậy, nên chưa ghi gì.",
         },
+        "recovery-unverified": {
+          title: "Không gắn được việc khôi phục với chip này",
+          text: "Khóa không có ứng dụng đọc được, và trình duyệt này có ghi nhận một lần ghi bị gián đoạn. Ghi nhận đó không khớp với chip, bản phát hành và ảnh firmware này, nên chưa ghi gì. Trang này không liên kết được khóa đang chạy với chip đang ở chế độ nạp (download mode), nên chỉ sửa chip mà nó đã thấy lần ghi bắt đầu. Để khôi phục, hãy dùng trình cài đặt: nó thay firmware sau khi bạn xác nhận, giữ nguyên vùng lưu trữ của khóa khi bảng phân vùng còn nguyên vẹn và cảnh báo khi không. Nếu ghi nhận đã cũ hoặc thuộc khóa khác, hãy bỏ nó.",
+        },
         "unparsable-version": {
           title: "Phiên bản đang cài không phải số phiên bản",
           text: "Không thể so sánh với bản phát hành này, nên không chứng minh được tính tương thích. Chưa ghi gì.",
         },
       },
       openInstaller: "Mở trình cài đặt",
+      discardRecord: "Bỏ ghi nhận và bắt đầu lại",
       seeReleases: "Xem các bản phát hành",
       before: {
         legend: "Trước khi cập nhật",

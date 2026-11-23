@@ -139,6 +139,11 @@ export function ReviewStage({ up, headingRef }: { up: Updater; headingRef: React
               <Link to="/releases">{r.seeReleases}</Link>
             </Button>
           )}
+          {decision.reason === "recovery-unverified" && (
+            <Button type="button" variant="outline" onClick={() => void actions.discardPending()}>
+              {r.discardRecord}
+            </Button>
+          )}
         </AlertDescription>
       </Alert>
 

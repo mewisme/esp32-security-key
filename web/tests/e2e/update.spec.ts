@@ -136,6 +136,22 @@ test("after an interrupted write the unreadable application is repaired, with RE
   expect(await pending(page)).toBeNull();
 });
 
+test("a record that names another chip is not used to repair, and can be discarded", async ({ page }) => {
+  await setupUpdate(page, () => ({ device: "fido-garbled" }), { pendingRecord: true, pendingOverride: { chipMac: "80:b5:4e:c8:22:79" } });
+  await page.goto("/update");
+  await page.getByRole("button", { name: "Continue without reading the key" }).click();
+  await next(page).click();
+  await next(page).click();
+  await page.getByRole("button", { name: "Choose device" }).click();
+  await expect(page.getByTestId("update-outcome")).toHaveAttribute("data-reason", "recovery-unverified");
+  await expect(page.getByRole("button", { name: "Update application" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Open the installer" })).toBeVisible();
+  expect(await flashWrites(page)).toEqual([]);
+  expect(await pending(page)).not.toBeNull();
+  await page.getByRole("button", { name: "Discard the record and start over" }).click();
+  expect(await pending(page)).toBeNull();
+});
+
 test("an unreadable application with no record is not touched", async ({ page }) => {
   await setupUpdate(page, () => ({ device: "fido-garbled" }));
   await page.goto("/update");

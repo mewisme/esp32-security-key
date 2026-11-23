@@ -732,7 +732,7 @@ export const en = {
         ok: { title: "Compatible update", text: "This release declares that it can use the data stored by the installed version. Only the application is replaced." },
         "interrupted-write": {
           title: "An earlier update did not finish",
-          text: "This browser recorded an application write that was started and never verified. Writing the application again repairs it. Nothing else is written.",
+          text: "This browser recorded an application write of this same release that was started and never verified, on a chip with the same MAC address as this one. Writing the application again repairs it. Nothing else is written.",
         },
         "same-version-different-image": {
           title: "Same version, different content",
@@ -781,12 +781,17 @@ export const en = {
           title: "The installed application could not be read",
           text: "The key has no readable application description. That can follow an interrupted write, but this browser has no record of one, so nothing was written.",
         },
+        "recovery-unverified": {
+          title: "Recovery cannot be tied to this chip",
+          text: "The key has no readable application, and this browser has a record of an interrupted write. That record cannot be matched to this chip, release and image, so nothing was written. This page can't link the running key to the chip in download mode, so it only repairs a chip it saw the write start on. To recover, use the installer: it replaces the firmware after you confirm, keeps the key storage when the partition table is intact, and warns when it is not. If the record is old or belongs to another key, discard it.",
+        },
         "unparsable-version": {
           title: "The installed version is not a version number",
           text: "It cannot be compared with this release, so compatibility cannot be shown. Nothing was written.",
         },
       } satisfies Record<AppUpdateReason, { title: string; text: string }>,
       openInstaller: "Open the installer",
+      discardRecord: "Discard the record and start over",
       seeReleases: "See releases",
       before: {
         legend: "Before updating",

@@ -39,6 +39,7 @@ export type AppUpdateReason =
   | "release-unsupported"
   | "unreadable-bootloader"
   | "unreadable-descriptor"
+  | "recovery-unverified"
   | "unparsable-version";
 
 export type UpdateAckId = "update-confirm" | "untested-hardware" | "experimental-image" | "repair-typed";
@@ -47,15 +48,56 @@ export type UpdateAckId = "update-confirm" | "untested-hardware" | "experimental
 export const UPDATE_TYPED_ACKS = { "repair-typed": "REPAIR" } as const;
 export type TypedUpdateAckId = keyof typeof UPDATE_TYPED_ACKS;
 
-/** Written before the app write starts and removed after the flash MD5 matched: its presence means a write may be incomplete. */
+/**
+ * Written before the app write starts and removed after the flash MD5 matched: its presence means a write may be
+ * incomplete. `v` 2 records name the chip (ROM-mode MAC), the release and the exact application image; `v` 1 records
+ * (older pages) do not, so they are kept only to be reported and discarded, never used to justify a repair.
+ */
 export interface PendingUpdate {
+  v: 1 | 2;
   project: string;
+  imageFamily: "fido" | "openpgp" | null;
   fromVersion: string | null;
   toVersion: string;
   tag: string;
   profileId: string;
   appSha256: string;
+  /** ROM-mode MAC of the chip the write started on; null when it could not be read (then no recovery is offered). */
+  chipMac: string | null;
   startedAt: string;
+}
+
+/** A record older than this no longer describes the key on the desk. */
+export const PENDING_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+export type PendingCheck = { ok: true } | { ok: false; detail: string };
+
+/**
+ * Whether an interrupted-write record may justify rewriting an application that cannot be read. It must be a current
+ * record for exactly this release, image family, profile and application SHA-256, made on a chip whose ROM-mode MAC
+ * equals the one read now. The running firmware's WebUSB identity is not linked to the ROM MAC, so this proves
+ * "the same chip as when the write started" as far as a MAC does (it is not a secret), and nothing when either MAC is
+ * unknown; those cases are refused and the person is sent to the installer.
+ */
+export function checkPending(
+  pending: PendingUpdate,
+  build: Build,
+  tag: string,
+  appSha256: string,
+  chipMac: string | null,
+  now: number,
+): PendingCheck {
+  const no = (detail: string): PendingCheck => ({ ok: false, detail });
+  if (pending.v !== 2) return no("the record was written by an older version of this page and does not identify the chip");
+  const age = now - Date.parse(pending.startedAt);
+  if (!Number.isFinite(age) || age < 0 || age > PENDING_MAX_AGE_MS) return no("the record is older than 7 days or has no valid date");
+  if (pending.project !== build.project_name || pending.imageFamily !== build.image || pending.profileId !== build.profile_id) {
+    return no(`the record is for ${pending.project} (${pending.profileId}), not for ${build.project_name} (${build.profile_id})`);
+  }
+  if (pending.tag !== tag || pending.appSha256 !== appSha256) return no(`the record is for ${pending.tag}; choose that release to recover`);
+  if (pending.chipMac === null || chipMac === null) return no("the chip's MAC address could not be read, so it cannot be matched to the interrupted write");
+  if (pending.chipMac.toLowerCase() !== chipMac.toLowerCase()) return no("the chip in download mode is not the chip the interrupted write started on");
+  return { ok: true };
 }
 
 /** What the running firmware told the page over WebUSB before the key was put into download mode. */
@@ -96,6 +138,10 @@ export interface AppUpdateInput {
   /** Release tag the build comes from (the manifest's `tag`). */
   tag: string;
   pending?: PendingUpdate | null;
+  /** MAC address of the chip in ROM download mode right now (esptool), or null when it could not be read. */
+  chipMac?: string | null;
+  /** Clock for the age of the pending record (milliseconds since the epoch); defaults to Date.now(). */
+  now?: number;
   baseline?: UpdateBaseline | null;
   /** The board's flash size is not hardware verified (4 and 8 MB): the person must acknowledge it first. */
   untestedHardware?: boolean;
@@ -181,14 +227,15 @@ export function decideAppUpdate(input: AppUpdateInput): AppUpdateDecision {
   // 5. The installed app: valid descriptor, a MultiKeys image, the family of this build, the key that was inspected.
   const inst = installed.version;
   if (!desc || !inst) {
-    const interrupted = pending !== null && pending.project === build.project_name && pending.profileId === build.profile_id;
-    if (!interrupted) return refuse("unknown", "unreadable-descriptor", "the installed application has no readable descriptor");
+    if (pending === null) return refuse("unknown", "unreadable-descriptor", "the installed application has no readable descriptor");
+    const check = checkPending(pending, build, input.tag, appImage.sha256, input.chipMac ?? null, input.now ?? Date.now());
+    if (!check.ok) return refuse("unknown", "recovery-unverified", check.detail);
     return {
       mode: "app-only-update",
       outcome: "repair",
       allowed: true,
       reason: "interrupted-write",
-      detail: "an earlier application write did not finish",
+      detail: "an earlier application write of this release did not finish on this chip",
       acks: acksFor("repair", build, untestedHardware),
       writes: [appWrite(appImage)],
       installed,

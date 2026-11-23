@@ -10,10 +10,15 @@ export const OLD_SHA = "11".repeat(32);
 export async function setupUpdate(
   page: Page,
   scenarioOf: (fw: FirmwareFixture) => Scenario,
-  opts: { appOnly?: boolean; pendingRecord?: boolean } = {},
+  opts: { appOnly?: boolean; pendingRecord?: boolean; pendingOverride?: Record<string, unknown> } = {},
 ): Promise<FirmwareFixture> {
   const fw = await makeFirmware({ appOnly: opts.appOnly ?? true, version: "0.3.3", tag: TAG });
-  const record = { project: "multikey-fido", fromVersion: "0.3.1", toVersion: "0.3.3", tag: TAG, profileId: "esp32s3-16mb", appSha256: "0".repeat(64), startedAt: "2026-11-24T00:00:00Z" };
+  const appSha256 = fw.manifest.builds.find((b) => b.image === "fido" && b.profile_id === "esp32s3-16mb")!.images.find((i) => i.role === "app")!.sha256;
+  // The interrupted-write record the page itself writes (version 2): the same release and image, on the fake board's MAC.
+  const record = {
+    v: 2, project: "multikey-fido", imageFamily: "fido", fromVersion: "0.3.1", toVersion: "0.3.3", tag: TAG, profileId: "esp32s3-16mb", appSha256,
+    chipMac: "80:b5:4e:c8:22:78", startedAt: new Date().toISOString(), ...opts.pendingOverride,
+  };
   await page.addInitScript(
     ([s, rec]) => {
       localStorage.setItem("multikeys-e2e-scenario", JSON.stringify(s));

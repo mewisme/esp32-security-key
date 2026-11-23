@@ -81,7 +81,7 @@ class FakeDriver implements FlashDriver {
   }
   requestPort = () => Promise.resolve({ usbVendorId: 0x303a, usbProductId: 0x1001 });
   connect = (): Promise<ChipInfo> =>
-    Promise.resolve({ chipName: "ESP32-S3", description: "", features: ["Embedded PSRAM 8MB (AP_3v3)"], mac: null, flashSize: "16MB", flashType: "quad", secureDownloadMode: false });
+    Promise.resolve({ chipName: "ESP32-S3", description: "", features: ["Embedded PSRAM 8MB (AP_3v3)"], mac: MAC, flashSize: "16MB", flashType: "quad", secureDownloadMode: false });
   readFlash(offset: number, length: number) {
     const out = new Uint8Array(length).fill(0xff);
     for (const [at, data] of this.flash) {
@@ -114,6 +114,8 @@ class FakeDriver implements FlashDriver {
   }
   log = () => [];
 }
+
+const MAC = "80:b5:4e:c8:22:78";
 
 let fx: FirmwareFixture;
 let catalog: Catalog;
@@ -171,7 +173,7 @@ describe("useUpdater", () => {
 
     await run(() => result.current.actions.confirm(["update-confirm", "untested-hardware"]));
     expect(driver.writes).toEqual([0x20000]);
-    expect(driver.pendingDuringWrite).toMatchObject({ project: "multikey-fido", toVersion: "0.3.3", fromVersion: "0.3.1" });
+    expect(driver.pendingDuringWrite).toMatchObject({ v: 2, project: "multikey-fido", imageFamily: "fido", toVersion: "0.3.3", fromVersion: "0.3.1", chipMac: MAC });
     expect(loadPending()).toBeNull();
     expect(result.current.state.phase).toBe("awaiting-replug");
     expect(driver.flash.get(0x20000)).toEqual(fx.images.app);
@@ -259,7 +261,11 @@ describe("useUpdater", () => {
     expect(plain.current.state.decision).toMatchObject({ outcome: "unknown", allowed: false });
     expect(driver.writes).toEqual([]);
 
-    const record: PendingUpdate = { project: "multikey-fido", fromVersion: "0.3.1", toVersion: "0.3.3", tag: "v0.3.3", profileId: "esp32s3-16mb", appSha256: "0".repeat(64), startedAt: "2026-11-24T00:00:00Z" };
+    const appSha256 = catalog.releases[0]!.manifest.builds.find((x) => x.image === "fido" && x.profile_id === "esp32s3-16mb")!.images.find((i) => i.role === "app")!.sha256;
+    const record: PendingUpdate = {
+      v: 2, project: "multikey-fido", imageFamily: "fido", fromVersion: "0.3.1", toVersion: "0.3.3", tag: "v0.3.3", profileId: "esp32s3-16mb",
+      appSha256, chipMac: MAC, startedAt: new Date().toISOString(),
+    };
     localStorage.setItem(PENDING_KEY, JSON.stringify(record));
     const { result } = renderHook(() => useUpdater());
     await toReview(result, false);
@@ -268,5 +274,38 @@ describe("useUpdater", () => {
     expect(driver.writes).toEqual([]);
     await run(() => result.current.actions.confirm(["update-confirm", "untested-hardware", "repair-typed"]));
     expect(driver.writes).toEqual([0x20000]);
+  });
+
+  describe("an interrupted-write record that does not fit this chip", () => {
+    const appSha256 = () => catalog.releases[0]!.manifest.builds.find((x) => x.image === "fido" && x.profile_id === "esp32s3-16mb")!.images.find((i) => i.role === "app")!.sha256;
+    const seed = (over: Partial<PendingUpdate>) => {
+      const record: PendingUpdate = {
+        v: 2, project: "multikey-fido", imageFamily: "fido", fromVersion: "0.3.1", toVersion: "0.3.3", tag: "v0.3.3", profileId: "esp32s3-16mb",
+        appSha256: appSha256(), chipMac: MAC, startedAt: new Date().toISOString(), ...over,
+      };
+      localStorage.setItem(PENDING_KEY, JSON.stringify(record));
+    };
+
+    it("is refused for another chip, with nothing written, and can be discarded", async () => {
+      installed("", { desc: new Uint8Array(0x20000).fill(0xff) });
+      seed({ chipMac: "80:b5:4e:c8:22:79" });
+      const { result } = renderHook(() => useUpdater());
+      await toReview(result, false);
+      expect(result.current.state.decision).toMatchObject({ outcome: "unknown", reason: "recovery-unverified", allowed: false });
+      expect(driver.writes).toEqual([]);
+      await run(() => result.current.actions.discardPending());
+      expect(loadPending()).toBeNull();
+      expect(result.current.state.pending).toBeNull();
+    });
+
+    it("is refused when it was written by an older page (no `v`), which does not name the chip", async () => {
+      installed("", { desc: new Uint8Array(0x20000).fill(0xff) });
+      localStorage.setItem(PENDING_KEY, JSON.stringify({ project: "multikey-fido", fromVersion: "0.3.1", toVersion: "0.3.3", tag: "v0.3.3", profileId: "esp32s3-16mb", appSha256: appSha256(), startedAt: new Date().toISOString() }));
+      expect(loadPending()).toMatchObject({ v: 1, chipMac: null });
+      const { result } = renderHook(() => useUpdater());
+      await toReview(result, false);
+      expect(result.current.state.decision).toMatchObject({ reason: "recovery-unverified", allowed: false });
+      expect(driver.writes).toEqual([]);
+    });
   });
 });

@@ -134,6 +134,8 @@ export interface UpdaterActions {
   verifyDevice(): Promise<void>;
   skipVerify(): void;
   reset(): Promise<void>;
+  /** Deletes the interrupted-write record, then starts over. */
+  discardPending(): Promise<void>;
   loadCatalog(): void;
   setRelease(tag: string): void;
 }
@@ -167,6 +169,8 @@ export function useUpdater(): Updater {
   const conn = useRef<KeyConnection | null>(null);
   const data = useRef<{ app: Uint8Array; offset: number } | null>(null);
   const disconnected = useRef(false);
+  /** ROM-mode MAC of the chip connected for this update; null when esptool could not read it. */
+  const chipMac = useRef<string | null>(null);
   const unlisten = useRef<(() => void) | null>(null);
   const patch = useCallback((p: Partial<UpdateState>) => dispatch({ type: "patch", patch: p }), []);
 
@@ -298,6 +302,7 @@ export function useUpdater(): Updater {
       });
       phase = "connecting";
       const chip = await d.connect();
+      chipMac.current = chip.mac;
       phase = "detecting-chip";
       if (chip.secureDownloadMode) throw new FirmwareError("secure-download-mode", "secure download mode is enabled");
       phase = "checking-flash-safety";
@@ -328,6 +333,7 @@ export function useUpdater(): Updater {
         build: target.build,
         tag: target.release.tag,
         pending: state.pending,
+        chipMac: chipMac.current,
         baseline: baselineOf(state.baseline),
         untestedHardware: !BOARD_IDENTITY_VERIFIED,
       });
@@ -357,6 +363,7 @@ export function useUpdater(): Updater {
           build: target.build,
           tag: target.release.tag,
           pending: state.pending,
+          chipMac: chipMac.current,
           baseline: baselineOf(state.baseline),
           untestedHardware: !BOARD_IDENTITY_VERIFIED,
         });
@@ -371,12 +378,15 @@ export function useUpdater(): Updater {
         }
         const app = target.build.images.find((i) => i.role === "app")!;
         const record: PendingUpdate = {
+          v: 2,
           project: target.build.project_name,
+          imageFamily: target.build.image,
           fromVersion: again.installed.version,
           toVersion: target.build.version,
           tag: target.release.tag,
           profileId: target.build.profile_id,
           appSha256: app.sha256,
+          chipMac: chipMac.current,
           startedAt: new Date().toISOString(),
         };
         savePending(record);
@@ -454,6 +464,12 @@ export function useUpdater(): Updater {
     dispatch({ type: "reset" });
   }, [closeDriver, closeKey]);
 
+  /** Forgets an interrupted-write record that cannot be used (older format, other chip or release, or too old). */
+  const discardPending = useCallback(async () => {
+    clearPending();
+    await reset();
+  }, [reset]);
+
   useEffect(
     () => () => {
       unlisten.current?.();
@@ -470,6 +486,6 @@ export function useUpdater(): Updater {
     latest,
     offers,
     selected,
-    actions: { inspect, skipInspect, toCheck, toReview, back, choosePort, confirm, verifyDevice, skipVerify, reset, loadCatalog, setRelease },
+    actions: { inspect, skipInspect, toCheck, toReview, back, choosePort, confirm, verifyDevice, skipVerify, reset, discardPending, loadCatalog, setRelease },
   };
 }
