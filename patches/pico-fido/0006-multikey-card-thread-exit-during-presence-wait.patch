@@ -1,0 +1,30 @@
+diff --git a/src/fido/fido.c b/src/fido/fido.c
+index a9fd22e..085c4c7 100644
+--- a/src/fido/fido.c
++++ b/src/fido/fido.c
+@@ -577,10 +577,24 @@ int wait_button_pressed_timeout(uint32_t timeout_seconds) {
+         event_send(OP_USER_PRESENCE, RC_NONE, fields, fields_len);
+     }
+     uint32_t val = EV_PRESS_BUTTON_WITH_TIMEOUT(timeout_seconds);
+-#if defined(PICO_PLATFORM) || defined(ESP_PLATFORM)
++#ifdef ENABLE_EMULATION
++    /* Emulation only waits when PICOKEYS_EMULATION_UP_TIMEOUT asks for it (virtual button, never pressed). */
++    if (timeout_seconds == 0 && !force_button_wait) {
++        return 0;
++    }
++#endif
++#if defined(PICO_PLATFORM) || defined(ESP_PLATFORM) || defined(ENABLE_EMULATION)
+     queue_try_add(&card_to_usb_q, &val);
+     do {
+         queue_remove_blocking(&usb_to_card_q, &val);
++        if (val == EV_EXIT) {
++            /* MultiKeys: the host is tearing this card thread down (CTAPHID_INIT). Stop waiting, disarm the
++             * button wait and hand EV_EXIT back so the thread loop sees it. Upstream dropped it here, which left
++             * card_exit() blocked until the process was reset. */
++            queue_try_add(&usb_to_card_q, &val);
++            button_wait_abort();
++            return 2;
++        }
+     } while (val != EV_BUTTON_PRESSED && val != EV_BUTTON_TIMEOUT && val != EV_BUTTON_CANCELLED);
+ #endif
+     if (val == EV_BUTTON_TIMEOUT) {

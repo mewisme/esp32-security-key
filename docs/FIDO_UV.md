@@ -17,7 +17,7 @@ no hardware), **source** = read from code, **inference** = reasoning from source
 | `uv=true` in makeCredential/getAssertion is refused at once with `INVALID_OPTION` (no touch needed): the key has no built-in UV and says so | hardware, matches CTAP 2.1 |
 | `userVerification: required` cannot be satisfied: a platform must first create a PIN. Clients that cannot do that fail before any touch | hardware (python-fido2 `CONFIGURATION_UNSUPPORTED`, 0 touch prompts) |
 | The UV flag is only ever set after a verified PIN token (`cbor_make_credential.c`/`cbor_get_assertion.c`: set only in the `pinUvAuthParam` branch). There is no code path that sets UV otherwise | source + hardware (UV=0 in every PIN-less result) + emulation (UV=1 only with the PIN) |
-| UP: no touch -> refused after 15 s; cancel (`CTAPHID_CANCEL`) answers `KEEPALIVE_CANCEL` in about 0.14 s; a press made before the next request (on a fresh channel) does not satisfy it | hardware (`ctap_uv_test.py`, `ctap_cancel_probe.py`); same-channel reuse after a cancel is broken, see the known issue below |
+| UP: no touch -> refused after 15 s; cancel (`CTAPHID_CANCEL`) answers `KEEPALIVE_CANCEL` in about 0.14 s; a press made before the next request (on a fresh channel) does not satisfy it | hardware (`ctap_uv_test.py`, `ctap_cancel_probe.py`); same-channel reuse after a cancel was broken on hardware and is fixed in firmware (emulation-tested, not yet re-verified on the board), see "Fixed" below |
 
 ## Why does a browser ask for a PIN on a key that has none?
 
@@ -65,9 +65,10 @@ With a PIN set, pico-fido (a) wraps the device key with the PIN, (b) removes `U2
 set on the board, by decision):
 
 - After a power cycle with a PIN set, `GetInfo` says `alwaysUv=true`, so browsers ask for the PIN for everything.
-- A touch-only non-resident `makeCredential` then fails with `CTAP1_ERR_OTHER` (the key cannot unwrap its device key), and a
-  UV-less `getAssertion` for an existing credential returns **success with a signature that does not verify** (an upstream
-  defect: the failed key load is not propagated; no key material is exposed). Both work again after one PIN entry.
+- A touch-only non-resident `makeCredential` then fails with `PUAT_REQUIRED` (the key cannot unwrap its device key; before
+  patch `pico-fido/0005` this was `CTAP1_ERR_OTHER`), and a UV-less `getAssertion` for an existing credential fails with
+  `PUAT_REQUIRED` as well (before that patch it returned a success carrying a decoy credential and a bogus signature, see
+  below). Both work again after one PIN entry.
 - U2F authenticate is refused (SW 6985) while locked; the first U2F call right after `setPIN` in the same session still works.
 
 Consequence: **touch-only use and a FIDO PIN are mutually exclusive in practice.** Keep the key PIN-less for touch-only sites. If
@@ -76,38 +77,74 @@ U2F-only sites stop working. Removing a PIN requires `authenticatorReset` (delet
 device key unwrapped when a PIN is set would give both, at the price of PIN-independent at-rest key protection; **not
 implemented, needs an explicit decision** (it changes the security model).
 
-## Other upstream deviations found by the emulation tests (strict `xfail` tests pin them)
+## Upstream deviations found by the emulation tests: fixed by `pico-fido/0005` (UV policy)
 
-| Deviation | Where | Effect |
+Each was pinned by a strict `xfail` test until it was fixed; the tests are now plain regression tests
+(`tests/emulation/test_multikey_uv.py`).
+
+| Deviation (upstream) | Root cause | Fix |
 |---|---|---|
-| `getAssertion` never checks `alwaysUv` (only makeCredential does) | `cbor_get_assertion.c` | with alwaysUv enabled by the user, assertions still succeed with a touch |
-| Toggling `alwaysUv` off does not restore `makeCredUvNotRqd` that toggling on cleared | `cbor_config.c:344-358` | after on/off, a PIN-protected key requires UV for every registration |
-| Locked key returns a signature that does not verify instead of an error | see above | RP verification fails; cause not analysed, no exposure was looked for beyond that |
+| `getAssertion` never checks `alwaysUv` (only makeCredential does) | `cbor_get_assertion.c` never read `FIDO2_OPT_AUV` | with alwaysUv on and no `pinUvAuthParam`: `PUAT_REQUIRED` (`OPERATION_DENIED` when no PIN is set), including `up=false` requests, which would otherwise return a real UV-less assertion |
+| Toggling `alwaysUv` off does not restore `makeCredUvNotRqd` that toggling on cleared | `cbor_config.c` cleared the flag on and only cleared AUV off | toggling on moves the flag into a remembered bit (`FIDO2_OPT_MCUV_SAVED`), toggling off moves it back; nothing else in the options byte changes. A key that already did a round trip with an older build lost the flag and cannot get it back (Kconfig default only applies to a never-stored options byte): toggle it with the `makeCredUvNotRqd` config command or reset |
+| Locked key: UV-less `getAssertion` returned **success with a decoy** (made-up credential id `00 01 00 01 ...`, signature of 64 bytes `0x0B`), not an invalid signature of a real credential | `up` defaulted to false, so a request **without an options map** was classified as a silent probe. With the key locked no credential could be loaded (`credential_verify` ignored the failed key derivation and used an all-zero key), the silent-tag check still matched, and the "silent authentication" branch answered with the decoy and the UP flag set | `up` defaults to true (CTAP); `getAssertion` refuses with `PUAT_REQUIRED` while the device key cannot be unwrapped (`fido_keydev_available()`); `credential_verify` and `credential_create` no longer ignore a failed key derivation (a locked `makeCredential` now answers `PUAT_REQUIRED` instead of `CTAP1_ERR_OTHER`) |
 
-Not fixed here: none of these affect the PIN-less touch-only default. Decide whether to patch them.
+No key material was exposed by the decoy (the signature is constant bytes). PIN-based wrapping of the device key is unchanged.
+Effective `alwaysUv` while the key is locked (`GetInfo` already reports it) is now enforced by the actual capability check, so
+a PIN-protected key unlocked in the session still answers a UV-less `getAssertion` (UP only), as before.
 
-## Known issue found on hardware: the request after a CTAPHID_CANCEL on the SAME channel
+## Fixed: the request after a CTAPHID_CANCEL on the SAME channel (patches `pico-keys-sdk/0005`, `pico-fido/0006`)
 
-`tools/ctap_cancel_probe.py` (no touch needed): request A (makeCredential waiting for a touch) is cancelled; A answers
-`KEEPALIVE_CANCEL` in about 0.14 s as required. Then:
+Found on hardware with `tools/ctap_cancel_probe.py` (no touch needed): request A (makeCredential waiting for a touch) is
+cancelled; A answered `KEEPALIVE_CANCEL` in about 0.14 s. Then, on the same channel and immediately, request B got an
+instant **empty success** (status 0, no body), B's real result arrived as the answer to the *next* request, and
+`CTAPHID_INIT` timed out for a while. A new channel was fine.
 
-| Next request B | Observed (hardware) |
-|---|---|
-| on a **new channel** (new `CTAPHID_INIT`, what a browser normally does), 2 s later | correct: waits for a touch, refused with `OPERATION_DENIED` after 15.1 s (PASS) |
-| on the **same channel**, immediately | the key answers with an instant, **empty success** (status 0, no body), and B's real result (`OPERATION_DENIED` 15 s later) is delivered as the answer to the *next* request; at times the HID side then stops answering for a while (`CTAPHID_INIT` timeouts, recovered by itself) |
+**Root cause (read from the code, reproduced in emulation).** The cancel handler in `hid.c` answered `KEEPALIVE_CANCEL`
+at once, zeroed `finished_data_size` and stopped the job's timeout (`timeout_stop()`), but the card thread was still
+inside the user-presence wait. Once it noticed the cancel it finished the cancelled job anyway: it wrote its status byte
+into the shared response buffer, set `finished_data_size` again and posted `EV_EXEC_FINISHED`, which nobody consumed
+because the timeout was off. The next request on the channel dispatched a new job and `card_status()` immediately found
+the *old* `EV_EXEC_FINISHED`, so the old job's one-byte result went out as the new request's answer; the new job's own
+completion then answered the request after that (shift by one). Separately, a new request's `EV_CMD_AVAILABLE` could be
+swallowed by the old job's presence-wait loop, and `CTAPHID_INIT` (`card_exit()` sends `EV_EXIT` and waits for its
+acknowledgement) was swallowed by the same loop, which blocks the USB task until the thread is reset. `button.c` also
+cleared `cancel_button` when a wait started, so a cancel that arrived just before that point was lost.
 
-The replies carried no attestation, so no credential was handed to the client; replies stay out of step with requests until the
-stale one is consumed. **Probable cause (inference from reading `hid.c`, not verified):** the cancel handler zeroes
-`finished_data_size` while the card thread is still running A, and a new CBOR request clears `cancel_button` (`hid.c:582`), so
-A's late completion leaks into the next transaction on that channel. Work-around for clients: open a fresh channel after
-cancelling; `tools/ctap_uv_test.py --only stale` does so. A firmware fix touches the SDK's HID/card state machine and was not attempted.
+**Fix.**
+
+- `usb.c`: every command handed to the card thread starts a *generation*. `card_job_abandon()` marks the outstanding job
+  abandoned; `card_job_take_abandoned()` tells the HID layer, when a completion arrives, that it belongs to an abandoned
+  job; `card_job_reset()` forgets all of it (used on `CTAPHID_INIT`).
+- `hid.c`: CTAPHID_CANCEL is honoured only for the channel of the running transaction. It marks the job abandoned and
+  asks the presence wait to stop. The single `KEEPALIVE_CANCEL` reply is sent when the job has really finished, instead
+  of the job's own result, so a cancelled operation never yields a success and the channel is free when the host sees the
+  answer. A command that arrives while a job is outstanding gets `CHANNEL_BUSY` (it used to overwrite the running job's
+  state). `CTAPHID_INIT` resets the generation state and the cancel flag after stopping the card thread.
+- `button.c`: the cancel flag is cleared when a command is dispatched (`hid.c`), not when the wait starts;
+  `button_wait_abort()` disarms a wait that is being torn down.
+- `pico-fido/fido.c` (0006): the presence wait treats `EV_EXIT` as "stop waiting": it hands the event back so the thread
+  loop acknowledges it, and aborts the button wait. `CTAPHID_INIT` during a presence wait therefore completes at once.
+
+**Tests (emulation, `tests/emulation/test_multikey_cancel.py`).** The emulation build satisfied user presence at once, so
+it could not show any of this. `PICOKEYS_EMULATION_UP_TIMEOUT=<seconds>` (emulation only; unset = old behaviour) now gives
+it the same wait as the board with a virtual button that is never pressed. With it the suite covers: cancel during the wait
+(one `KEEPALIVE_CANCEL`, quickly), cancel racing the start of the wait, immediate same-channel `getInfo` (correct CBOR, not
+an empty success), a request sent without waiting for the cancel answer (at worst `CHANNEL_BUSY`), three cancels in a row,
+an idle and a duplicate cancel, request B after a cancel really waits for its own presence, UP timeout then a normal
+request, a new channel after cancel, `CTAPHID_INIT` during a wait, a foreign-channel cancel being ignored, and the python-fido2
+flow of `ctap_cancel_probe.py`. With the `hid.c` part of the patch reverted, 8 of those 12 tests fail, including the empty
+success (`getInfo` answered with the one byte `00`).
+
+**Not hardware verified.** The emulation runs the same HID/card-thread code with POSIX threads; the board uses a FreeRTOS
+task on the second core, a 10 ms button poll and a physical button. Verify on the board with
+`docs/hw-procedures/cancel.md` (`tools/ctap_cancel_probe.py`, no touch, no PIN, nothing is stored or reset).
 
 ## Tests
 
 | Test | Needs | Command |
 |---|---|---|
 | Rust: MKAUTH proto/host (unrelated to FIDO UV) | nothing | `cd host && cargo test` |
-| **Emulation**: 28 UV-policy checks + 3 pinned deviations, PIN set/wrong PIN/alwaysUv/reset, factory-fresh device per test | WSL/Linux (no hardware, no sudo) | `tools/run_emulation_tests.sh` (CI job `fido-emulation`) |
+| **Emulation**: UV policy (PIN set/wrong PIN/alwaysUv on and off/locked key/reset) and CTAPHID_CANCEL/channel recovery (12 tests, real presence wait with a virtual button), factory-fresh device per test | WSL/Linux (no hardware, no sudo) | `tools/run_emulation_tests.sh` (CI job `fido-emulation`) |
 | **Hardware**: GetInfo options, UV/UP behaviour, browser model, cancel, timeout | board, elevated shell on Windows | `tools\run_elevated.ps1 tools\ctap_uv_test.py` (groups `info raw nopin timeout cancel stale`, `pin` with `--pin`) |
 | Hardware: UP isolation | board | `tools\run_elevated.ps1 tools\ctap_up_test.py` |
 | Hardware: credentials survive update/rename | board | `ctap_survival.py snapshot` ... change ... `verify` |

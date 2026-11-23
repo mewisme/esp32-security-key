@@ -1,0 +1,146 @@
+diff --git a/src/fido/cbor_config.c b/src/fido/cbor_config.c
+index 7cd66ec..3e727f3 100644
+--- a/src/fido/cbor_config.c
++++ b/src/fido/cbor_config.c
+@@ -265,7 +265,8 @@ int cbor_config(const uint8_t *data, size_t len) {
+             set_opts(get_opts() ^ FIDO2_OPT_NORK);
+         }
+         else if (vendorCommandId == CTAP_CONFIG_MCUV_NOTRQD) {
+-            set_opts(get_opts() ^ FIDO2_OPT_MCUV_NOTRQD);
++            /* While alwaysUv is on the live flag is suppressed, so the toggle acts on the remembered value. */
++            set_opts(get_opts() ^ ((get_opts() & FIDO2_OPT_AUV) ? FIDO2_OPT_MCUV_SAVED : FIDO2_OPT_MCUV_NOTRQD));
+         }
+         else if (vendorCommandId == CTAP_CONFIG_CREDENTIAL_REVOKE) {
+             // Keep the legacy slot form (0x03) and accept a resident credential ID in 0x02.
+@@ -342,15 +343,22 @@ int cbor_config(const uint8_t *data, size_t len) {
+     }
+     else if (subcommand == 0x02) {
+         if (!(get_opts() & FIDO2_OPT_AUV)) {
+-            if (get_opts() & FIDO2_OPT_MCUV_NOTRQD) {
+-                set_opts(get_opts() & ~FIDO2_OPT_MCUV_NOTRQD);
++            /* MultiKeys: remember makeCredUvNotRqd while alwaysUv is on so that turning alwaysUv off again restores
++             * it. Upstream cleared the flag here and never brought it back. */
++            uint8_t opts = get_opts();
++            if (opts & FIDO2_OPT_MCUV_NOTRQD) {
++                opts = (uint8_t)((opts & ~FIDO2_OPT_MCUV_NOTRQD) | FIDO2_OPT_MCUV_SAVED);
+             }
+-            set_opts(get_opts() | FIDO2_OPT_AUV);
++            set_opts(opts | FIDO2_OPT_AUV);
+             goto err;
+         }
+         else {
+ #ifndef FORBID_DISABLE_AUV
+-            set_opts(get_opts() & ~FIDO2_OPT_AUV);
++            uint8_t opts = (uint8_t)(get_opts() & ~FIDO2_OPT_AUV);
++            if (opts & FIDO2_OPT_MCUV_SAVED) {
++                opts = (uint8_t)((opts & ~FIDO2_OPT_MCUV_SAVED) | FIDO2_OPT_MCUV_NOTRQD);
++            }
++            set_opts(opts);
+             goto err;
+ #else
+             CBOR_ERROR(CTAP2_ERR_OPERATION_DENIED);
+diff --git a/src/fido/cbor_get_assertion.c b/src/fido/cbor_get_assertion.c
+index 64afe75..7035959 100644
+--- a/src/fido/cbor_get_assertion.c
++++ b/src/fido/cbor_get_assertion.c
+@@ -111,7 +111,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
+     Credential creds[MAX_CREDENTIAL_COUNT_IN_LIST] = { 0 };
+     size_t allowList_len = 0, creds_len = 0;
+     uint8_t *aut_data = NULL;
+-    bool asserted = false, up = false, uv = false, pinUvAuthProtocol_present = false;
++    bool asserted = false, up = true, uv = false, pinUvAuthProtocol_present = false;
+     int64_t kty = 2, alg = 0, crv = 0;
+     CborByteString kax = { 0 }, kay = { 0 }, salt_enc = { 0 }, salt_auth = { 0 };
+     const bool *credBlob = NULL;
+@@ -303,6 +303,11 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
+                 }
+             }
+         }
++        if ((get_opts() & FIDO2_OPT_AUV) && pinUvAuthParam.present == false) {
++            /* MultiKeys: alwaysUv is enforced for assertions as it already is for makeCredential (CTAP 2.1: no
++             * pinUvAuthParam and no built-in UV -> PUAT_REQUIRED; no PIN set -> OPERATION_DENIED). */
++            CBOR_ERROR(file_has_data(ef_pin) ? CTAP2_ERR_PUAT_REQUIRED : CTAP2_ERR_OPERATION_DENIED);
++        }
+         if (options.present) {
+             if (options.uv == ptrue) { //4.3
+                 CBOR_ERROR(CTAP2_ERR_INVALID_OPTION);
+@@ -350,6 +355,12 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
+             flags |= FIDO2_AUT_FLAG_UV;
+             // Check pinUvAuthToken permissions. See 6.2.2.4
+         }
++        if (!fido_keydev_available()) {
++            /* MultiKeys: the device key is PIN-wrapped and still locked (power-up, PIN not entered), so no
++             * credential can be loaded or signed with. Upstream fell through to the "silent authentication" decoy
++             * and returned a success carrying a made-up credential id and a signature of 0x0B bytes. */
++            CBOR_ERROR(file_has_data(ef_pin) ? CTAP2_ERR_PUAT_REQUIRED : CTAP2_ERR_PROCESSING);
++        }
+         if (extensions.present == true && extensions.hmac_secret == ptrue) {
+             if (kax.present == false || kay.present == false || crv == 0 || alg == 0 ||
+                 salt_enc.present == false || salt_auth.present == false) {
+diff --git a/src/fido/credential.c b/src/fido/credential.c
+index e32f98d..33b31d7 100644
+--- a/src/fido/credential.c
++++ b/src/fido/credential.c
+@@ -350,7 +350,9 @@ int credential_verify(uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id
+         if (proto == CRED_PROTO_22 || proto == CRED_PROTO_25) {
+             hdr_len += CRED_SILENT_TAG_LEN;
+         }
+-        credential_derive_chacha_key(key, cred_id);
++        if (credential_derive_chacha_key(key, cred_id) != 0) {
++            return -1;
++        }
+         mbedtls_chachapoly_context chatx;
+         mbedtls_chachapoly_init(&chatx);
+         mbedtls_chachapoly_setkey(&chatx, key);
+@@ -432,7 +434,9 @@ int credential_create(CborCharString *rpId, CborByteString *userId, CborCharStri
+     size_t rs = cbor_encoder_get_buffer_size(&encoder, cbor_payload);
+     *cred_id_len = CRED_SILENT_ENVELOPE_OVERHEAD + (uint16_t) rs;
+     uint8_t key[32] = {0};
+-    credential_derive_chacha_key(key, (const uint8_t *)CRED_PROTO);
++    if (credential_derive_chacha_key(key, (const uint8_t *)CRED_PROTO) != 0) {
++        CBOR_ERROR(CTAP2_ERR_PUAT_REQUIRED);
++    }
+     uint8_t iv[CRED_IV_LEN] = {0};
+     random_fill_buffer(BYTE_ARRAY(iv, sizeof(iv)));
+     mbedtls_chachapoly_context chatx;
+diff --git a/src/fido/fido.c b/src/fido/fido.c
+index aeccba9..a9fd22e 100644
+--- a/src/fido/fido.c
++++ b/src/fido/fido.c
+@@ -300,6 +300,16 @@ int load_keydev(uint8_t key[32]) {
+     return PICOKEYS_OK;
+ }
+ 
++/* MultiKeys: true when the device key can be unwrapped right now. False while the key is PIN-wrapped and the PIN
++ * has not been entered since power-up. Callers must refuse to sign or to create credentials in that state:
++ * upstream ignored the failure and carried on with an all-zero key. */
++bool fido_keydev_available(void) {
++    uint8_t key[32] = { 0 };
++    int ret = load_keydev(key);
++    mbedtls_platform_zeroize(key, sizeof(key));
++    return ret == PICOKEYS_OK;
++}
++
+ int verify_key(const uint8_t *appId, const uint8_t *keyHandle, mbedtls_ecp_keypair *key) {
+     for (size_t i = 0; i < KEY_PATH_ENTRIES; i++) {
+         uint32_t k = 0;
+diff --git a/src/fido/fido.h b/src/fido/fido.h
+index 100e07a..0fac025 100644
+--- a/src/fido/fido.h
++++ b/src/fido/fido.h
+@@ -90,6 +90,7 @@ extern int ecdh(uint8_t protocol, const mbedtls_ecp_point *Q, uint8_t *sharedSec
+ #define FIDO2_OPT_AUV           0x02 // User Verification
+ #define FIDO2_OPT_NORK          0x04 // No Resident Key
+ #define FIDO2_OPT_MCUV_NOTRQD   0x08 // User Verification Not Required
++#define FIDO2_OPT_MCUV_SAVED    0x10 // MultiKeys: makeCredUvNotRqd value remembered while alwaysUv is on
+ 
+ #ifndef MAX_PIN_RETRIES
+ #define MAX_PIN_RETRIES 8
+@@ -106,6 +107,7 @@ extern uint32_t get_sign_counter(void);
+ extern int bump_sign_counter(uint32_t *counter);
+ extern uint8_t get_opts(void);
+ extern void set_opts(uint8_t);
++extern bool fido_keydev_available(void);
+ #define MAX_CREDENTIAL_COUNT_IN_LIST 16
+ #define MAX_CRED_ID_LENGTH        1024
+ #define MAX_RESIDENT_CREDENTIALS  256

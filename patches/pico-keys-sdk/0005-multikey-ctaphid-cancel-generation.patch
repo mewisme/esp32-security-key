@@ -1,0 +1,303 @@
+diff --git a/src/button.c b/src/button.c
+index 4680926..2b5a0e9 100644
+--- a/src/button.c
++++ b/src/button.c
+@@ -35,14 +35,12 @@ extern void execute_tasks(void);
+ int (*button_pressed_cb)(uint8_t) = NULL;
+ 
+ static bool req_button_pending = false;
+-#ifndef ENABLE_EMULATION
+ static bool async_button_wait = false;
+ static bool async_button_pressed = false;
+ static bool async_button_armed = false;
+ static uint32_t async_button_started = 0;
+ static uint32_t async_button_timeout = 0;
+ static uint32_t async_button_led_mode = MODE_MOUNTED;
+-#endif
+ 
+ bool is_req_button_pending(void) {
+     return req_button_pending;
+@@ -52,7 +50,7 @@ volatile bool cancel_button = false;
+ bool touch_accept_button = false;
+ volatile bool force_button_wait = false;
+ 
+-#if !defined(ENABLE_EMULATION)
++
+ #ifdef ESP_PLATFORM
+ static bool picok_board_button_read(void) {
+ #if CONFIG_MULTIKEY_BUTTON_GPIO < 0
+@@ -99,17 +97,23 @@ static bool __no_inline_not_in_flash_func(picok_get_bootsel_button)(void) {
+ static bool picok_board_button_read(void) {
+   return picok_get_bootsel_button();
+ }
++#elif defined(ENABLE_EMULATION)
++static bool picok_board_button_read(void) {
++    return false; /* virtual button: never pressed */
++}
+ #else
+ static bool picok_board_button_read(void) {
+     return true; // always unpressed
+ }
+ #endif
++#ifndef ENABLE_EMULATION
+ static bool button_pressed_state = false;
+ static uint32_t button_pressed_time = 0;
+ static uint8_t button_press = 0;
+ static bool button_hold_state = false;
+ static uint32_t button_hold_started = 0;
+ static uint32_t button_last_poll = 0;
++#endif
+ volatile uint32_t button_pressed_duration = 0;
+ 
+ void button_wait_start(void) {
+@@ -131,7 +135,8 @@ void button_wait_start_timeout(uint32_t timeout_seconds) {
+         .timeout = button_timeout / 1000,
+     };
+     signal_emit_param(SIGNAL_USER_PRESENCE_REQUEST, &data);
+-    cancel_button = false;
++    /* MultiKeys: cancel_button is cleared when a command is dispatched (hid.c), not here: a CTAPHID_CANCEL that
++     * arrives before the card thread reaches this point must still cancel the wait. */
+     async_button_wait = true;
+     async_button_pressed = false;
+     async_button_armed = !picok_board_button_read();
+@@ -197,7 +202,17 @@ void button_wait_poll(void) {
+     }
+ }
+ 
+-#endif
++/* Disarm a presence wait that is being abandoned (the card thread is stopping): no event may be posted for it
++ * later, because nobody would be waiting for it any more. */
++void button_wait_abort(void) {
++    if (!async_button_wait) {
++        return;
++    }
++    async_button_wait = false;
++    req_button_pending = false;
++    led_set_mode(async_button_led_mode);
++    signal_emit(SIGNAL_USER_PRESENCE_CANCELLED);
++}
+ 
+ uint32_t button_timeout_seconds(void) {
+     /* Disabled by default. As LED may not be properly configured,
+@@ -211,7 +226,11 @@ uint32_t button_timeout_seconds(void) {
+ #elif !defined(ENABLE_EMULATION)
+     return phy_data.up_btn_present ? phy_data.up_btn : 0;
+ #else
+-    return 0;
++    /* Emulation only (never in a firmware build): PICOKEYS_EMULATION_UP_TIMEOUT=<seconds> turns on a user-presence
++     * wait with a virtual button that is never pressed, so tests can exercise the timeout and CTAPHID_CANCEL
++     * paths. Unset (the default) keeps the historical behaviour: presence is satisfied at once. */
++    const char *env = getenv("PICOKEYS_EMULATION_UP_TIMEOUT");
++    return env ? (uint32_t)strtoul(env, NULL, 10) : 0;
+ #endif
+ }
+ 
+@@ -263,5 +282,8 @@ void button_task(void) {
+             }
+         }
+     }
++#else
++    /* Emulation: the button is virtual and never pressed; only the timeout and cancel paths of a wait are live. */
++    button_wait_poll();
+ #endif
+ }
+diff --git a/src/button.h b/src/button.h
+index 7ba5769..fe19bdd 100644
+--- a/src/button.h
++++ b/src/button.h
+@@ -47,6 +47,7 @@ typedef enum {
+ 
+ extern void button_wait_start(void);
+ extern void button_wait_poll(void);
++extern void button_wait_abort(void);
+ extern volatile uint32_t button_pressed_duration;
+ extern void button_task(void);
+ extern volatile bool cancel_button;
+diff --git a/src/usb/hid/hid.c b/src/usb/hid/hid.c
+index 1729d46..8e77d4d 100644
+--- a/src/usb/hid/hid.c
++++ b/src/usb/hid/hid.c
+@@ -340,6 +340,22 @@ static uint32_t allocate_cid(void) {
+     return cid;
+ }
+ 
++/* CID of the transaction whose job is (or was last) running in the card thread. */
++static uint32_t job_cid = 0;
++
++/* Queue one CTAPHID_CBOR reply that carries just a status byte. Used for the KEEPALIVE_CANCEL answer. */
++static void send_cbor_status(uint32_t cid, uint8_t status) {
++    ctap_resp = (CTAPHID_FRAME *) hid_tx[ITF_HID_CTAP].buffer;
++    hid_tx[ITF_HID_CTAP].r_ptr = hid_tx[ITF_HID_CTAP].w_ptr = 0;
++    send_buffer_size[ITF_HID_CTAP] = 0;
++    memset((uint8_t *)ctap_resp, 0, sizeof(CTAPHID_FRAME));
++    ctap_resp->cid = cid;
++    ctap_resp->init.cmd = CTAPHID_CBOR;
++    ctap_resp->init.bcntl = 1;
++    ctap_resp->init.data[0] = status;
++    hid_write(64);
++}
++
+ uint8_t thread_type = 0; //1 is APDU, 2 is CBOR
+ extern int cbor_process(uint8_t last_cmd, const uint8_t *data, size_t len);
+ static uint32_t last_keepalive_time = 0;
+@@ -384,24 +400,17 @@ int driver_process_usb_packet_hid(uint16_t read) {
+             return ctap_error(CTAP1_ERR_CHANNEL_BUSY);
+         }
+         if (FRAME_TYPE(ctap_req) == TYPE_INIT && ctap_req->init.cmd == CTAPHID_CANCEL) {
+-            bool active_transaction = is_busy();
++            /* CTAPHID_CANCEL only concerns the transaction of its own channel. The job is marked abandoned and the
++             * card thread is told to stop waiting; the single KEEPALIVE_CANCEL answer is sent when the job has
++             * actually finished (hid_task), after which the channel is free again. Nothing is answered when
++             * no job is running. */
+             msg_packet.len = msg_packet.current_len = 0;
+             last_packet_time = 0;
+-            cancel_button = true;
+-            res_APDU_size = 0;
+-            hid_tx[ITF_HID_CTAP].r_ptr = hid_tx[ITF_HID_CTAP].w_ptr = 0;
+-            send_buffer_size[ITF_HID_CTAP] = 0;
+-            if (active_transaction && last_cmd == CTAPHID_CBOR) {
+-                finished_data_size = 0;
+-                apdu.sw = 0;
+-                apdu.rlen = 0;
+-                memset((uint8_t *)ctap_resp, 0, sizeof(CTAPHID_FRAME));
+-                ctap_resp->cid = ctap_req->cid;
+-                ctap_resp->init.cmd = CTAPHID_CBOR;
+-                ctap_resp->init.bcntl = 1;
+-                ctap_resp->init.data[0] = CTAPHID_KEEPALIVE_CANCEL_STATUS;
+-                hid_write(64);
+-                timeout_stop();
++            if (is_busy() && ctap_req->cid == job_cid) {
++                cancel_button = true;
++                if (last_cmd == CTAPHID_CBOR) {
++                    card_job_abandon();
++                }
+             }
+             return 0;
+         }
+@@ -448,6 +457,8 @@ int driver_process_usb_packet_hid(uint16_t read) {
+         }
+         if (ctap_req->init.cmd == CTAPHID_INIT) {
+             card_exit();
++            card_job_reset();
++            cancel_button = false;
+             hid_tx[ITF_HID_CTAP].r_ptr = hid_tx[ITF_HID_CTAP].w_ptr = 0;
+             init_fido();
+             CTAPHID_INIT_REQ *req = (CTAPHID_INIT_REQ *) ctap_req->init.data;
+@@ -554,6 +565,13 @@ int driver_process_usb_packet_hid(uint16_t read) {
+         else if ((last_cmd == CTAPHID_MSG || last_cmd == CTAPHID_OTP) &&
+                  (msg_packet.len == 0 ||
+                   (msg_packet.len == msg_packet.current_len && msg_packet.len > 0))) {
++            if (is_busy()) {
++                msg_packet.len = msg_packet.current_len = 0;
++                last_packet_time = 0;
++                return ctap_error(CTAP1_ERR_CHANNEL_BUSY);
++            }
++            job_cid = ctap_req->cid;
++            cancel_button = false;
+             if (last_cmd == CTAPHID_OTP) {
+                 is_nk = true;
+ #ifdef ENABLE_OATH_APP
+@@ -578,6 +596,12 @@ int driver_process_usb_packet_hid(uint16_t read) {
+         }
+         else if ((last_cmd == CTAPHID_CBOR || last_cmd >= CTAPHID_VENDOR_FIRST) &&
+                  (msg_packet.len == 0 || (msg_packet.len == msg_packet.current_len && msg_packet.len > 0))) {
++            if (is_busy()) {
++                msg_packet.len = msg_packet.current_len = 0;
++                last_packet_time = 0;
++                return ctap_error(CTAP1_ERR_CHANNEL_BUSY);
++            }
++            job_cid = ctap_req->cid;
+             thread_type = 2;
+             cancel_button = false;
+             select_app(CONST_BYTE_ARRAY(fido_aid + 1, fido_aid[0]));
+@@ -693,7 +717,16 @@ void hid_task(void) {
+         last_status_poll_ms = now_ms;
+         int status = card_status(ITF_HID);
+         if (status == PICOKEYS_OK) {
+-            driver_exec_finished_hid(finished_data_size);
++            cancel_button = false;
++            if (card_job_take_abandoned()) {
++                /* The host cancelled this job: answer the cancel (once) instead of delivering whatever the job
++                 * produced, so a cancelled operation never yields a success. */
++                apdu.sw = 0;
++                send_cbor_status(job_cid, CTAPHID_KEEPALIVE_CANCEL_STATUS);
++            }
++            else {
++                driver_exec_finished_hid(finished_data_size);
++            }
+         }
+         else if (status == PICOKEYS_ERR_BLOCKED) {
+             send_keepalive();
+diff --git a/src/usb/usb.c b/src/usb/usb.c
+index 91fdf11..afbf05e 100644
+--- a/src/usb/usb.c
++++ b/src/usb/usb.c
+@@ -243,12 +243,42 @@ bool is_busy(void) {
+     return timeout > 0;
+ }
+ 
++/* MultiKeys: request generation. Every command handed to the card thread (EV_CMD_AVAILABLE) starts a new
++ * generation. A job that the host cancelled stays in the card thread until it notices the cancel; its completion
++ * (EV_EXEC_FINISHED, finished_data_size, bytes written into the response buffer) belongs to that generation and
++ * must never be taken for the answer to a later request. The HID layer therefore marks the job abandoned,
++ * refuses new commands while any job is outstanding, and drops the completion of an abandoned job. */
++static volatile uint32_t card_job_generation = 0;
++static volatile uint32_t card_job_abandoned_generation = 0; /* 0: none */
++
++void card_job_abandon(void) {
++    if (timeout > 0) {
++        card_job_abandoned_generation = card_job_generation;
++    }
++}
++
++bool card_job_take_abandoned(void) {
++    if (card_job_abandoned_generation != 0 && card_job_abandoned_generation == card_job_generation) {
++        card_job_abandoned_generation = 0;
++        return true;
++    }
++    return false;
++}
++
++void card_job_reset(void) {
++    card_job_abandoned_generation = 0;
++    timeout_stop();
++}
++
+ void usb_send_event(uint32_t flag) {
+ #ifndef ENABLE_EMULATION
+     mutex_enter_blocking(&mutex);
+ #endif
+     queue_add_blocking(&usb_to_card_q, &flag);
+     if (flag == EV_CMD_AVAILABLE) {
++        if (++card_job_generation == 0) {
++            card_job_generation = 1;
++        }
+         timeout_start();
+     }
+ #ifndef ENABLE_EMULATION
+@@ -351,11 +381,9 @@ int card_status(uint8_t itf) {
+                 }
+                 return PICOKEYS_OK;
+             }
+-#ifndef ENABLE_EMULATION
+             else if ((m & 0xffu) == EV_PRESS_BUTTON) {
+                 button_wait_start_timeout(EV_PRESS_BUTTON_GET_TIMEOUT(m));
+             }
+-#endif
+ #ifdef PICO_PLATFORM
+             else if (m == EV_RESET) {
+                 usb_secure_reboot_now();
+diff --git a/src/usb/usb.h b/src/usb/usb.h
+index 5863601..da81f1d 100644
+--- a/src/usb/usb.h
++++ b/src/usb/usb.h
+@@ -117,6 +117,9 @@ extern void usb_send_event(uint32_t flag);
+ extern void timeout_stop(void);
+ extern void timeout_start(void);
+ extern bool is_busy(void);
++extern void card_job_abandon(void);
++extern bool card_job_take_abandoned(void);
++extern void card_job_reset(void);
+ extern void usb_desc_setup(void);
+ 
+ #ifdef USB_ITF_HID

@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import hashlib
 import os
-from cryptography.exceptions import InvalidSignature
 
 import pytest
 from conftest import (EXPECTED_AAGUID, FLAG_UP, FLAG_UV, ORIGIN, PIN, RP_ID, UPSTREAM_AAGUID,
@@ -276,12 +275,11 @@ def test_04_after_power_cycle_pin_blocks_u2f_and_reports_always_uv(emu, session,
 
 
 def test_04_after_power_cycle_pin_wrapped_key_blocks_uvless_mc(emu, session, reopen):
-    """DEVIATION (upstream pico-fido, not CTAP-2.1-conformant): after a power cycle with a PIN set the device
-    key is PIN-wrapped and locked until the first PIN-authenticated operation (fido.c:241-299 load_keydev needs
-    session_pin). Consequences, all pinned here:
-      * a discouraged non-resident makeCredential without pinUvAuthParam fails with CTAP1_ERR_OTHER (0x7F)
-        (key load fails at cbor_make_credential.c:787) although makeCredUvNotRqd is advertised True;
-      * getAssertion for an existing non-resident credential still works, UP only;
+    """After a power cycle with a PIN set the device key is PIN-wrapped and locked until the first
+    PIN-authenticated operation (fido.c load_keydev needs session_pin). Pinned here:
+      * a discouraged non-resident makeCredential without pinUvAuthParam is refused with PUAT_REQUIRED (the key
+        cannot be loaded; credential_create no longer ignores that), although makeCredUvNotRqd is advertised;
+      * getAssertion is refused with PUAT_REQUIRED as well (patch pico-fido 0005);
       * a resident-key makeCredential still needs a PIN (PUAT_REQUIRED);
       * the first PIN-authenticated makeCredential unlocks the key: alwaysUv drops back to False, U2F_V2 returns,
         and UV-less discouraged makeCredential works again (cbor_get_info.c:95 / fido.c:298)."""
@@ -293,9 +291,8 @@ def test_04_after_power_cycle_pin_wrapped_key_blocks_uvless_mc(emu, session, reo
     s2 = reopen()
     o = s2.info().options
     assert o["alwaysUv"] is True and o["makeCredUvNotRqd"] is True
-    expect_err(CtapError.ERR.OTHER, s2.mc)
-    cdh, asr = s2.ga(cred.credential_id)
-    assert asr.auth_data.flags & FLAG_UP and not asr.auth_data.flags & FLAG_UV   # signature: see next test
+    expect_err(CtapError.ERR.PUAT_REQUIRED, s2.mc)              # key locked: credential_create refuses
+    expect_err(CtapError.ERR.PUAT_REQUIRED, s2.ga, cred.credential_id)
     expect_err(CtapError.ERR.PUAT_REQUIRED, s2.mc, rk=True)
     _, att_pin = s2.mc(auth_perm=PERM_MC)
     assert att_pin.auth_data.flags & FLAG_UV
@@ -314,28 +311,39 @@ def _locked_device_with_credential(emu, session, reopen):
     return reopen(), cred
 
 
-def test_04_after_power_cycle_locked_getassertion_signature_is_invalid(emu, session, reopen):
-    """DEVIATION / UPSTREAM BUG (observed, not root-caused): while the PIN-wrapped key is locked after a power
-    cycle, a UV-less getAssertion for an existing credential reports SUCCESS (UP flag, no error) but the
-    signature does NOT verify against the credential public key. Once a PIN-authenticated operation has unlocked
-    the key, the very same assertion verifies."""
+def test_04_locked_getassertion_is_refused_not_a_fake_signature(emu, session, reopen):
+    """While the PIN-wrapped key is locked (after a power cycle) a UV-less getAssertion is refused with
+    PUAT_REQUIRED, whether or not the request carries an options map. Upstream answered with a success carrying a
+    made-up credential id and a signature of 0x0B bytes (the silent-authentication decoy): its `up` default was
+    false, so a request without options looked like a silent probe. Once a PIN-authenticated operation has
+    unlocked the key, the same assertion verifies."""
     s2, cred = _locked_device_with_credential(emu, session, reopen)
-    cdh, asr = s2.ga(cred.credential_id)
-    assert asr.auth_data.flags & FLAG_UP and not asr.auth_data.flags & FLAG_UV
-    with pytest.raises(InvalidSignature):
-        raw_verify(cred.public_key, asr, cdh)
+    expect_err(CtapError.ERR.PUAT_REQUIRED, s2.ga, cred.credential_id)
+    for opts in ({"up": True}, {"up": False}):
+        expect_err(CtapError.ERR.PUAT_REQUIRED, s2.ctap.get_assertion, RP_ID, s2.cdh(),
+                   [{"type": "public-key", "id": cred.credential_id}], options=opts)
+    expect_err(CtapError.ERR.PUAT_REQUIRED, s2.ga, cred.credential_id, uv=False)
     s2.mc(auth_perm=PERM_MC)          # unlock
     cdh, asr = s2.ga(cred.credential_id)
+    assert asr.auth_data.flags & FLAG_UP and not asr.auth_data.flags & FLAG_UV
+    assert asr.credential["id"] == cred.credential_id
     raw_verify(cred.public_key, asr, cdh)
 
 
-@pytest.mark.xfail(strict=True, raises=InvalidSignature,
-                   reason="upstream pico-fido: locked (post power-cycle) UV-less getAssertion returns an "
-                          "assertion with an invalid signature instead of an error")
-def test_04_expected_locked_getassertion_signature_valid(emu, session, reopen):
-    s2, cred = _locked_device_with_credential(emu, session, reopen)
-    cdh, asr = s2.ga(cred.credential_id)
+def test_04_unlocked_getassertion_without_options_is_a_real_assertion(session):
+    """A request with no options map means up=true: it must not be mistaken for a silent probe."""
+    setpin(session)
+    _, att = session.mc(auth_perm=PERM_MC)
+    cred = att.auth_data.credential_data
+    cdh = session.cdh()
+    asr = session.ctap.get_assertion(RP_ID, cdh, [{"type": "public-key", "id": cred.credential_id}])
+    assert asr.auth_data.flags & FLAG_UP
+    assert asr.credential["id"] == cred.credential_id
     raw_verify(cred.public_key, asr, cdh)
+
+
+def test_04_no_credential_getassertion_is_an_error(session):
+    expect_err(CtapError.ERR.NO_CREDENTIALS, session.ga, b"\x01" * 80)
 
 # =========================================================================== 5. alwaysUv toggle
 def _toggle_always_uv(session):
@@ -365,32 +373,37 @@ def test_05_always_uv_on(session):
     assert e.value.code == 0x6985
 
 
-def test_05_always_uv_off_again_does_not_restore_makecred_uv_not_required(session):
-    """DEVIATION (upstream pico-fido): the toggle-on clears FIDO2_OPT_MCUV_NOTRQD (cbor_config.c:345-347) but
-    the toggle-off only clears FIDO2_OPT_AUV (cbor_config.c:352-354). After a round trip the device therefore
-    reports makeCredUvNotRqd=False and a discouraged non-resident makeCredential without pinUvAuthParam is
-    refused with PUAT_REQUIRED (rule 8.1, cbor_make_credential.c:441-444) - NOT 'UP only' as before."""
+def test_05_always_uv_round_trip_restores_up_only(session):
+    """Turning alwaysUv on remembers makeCredUvNotRqd and turning it off restores it (patch pico-fido 0005);
+    other configuration is left alone."""
     setpin(session)
     _toggle_always_uv(session)
+    o = session.info().options
+    assert o["alwaysUv"] is True and o["makeCredUvNotRqd"] is False
     _toggle_always_uv(session)
     o = session.info().options
     assert o["alwaysUv"] is False
-    assert o["makeCredUvNotRqd"] is False
-    expect_err(CtapError.ERR.PUAT_REQUIRED, session.mc)
-    # ...but with a PIN token it works and sets UV
-    _, att = session.mc(auth_perm=PERM_MC)
-    assert att.auth_data.flags & FLAG_UP and att.auth_data.flags & FLAG_UV
-
-
-@pytest.mark.xfail(strict=True, reason="upstream pico-fido: alwaysUv toggle-off does not restore makeCredUvNotRqd "
-                                       "(cbor_config.c:352-354); see test above")
-def test_05_expected_always_uv_round_trip_restores_up_only(session):
-    setpin(session)
+    assert o["makeCredUvNotRqd"] is True
+    assert o["clientPin"] is True and o["rk"] is True
+    _, att = session.mc()
+    assert att.auth_data.flags & FLAG_UP and not att.auth_data.flags & FLAG_UV
+    # a second round trip behaves the same
     _toggle_always_uv(session)
     _toggle_always_uv(session)
     assert session.info().options["makeCredUvNotRqd"] is True
-    _, att = session.mc()
-    assert att.auth_data.flags & FLAG_UP and not att.auth_data.flags & FLAG_UV
+
+
+def test_05_always_uv_remembered_flag_survives_power_cycle(emu, session, reopen):
+    """The remembered makeCredUvNotRqd value is stored in flash, so it survives a power cycle."""
+    setpin(session)
+    _toggle_always_uv(session)
+    session.close()
+    emu.restart()
+    s2 = reopen()
+    s2.mc(auth_perm=PERM_MC)          # unlock the PIN-wrapped key
+    _toggle_always_uv(s2)
+    o = s2.info().options
+    assert o["alwaysUv"] is False and o["makeCredUvNotRqd"] is True
 
 
 def test_05_always_uv_without_token_is_refused(session):
@@ -402,28 +415,29 @@ def test_05_always_uv_without_token_is_refused(session):
     assert session.info().options["alwaysUv"] is False
 
 
-def test_05_always_uv_getassertion_is_not_enforced(session):
-    """DEVIATION (upstream pico-fido): cbor_get_assertion.c never consults FIDO2_OPT_AUV (no get_opts() call
-    anywhere in the file), so with alwaysUv=True a discouraged getAssertion without pinUvAuthParam still
-    succeeds, UP only. CTAP 2.1 requires PUAT_REQUIRED here."""
+def test_05_always_uv_getassertion_needs_puat(session):
+    """alwaysUv is enforced for getAssertion like for makeCredential (patch pico-fido 0005): without a
+    pinUvAuthParam the request is refused with PUAT_REQUIRED; with a PIN token it works and sets UV."""
     setpin(session)
     _, att = session.mc(auth_perm=PERM_MC)
     cred = att.auth_data.credential_data
     _toggle_always_uv(session)
     assert session.info().options["alwaysUv"] is True
-    cdh, asr = session.ga(cred.credential_id)
-    assert asr.auth_data.flags & FLAG_UP and not asr.auth_data.flags & FLAG_UV
+    expect_err(CtapError.ERR.PUAT_REQUIRED, session.ga, cred.credential_id)
+    cdh, asr = session.ga(cred.credential_id, auth_perm=PERM_GA)
+    assert asr.auth_data.flags & FLAG_UP and asr.auth_data.flags & FLAG_UV
     raw_verify(cred.public_key, asr, cdh)
 
 
-@pytest.mark.xfail(strict=True, reason="upstream pico-fido: getAssertion does not enforce alwaysUv "
-                                       "(cbor_get_assertion.c has no FIDO2_OPT_AUV check)")
-def test_05_expected_always_uv_getassertion_needs_puat(session):
+def test_05_always_uv_getassertion_refuses_silent_probe_too(session):
+    """A request with options {up: false} and no pinUvAuthParam would return a real UV-less assertion for a
+    loadable credential, so alwaysUv refuses it as well."""
     setpin(session)
     _, att = session.mc(auth_perm=PERM_MC)
     cred = att.auth_data.credential_data
     _toggle_always_uv(session)
-    expect_err(CtapError.ERR.PUAT_REQUIRED, session.ga, cred.credential_id)
+    expect_err(CtapError.ERR.PUAT_REQUIRED, session.ctap.get_assertion, RP_ID, session.cdh(),
+               [{"type": "public-key", "id": cred.credential_id}], options={"up": False})
 
 
 def test_05_always_uv_survives_power_cycle(emu, session, reopen):

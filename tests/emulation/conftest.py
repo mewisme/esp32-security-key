@@ -50,6 +50,7 @@ class Emulator:
         self.rundir = rundir
         self.proc: subprocess.Popen | None = None
         self.log = None
+        self.extra_env: dict[str, str] = {}
 
     @property
     def flash(self) -> str:
@@ -60,7 +61,7 @@ class Emulator:
         os.makedirs(self.rundir, exist_ok=True)
         if fresh and os.path.exists(self.flash):
             os.remove(self.flash)
-        env = dict(os.environ, PICOKEYS_EMULATION_DISABLE_CCID="1")
+        env = dict(os.environ, PICOKEYS_EMULATION_DISABLE_CCID="1", **self.extra_env)
         self.log = open(os.path.join(self.rundir, "emulator.log"), "ab")
         self.proc = subprocess.Popen([self.binary], cwd=self.rundir, env=env,
                                      stdout=self.log, stderr=subprocess.STDOUT)
@@ -113,9 +114,26 @@ def _emu_session():
 def emu(_emu_session):
     """A factory-fresh emulator (no PIN, no credentials) for every test."""
     _emu_session.stop()
+    _emu_session.extra_env = {}
     _emu_session.start(fresh=True)
     yield _emu_session
     _emu_session.stop()
+
+
+@pytest.fixture
+def emu_up(_emu_session):
+    """Factory: a factory-fresh emulator whose user-presence wait is real. The virtual button is never pressed,
+    so a presence check lasts ``seconds`` and then fails, unless the host cancels or resets it first.
+    Uses PICOKEYS_EMULATION_UP_TIMEOUT (see pico-keys-sdk button.c); the default emulator satisfies UP at once."""
+    def _start(seconds: int) -> Emulator:
+        _emu_session.stop()
+        _emu_session.extra_env = {"PICOKEYS_EMULATION_UP_TIMEOUT": str(seconds)}
+        _emu_session.start(fresh=True)
+        return _emu_session
+
+    yield _start
+    _emu_session.stop()
+    _emu_session.extra_env = {}
 
 
 class Session:
