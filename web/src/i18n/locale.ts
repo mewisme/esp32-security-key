@@ -18,9 +18,27 @@ export function detectLocale(languages: readonly string[]): Locale {
   return "en";
 }
 
-/** The language chosen with the toggle; without a choice, the browser's. Detection is never written to storage. */
+/**
+ * The language chosen with the toggle; without a choice, the browser's. Detection is never written to storage.
+ * Storage can be unavailable (blocked cookies, some private modes): then there is no saved choice and the browser decides.
+ */
 export function storedLocale(): Locale {
-  const stored = localStorage.getItem(LOCALE_KEY);
+  let stored: string | null = null;
+  try {
+    stored = localStorage.getItem(LOCALE_KEY);
+  } catch {
+    // storage is blocked: follow the browser
+  }
   if (stored === "en" || stored === "vi") return stored;
   return detectLocale(navigator.languages?.length ? navigator.languages : [navigator.language]);
+}
+
+/** Saves an explicit choice. False when storage is unavailable: the language still changes, for this visit only. */
+export function saveLocale(locale: Locale): boolean {
+  try {
+    localStorage.setItem(LOCALE_KEY, locale);
+    return true;
+  } catch {
+    return false;
+  }
 }

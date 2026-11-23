@@ -1,6 +1,6 @@
 import { type ReactNode, useCallback, useLayoutEffect, useMemo, useState } from "react";
 import { I18nContext } from "./context";
-import { LOCALE_KEY, type Locale, storedLocale } from "./locale";
+import { type Locale, saveLocale, storedLocale } from "./locale";
 import { MESSAGES } from "./messages";
 
 /** Holds the language, saves an explicit choice, and keeps <html lang>, the title and the description in step with it. */
@@ -8,7 +8,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   const [locale, setState] = useState<Locale>(storedLocale);
 
   const setLocale = useCallback((next: Locale) => {
-    localStorage.setItem(LOCALE_KEY, next);
+    saveLocale(next); // an unavailable storage only means the choice is not remembered
     setState(next);
   }, []);
 
