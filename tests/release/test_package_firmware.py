@@ -228,6 +228,23 @@ class Package(Base):
         (self.build / "partition_table" / "partition-table.bin").write_bytes(ptable(part0_off=0x300000))
         self.rejects("does not match partitions.csv")
 
+    def test_entry_declares_app_only_for_the_real_layout(self):
+        _, e = self.package()
+        self.assertEqual(e["update"], {"data_preserving_from": pf.DATA_PRESERVING_FROM, "app_only": True})
+        self.assertNotIn("update-unverified", e["install_modes"])
+
+    def test_app_only_needs_the_app_inside_factory(self):
+        parts = pf.fd.parse_partitions_csv((ROOT / "partitions.csv").read_text())
+        factory = parts["factory"]
+        self.assertTrue(pf.app_only_supported(parts, 0x20000, factory["size"]))
+        self.assertFalse(pf.app_only_supported(parts, 0x20000, factory["size"] + 1))
+        self.assertFalse(pf.app_only_supported(parts, 0x30000, 0x1000))
+        self.assertFalse(pf.app_only_supported({k: v for k, v in parts.items() if k != "factory"}, 0x20000, 0x1000))
+
+    def test_version_older_than_data_preserving_from_rejected(self):
+        (self.build / "multikey-fido.bin").write_bytes(app_bin(version="0.1.0"))
+        self.rejects("older than DATA_PRESERVING_FROM", version="0.1.0")
+
 
 class ManifestAndVerify(Base):
     def make(self):
@@ -249,6 +266,12 @@ class ManifestAndVerify(Base):
         self.assertEqual(man["builds"][0]["layout_id"], pf.layout_id(pf.fd.parse_partitions_csv(
             (ROOT / "partitions.csv").read_text())))
         self.assertEqual(len(pf.verify(dest, man)), 8)
+
+    def test_forged_app_only_is_rejected(self):
+        dest, man = self.make()
+        man["builds"][0]["update"]["app_only"] = False
+        with self.assertRaises(pf.PackageError):
+            pf.verify(dest, man)
 
     def test_manifest_is_schema_2_with_profile_ids(self):
         zips = self.package_all(apps=("fido", "openpgp"))

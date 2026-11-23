@@ -71,8 +71,9 @@ what it guarantees:
   0x20000 (the same allowlist `tools/flash_dev.py` enforces). A manifest whose images overlap `nvs`, `phy_init` or `part0`, or
   that lists other offsets, is rejected (`manifest-invalid`, no override).
 - **Existing data.** Before writing, the installer reads the board's partition table and app descriptor (read-only) and picks
-  an install mode. A matching layout keeps `part0` (credentials) and `nvs` untouched; updates outside the release's declared
-  data-compatible range, switching between the FIDO and OpenPGP images and replacing non-MultiKeys firmware each need an
+  an install mode. A matching layout keeps `part0` (credentials) and `nvs` untouched; an installed version outside the
+  release's declared data-compatible range is refused (`storage-unverified`), and switching between the FIDO and OpenPGP images
+  and replacing non-MultiKeys firmware each need an
   explicit acknowledgement. A switch between the two images additionally needs the word `SWITCH` typed, because both images
   read the same `part0` in different formats: nothing is erased, but the other image's keys and credentials stop being usable.
   The OpenPGP image is offered only as Advanced / Experimental and always needs its own acknowledgement (it is build verified,
@@ -82,6 +83,35 @@ what it guarantees:
 - **Never.** Full-chip erase, eFuse writes, Secure Boot/flash-encryption changes, PIN or credential operations.
 - **After writing.** Each written region is read back (MD5 from the chip) before the installer reports success; detecting the
   running key afterwards is optional and only reads USB descriptors.
+
+### Application-only update (`/update`)
+
+A separate page replaces only the app image on a key that already runs MultiKeys. What it does and does not guarantee:
+
+- **One write.** The single region written is the app image at `0x20000`, inside the `factory` partition. It never writes the
+  bootloader, the partition table, `nvs`, `phy_init` or `part0`, never erases anything, never fills, never touches eFuses.
+  `web/src/lib/flashing/app-update.ts` returns at most that one write and a unit test checks it for every allowed decision.
+- **What it requires.** The release declares `update.app_only`; the device partition table equals the release layout and has
+  `factory` at the app offset with room for the image; the bootloader and the new app are for the same flash size; the installed
+  app is a MultiKeys image of the same family at a version from `update.data_preserving_from` up to the new one (no downgrade);
+  the flash content is not already the new image. Anything not shown compatible is refused with the reason, and nothing is
+  written. There is no override and no automatic fallback to the installer.
+- **Same key.** The page may first read the running key over WebUSB (read-only: BUILD_INFO, name, MKAUTH status). In download mode
+  it refuses a key whose version, family or flash size differs from that reading. It does **not** prove that the key in download
+  mode is physically the one that was read: the chip serial seen by the firmware has not been correlated with the ROM-mode
+  reading, so the page says "plug in only the key you checked".
+- **Data.** `part0` is not written, and the update is designed to keep credentials, the FIDO PIN, the MKAUTH record and the name.
+  The page cannot read credentials or the PIN, so it never claims they are intact. After the update it reports: the running
+  image SHA-256 equals the published one, the version matches, the name and the MKAUTH enrollment and device id equal the ones
+  read before; the FIDO credentials and PIN are shown as "not checked".
+- **Not atomic.** A single slot is written: an interrupted write leaves the key unable to start until the update is run again
+  from download mode. It is not an OTA update, has no rollback and no A/B slots. The browser records the started write
+  (`localStorage`, `multikeys-pending-update`) until the flash MD5 matches; only with that record, and only for the same build,
+  does the page offer a typed-`REPAIR` rewrite of an application whose descriptor is unreadable. Without it such a key is
+  refused as unknown.
+- **Storage compatibility is declared, not detected.** The key's file system has no version marker. Compatibility rests on
+  `update.data_preserving_from` (release process: `docs/RELEASES.md`) and on code inspection that nothing in the stored formats
+  changed since 0.2.0; it has not been tested across versions on hardware.
 
 The installer is unit- and e2e-tested against a simulated board and was run once on real hardware (one board, update path,
 `docs/hw-reports/2026-11-23-web-installer.md`); see `docs/ROADMAP.md`.

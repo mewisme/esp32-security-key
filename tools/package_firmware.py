@@ -43,8 +43,7 @@ ASSET_RE = re.compile(r"^multikey-firmware-v(?P<version>\d+\.\d+\.\d+(?:-[0-9A-Z
                       r"(?P<image>fido|openpgp)-dev\.zip$")
 COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 DATA_PRESERVING_FROM = "0.2.0"
-INSTALL_MODES = ["first-install", "update", "update-unverified", "switch-image", "replace-compatible-layout",
-                 "repurpose"]
+INSTALL_MODES = ["first-install", "update", "switch-image", "replace-compatible-layout", "repurpose"]
 TITLES = {"fido": "MultiKeys FIDO2 — Development Firmware",
           "openpgp": "MultiKeys OpenPGP — Experimental Development Firmware"}
 # Images whose profile-level hardware verification (tools/flash_policy.json) was actually run with that image.
@@ -77,6 +76,17 @@ def package_name(version: str, app: str, hw: str) -> str:
 
 def image_file(role: str, app: str) -> str:
     return IMAGE_FILES.get(role, f"multikey-{app}.bin")
+
+
+def core_version(version: str) -> tuple:
+    """(major, minor, patch) of a version string; a prerelease suffix is ignored."""
+    return tuple(int(x) for x in version.split("-", 1)[0].split("."))
+
+
+def app_only_supported(parts: dict, app_offset: int, app_size: int) -> bool:
+    """An application-only update is possible when the app sits at the policy app offset and fits the factory partition."""
+    fac = parts.get("factory")
+    return fac is not None and app_offset == fd.APP_OFFSET and fac["offset"] == app_offset and app_size <= fac["size"]
 
 
 def layout_id(parts: dict) -> str:
@@ -209,6 +219,8 @@ def package(build_dir: Path, sdkconfig: Path, app: str, hw: str, version: str, c
     if desc["version"] != version:
         raise PackageError(f"app version is {desc['version']!r}, expected {version!r} (build with --release?)")
 
+    if core_version(version) < core_version(DATA_PRESERVING_FROM):
+        raise PackageError(f"version {version} is older than DATA_PRESERVING_FROM {DATA_PRESERVING_FROM}")
     entry = {
         "id": f"{hw}-{app}-dev", "image": app, "project_name": f"multikey-{app}", "version": version,
         "title": TITLES[app], "board": board, "chip": fd.POLICY["chip"], "flash_size": prof["flash_size"],
@@ -227,7 +239,9 @@ def package(build_dir: Path, sdkconfig: Path, app: str, hw: str, version: str, c
                         "size": p["size"]} for n, p in parts.items()],
         "layout_id": layout_id(parts), "partition_schema": layout_id(parts),
         "protected_partitions": list(fd.PROTECTED), "repurpose_fill": list(fd.POLICY["repurpose_fill"]),
-        "update": {"data_preserving_from": DATA_PRESERVING_FROM}, "install_modes": INSTALL_MODES,
+        "update": {"data_preserving_from": DATA_PRESERVING_FROM,
+                   "app_only": app_only_supported(parts, by_role["app"][0], len(by_role["app"][1]))},
+        "install_modes": INSTALL_MODES,
         "verified_hardware": ([v["label"] for v in prof["verified_hardware"]] if app in HARDWARE_VERIFIED_IMAGES
                               else []),
         "verification": prof["verification"] if app in HARDWARE_VERIFIED_IMAGES else "build-verified",
@@ -315,6 +329,9 @@ def verify(zip_path: Path, man: dict) -> list:
     desc = fd.parse_app_descriptor(read[app["file"]][:256])
     if desc is None or desc["version"] != man["version"] or desc["project_name"] != build["project_name"]:
         raise PackageError(f"app descriptor {desc} does not match manifest version {man['version']!r}")
+    if build["update"].get("app_only", False) != app_only_supported(
+            {p["name"]: p for p in build["partitions"]}, app["offset"], app["size"]):
+        raise PackageError("update.app_only does not match the partition layout and the app image")
     return names
 
 

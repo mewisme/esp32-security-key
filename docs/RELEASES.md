@@ -45,7 +45,7 @@ Top level: `schema` (`multikeys-firmware-manifest`), `schema_version` (2), `vers
 `led`, `usb {vid, pid, webusb_landing_url, product_name, custom_name}` (the firmware's default USB name and whether renaming is
 compiled in), `package {name, size, sha256}`, `images[] {role, file, offset, size, sha256}`, `partitions[]` (all rows of
 `partitions.csv`), `layout_id`, `partition_schema` (the same value as `layout_id`), `protected_partitions`, `repurpose_fill`,
-`update.data_preserving_from`, `install_modes`, `verified_hardware` (labels), `verification` (`hardware-verified` |
+`update.data_preserving_from`, `update.app_only` (optional boolean), `install_modes`, `verified_hardware` (labels), `verification` (`hardware-verified` |
 `build-verified`). `firmware.json` inside the zip is the same build entry without `package`.
 
 The validator checks every build against the profile in `tools/flash_policy.json` (`chip`, `flash_size`, `flash_mode`,
@@ -61,7 +61,14 @@ says `hardware-verified`, else `build-verified`) and marked `legacy` (the instal
 legacy build). `firmware.json` inside a legacy zip is still compared with the entry as it was published.
 
 `update.data_preserving_from` (0.2.0 for now) is the oldest installed version whose stored data this firmware declares it can
-use; the web installer treats anything else as an unverified update and asks for an acknowledgement.
+use. The web installer refuses a matching-layout key running anything outside that range (`storage-unverified`): there is no
+acknowledgement that bypasses it.
+
+`update.app_only` (`true` from the first release that carries it; absent in v0.2.0 to v0.3.2) states that the release's app image
+may replace the one on a compatible key without rewriting the bootloader or the partition table. `tools/package_firmware.py`
+sets it only when the `factory` partition of `partitions.csv` sits at the app offset of `tools/flash_policy.json` and holds the
+app image, and `verify` recomputes it. The web **Update firmware** page (`/update`) treats a missing field as "not offered",
+never as compatible, and it takes the app image from the same zip as the installer (no separate asset).
 
 ## Install script
 
@@ -123,7 +130,11 @@ protect against corruption, not against a compromised repository or release.
 ## Cutting a release
 
 1. Bump `[workspace.package].version` in `host/Cargo.toml` (all crates and the firmware share it), update `host/Cargo.lock`
-   (`cargo build --locked` must pass).
+   (`cargo build --locked` must pass). If the release changes anything that decides whether data in `part0` stays readable (the
+   MKAUTH record `mka_record` or the `EF_*` file layout in `components/`, the `pico-*` submodule pins, `patches/`,
+   `partitions.csv`, or the hardware key derivation), also raise `DATA_PRESERVING_FROM` in `tools/package_firmware.py` to the
+   oldest version that still reads the new data: packaging refuses a release older than that value, and the web Update page
+   refuses an installed version below it.
 2. Add `docs/releases/vX.Y.Z.md` (the release notes; the workflow refuses a tag without it).
 3. Commit and push to `main`. The `release` workflow runs on `main` (build, package and verify everything, **no publishing**);
    wait for it to be green (and `ci` and `web`). `gh workflow run release.yml --ref main` runs it on demand. Its `release-bundle`
