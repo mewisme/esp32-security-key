@@ -4,47 +4,39 @@ import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Progress } from "@/components/ui/progress";
 import type { Installer } from "@/hooks/useInstaller";
-import { ERRORS } from "@/lib/errors/catalog";
+import { useI18n } from "@/i18n/context";
 import { PHASES, type Phase } from "@/lib/flashing/machine";
 import { formatBytes } from "@/lib/format";
 import { CheckRow, CompatibilityBadge, type RowState, StageCard } from "./StageCard";
 
-const SEQUENCE = [
-  "Unplug the board from the computer.",
-  "Press and hold the BOOT button.",
-  "While holding BOOT, plug the board into the computer using the connector labelled USB or OTG.",
-  "Let go of BOOT.",
-  "Click “Choose device” below and pick “USB JTAG/serial debug unit” or an entry that mentions ESP32-S3, then click Connect.",
-];
-
 function BootSequence() {
+  const { t } = useI18n();
+  const boot = t.install.connect.boot;
   return (
     <div className="flex flex-col gap-4">
-      <p>Put the board in download mode so it can receive new firmware:</p>
+      <p>{boot.intro}</p>
       <ol className="flex flex-col gap-3">
-        {SEQUENCE.map((s, i) => (
+        {boot.sequence.map((s, i) => (
           <li key={s} className="flex gap-3">
             <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/15 font-medium text-primary">{i + 1}</span>
             <span className="pt-0.5">{s}</span>
           </li>
         ))}
       </ol>
-      <p className="text-sm text-muted-foreground">
-        Board with an RST button? You can also keep it plugged in: hold BOOT, press and release RST, then release BOOT.
-      </p>
+      <p className="text-sm text-muted-foreground">{boot.rstTip}</p>
       <Collapsible>
         <CollapsibleTrigger asChild>
           <Button type="button" variant="ghost" size="sm">
-            The board isn't in the list <ChevronDown aria-hidden />
+            {boot.notListed} <ChevronDown aria-hidden />
           </Button>
         </CollapsibleTrigger>
         <CollapsibleContent className="flex flex-col gap-3 pt-2 text-sm">
           {(["power-only-cable", "wrong-connector", "multiple-devices"] as const).map((c) => (
             <div key={c} className="flex flex-col gap-1">
-              <p className="font-medium">{ERRORS[c].title}</p>
-              <p className="text-muted-foreground">{ERRORS[c].what}</p>
+              <p className="font-medium">{t.errors[c].title}</p>
+              <p className="text-muted-foreground">{t.errors[c].what}</p>
               <ul className="list-disc pl-5 text-muted-foreground">
-                {ERRORS[c].next.map((n) => (
+                {t.errors[c].next.map((n) => (
                   <li key={n}>{n}</li>
                 ))}
               </ul>
@@ -67,16 +59,17 @@ export function ConnectVerifyStage({ inst, headingRef }: { inst: Installer; head
   const { state, selection, actions } = inst;
   const { phase, chip } = state;
   const [busy, setBusy] = useState(false);
+  const { t, locale } = useI18n();
 
   if (phase === "requesting-permission") {
     return (
       <StageCard
-        title="Connect & verify"
-        description="Connect the board in download mode. Nothing is written yet."
+        title={t.install.steps.connect}
+        description={t.install.connect.requestDescription}
         headingRef={headingRef}
         secondary={
           <Button type="button" variant="outline" onClick={actions.back}>
-            Back
+            {t.common.back}
           </Button>
         }
         primary={
@@ -88,7 +81,7 @@ export function ConnectVerifyStage({ inst, headingRef }: { inst: Installer; head
               void actions.choosePort().finally(() => setBusy(false));
             }}
           >
-            <Usb aria-hidden /> Choose device
+            <Usb aria-hidden /> {t.install.connect.chooseDevice}
           </Button>
         }
       >
@@ -97,6 +90,7 @@ export function ConnectVerifyStage({ inst, headingRef }: { inst: Installer; head
     );
   }
 
+  const rows = t.install.connect.rows;
   const { received, total } = state.download;
   const pct = total ? Math.round((received / total) * 100) : 0;
   const downloading = phase === "downloading";
@@ -104,50 +98,50 @@ export function ConnectVerifyStage({ inst, headingRef }: { inst: Installer; head
 
   return (
     <StageCard
-      title="Connect & verify"
-      description="Reading the board and the firmware. Nothing is written yet."
+      title={t.install.steps.connect}
+      description={t.install.connect.readingDescription}
       headingRef={headingRef}
       secondary={
         <Button type="button" variant="outline" onClick={() => void actions.cancel()}>
-          Cancel
+          {t.common.cancel}
         </Button>
       }
     >
       <ul className="flex flex-col gap-3" aria-live="polite" data-testid="checks">
-        <CheckRow label="Device permission" state={rowState(phase, "connecting")}>
-          {PHASES.indexOf(phase) > PHASES.indexOf("connecting") ? "Granted" : null}
+        <CheckRow label={rows.permission} state={rowState(phase, "connecting")}>
+          {PHASES.indexOf(phase) > PHASES.indexOf("connecting") ? rows.granted : null}
         </CheckRow>
-        <CheckRow label="Chip" state={rowState(phase, "detecting-chip")}>
+        <CheckRow label={rows.chip} state={rowState(phase, "detecting-chip")}>
           {chip ? (chip.description || chip.chipName) : null}
         </CheckRow>
-        <CheckRow label="Flash" state={rowState(phase, "validating-compatibility")}>
-          {chip ? `${chip.flashSize ?? "unknown"}${chip.flashType ? ` · ${chip.flashType}` : ""}` : null}
+        <CheckRow label={rows.flash} state={rowState(phase, "validating-compatibility")}>
+          {chip ? `${chip.flashSize ?? rows.flashUnknown}${chip.flashType ? ` · ${chip.flashType}` : ""}` : null}
         </CheckRow>
-        <CheckRow label="PSRAM" state={rowState(phase, "validating-compatibility")}>
-          {chip ? (psram ? `${psram} MB, not used` : "None — not required") : null}
+        <CheckRow label={rows.psram} state={rowState(phase, "validating-compatibility")}>
+          {chip ? (psram ? rows.psramUnused(psram) : rows.psramNone) : null}
         </CheckRow>
-        <CheckRow label="Firmware profile" state={rowState(phase, "validating-compatibility")}>
-          {selection ? (
-            <>
-              MultiKeys FIDO2 — <span className="whitespace-nowrap">{selection.profile.label}</span>
-            </>
-          ) : null}
+        <CheckRow label={rows.profile} state={rowState(phase, "validating-compatibility")}>
+          {selection ? t.install.firmwareName(<span className="whitespace-nowrap">{selection.profile.label}</span>) : null}
         </CheckRow>
-        <CheckRow label="Compatibility" state={rowState(phase, "validating-compatibility")}>
+        <CheckRow label={rows.compatibility} state={rowState(phase, "validating-compatibility")}>
           {selection ? <CompatibilityBadge support={selection.support} verifiedAs={selection.verifiedAs} /> : null}
         </CheckRow>
         <CheckRow
-          label="Download"
+          label={rows.download}
           state={rowState(phase, "fetching-metadata", "downloading")}
-          below={downloading ? <Progress value={pct} aria-label="Download progress" /> : undefined}
+          below={downloading ? <Progress value={pct} aria-label={rows.downloadProgress} /> : undefined}
         >
-          {downloading ? `${formatBytes(received)} of ${formatBytes(total)}` : state.milestones.downloaded ? formatBytes(total) : null}
+          {downloading
+            ? rows.downloaded(formatBytes(received, locale), formatBytes(total, locale))
+            : state.milestones.downloaded
+              ? formatBytes(total, locale)
+              : null}
         </CheckRow>
-        <CheckRow label="Checksums" state={rowState(phase, "verifying-integrity")}>
-          {state.milestones.integrityVerified ? "Verified" : null}
+        <CheckRow label={rows.checksums} state={rowState(phase, "verifying-integrity")}>
+          {state.milestones.integrityVerified ? rows.verified : null}
         </CheckRow>
-        <CheckRow label="Storage layout" state={rowState(phase, "checking-flash-safety")}>
-          {state.decision ? "Read (read-only)" : null}
+        <CheckRow label={rows.storage} state={rowState(phase, "checking-flash-safety")}>
+          {state.decision ? rows.storageRead : null}
         </CheckRow>
       </ul>
     </StageCard>

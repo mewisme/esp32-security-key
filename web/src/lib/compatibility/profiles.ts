@@ -5,6 +5,7 @@ import { type FlashPolicy, type HardwareProfile, policy as defaultPolicy, suppor
 import type { Build } from "../firmware/types";
 import type { ChipInfo } from "../flashing/driver";
 
+/** How well a connected board is known to work. The words for each level are in src/i18n/messages (`support`). */
 export type Support = "hardware-verified" | "expected-compatible" | "build-verified";
 
 export type ProfileFailure = Extract<
@@ -15,12 +16,6 @@ export type ProfileFailure = Extract<
 export type ProfileResult =
   | { ok: true; build: Build; profile: HardwareProfile; support: Support; verifiedAs: string | null }
   | { ok: false; code: ProfileFailure; detail: string };
-
-export const SUPPORT_LABEL: Record<Support, string> = {
-  "hardware-verified": "Hardware verified",
-  "expected-compatible": "Expected compatible — not tested on this exact board",
-  "build-verified": "Build verified — not hardware tested",
-};
 
 export function selectProfile(
   chip: ChipInfo,

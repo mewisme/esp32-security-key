@@ -1,6 +1,9 @@
 import type { Phase } from "./flashing/machine";
 
-export const STEPS = ["Get started", "Firmware & name", "Connect & verify", "Review", "Install", "Finish"] as const;
+/** The six installation stages; each one's title is `t.install.steps[id]` in src/i18n/messages. */
+export const STEPS = ["get-started", "firmware", "connect", "review", "install", "finish"] as const;
+
+export type StepId = (typeof STEPS)[number];
 
 const STEP_OF: Record<Phase, number> = {
   idle: 0,

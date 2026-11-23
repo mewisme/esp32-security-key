@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { selectProfile, SUPPORT_LABEL } from "@/lib/compatibility/profiles";
+import { selectProfile } from "@/lib/compatibility/profiles";
 import type { ChipInfo } from "@/lib/flashing/driver";
 import { makeFirmware, makeLegacyFirmware } from "../fixtures/firmware";
 
@@ -88,11 +88,5 @@ describe("selectProfile", () => {
 
   it("does not fall back to another image or another size", () => {
     expect(selectProfile(chip({ flashSize: "4MB" }), builds, "openpgp")).toMatchObject({ ok: false, code: "profile-not-in-release" });
-  });
-
-  it("labels every support level", () => {
-    expect(SUPPORT_LABEL["build-verified"]).toBe("Build verified — not hardware tested");
-    expect(SUPPORT_LABEL["hardware-verified"]).toBe("Hardware verified");
-    expect(SUPPORT_LABEL["expected-compatible"]).toMatch(/not tested on this exact board/);
   });
 });

@@ -3,6 +3,7 @@
 export const DEVICE_NAME_MAX = 31;
 export const FALLBACK_DEFAULT_NAME = "MultiKeys Security Key";
 
+/** Why a name is refused. The sentence for each is in src/i18n/messages (`nameProblems`). */
 export type NameProblem = "empty" | "too-long" | "not-ascii" | "edge-space";
 
 export function validateDeviceName(name: string): NameProblem | null {
@@ -15,10 +16,3 @@ export function validateDeviceName(name: string): NameProblem | null {
   if (name.startsWith(" ") || name.endsWith(" ")) return "edge-space";
   return null;
 }
-
-export const NAME_PROBLEM_TEXT: Record<NameProblem, string> = {
-  empty: "Enter a name (1–31 characters).",
-  "too-long": "Use at most 31 characters.",
-  "not-ascii": "Use plain ASCII letters, digits, spaces and punctuation only (no accents or emoji).",
-  "edge-space": "Remove spaces at the start or end.",
-};

@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
+import { useI18n } from "@/i18n/context";
 import { cliFallback } from "@/lib/device/cli-fallback";
 import type { NameRequest } from "@/lib/device/mkauth";
 import type { NameState } from "@/lib/device/personalize";
@@ -25,20 +27,33 @@ function Waiting({ children }: { children: React.ReactNode }) {
 }
 
 function ButtonPrompt() {
+  const { t } = useI18n();
   const [left, setLeft] = useState(BUTTON_SECONDS);
   useEffect(() => {
-    const t = setInterval(() => setLeft((s) => Math.max(0, s - 1)), 1000);
-    return () => clearInterval(t);
+    const timer = setInterval(() => setLeft((s) => Math.max(0, s - 1)), 1000);
+    return () => clearInterval(timer);
   }, []);
   return (
-    <div className="flex flex-wrap items-center gap-2" role="status">
-      <Badge variant="primary-light">Press the BOOT button on your key now</Badge>
-      <span className="text-xs text-muted-foreground tabular-nums">{left} s left</span>
+    <div className="flex flex-col gap-2" role="status">
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge variant="primary-light">{t.device.nameResult.pressBoot}</Badge>
+        {left > 0 ? (
+          <span className="text-xs text-muted-foreground tabular-nums">{t.device.nameResult.secondsLeft(left)}</span>
+        ) : (
+          // The key's own window is over: it is either saving the name or about to say the button was missed.
+          <span className="flex items-center gap-1 text-xs text-muted-foreground">
+            <LoaderCircle className="size-3 motion-safe:animate-spin" aria-hidden />
+            {t.device.nameResult.talking}
+          </span>
+        )}
+      </div>
+      <Progress value={(left / BUTTON_SECONDS) * 100} aria-hidden="true" />
     </div>
   );
 }
 
 function PinForm({ name, onSubmit }: { name: NameState; onSubmit: (pin: string) => void | Promise<void> }) {
+  const { t } = useI18n();
   const id = useId();
   // The PIN lives here until it is sent to the key, then it is cleared. It is never stored or logged.
   const [pin, setPin] = useState("");
@@ -57,7 +72,7 @@ function PinForm({ name, onSubmit }: { name: NameState; onSubmit: (pin: string) 
       }}
     >
       <Field data-invalid={wrong || undefined}>
-        <Label htmlFor={id}>Management PIN</Label>
+        <Label htmlFor={id}>{t.device.nameResult.pinLabel}</Label>
         <Input
           id={id}
           type="password"
@@ -68,25 +83,27 @@ function PinForm({ name, onSubmit }: { name: NameState; onSubmit: (pin: string) 
           onChange={(e) => setPin(e.target.value)}
         />
         <FieldDescription id={`${id}-hint`}>
-          This key has a management PIN ({PIN_MIN}–{PIN_MAX} characters). It is sent to the key and never stored.
+          {t.device.nameResult.pinHint(PIN_MIN, PIN_MAX)}
         </FieldDescription>
         {wrong && (
           <FieldError>
-            {ERRORS["name-pin-wrong"].what}
-            {tries !== undefined && ` ${tries} ${tries === 1 ? "try" : "tries"} left`}
+            {t.errors["name-pin-wrong"].what}
+            {tries !== undefined && ` ${t.device.nameResult.triesLeft(tries)}`}
           </FieldError>
         )}
       </Field>
       <Button type="submit" className="self-start" disabled={bytes < PIN_MIN || bytes > PIN_MAX}>
-        Send PIN
+        {t.device.nameResult.sendPin}
       </Button>
     </form>
   );
 }
 
 function Failure(props: { name: NameState; request: NameRequest; onRetry: () => void }) {
+  const { t } = useI18n();
   const { name } = props;
-  const info = ERRORS[name.error ?? "name-failed"];
+  const info = t.errors[name.error ?? "name-failed"];
+  const retry = ERRORS[name.error ?? "name-failed"].retry;
   const sw = /status ([0-9a-f]{4})/i.exec(name.detail ?? "")?.[1]?.toUpperCase();
   const cli = cliFallback(props.request);
   return (
@@ -98,18 +115,18 @@ function Failure(props: { name: NameState; request: NameRequest; onRetry: () => 
         </p>
         <p className="text-sm text-muted-foreground">
           {info.what}
-          {sw && ` (status ${sw})`}
+          {sw && ` ${t.device.nameResult.status(sw)}`}
         </p>
       </div>
       {cli && (
         <div className="flex flex-col gap-1">
-          <p className="text-xs text-muted-foreground">Or rename it from the command line with the host tools:</p>
+          <p className="text-xs text-muted-foreground">{t.device.nameResult.cli}</p>
           <code className="block rounded-md bg-muted px-3 py-2 font-mono text-xs break-words whitespace-pre-wrap">{cli}</code>
         </div>
       )}
-      {info.retry && (
+      {retry && (
         <Button type="button" variant="outline" size="sm" className="self-start" onClick={props.onRetry}>
-          Try again
+          {t.common.tryAgain}
         </Button>
       )}
     </div>
@@ -128,22 +145,23 @@ export function NameResult(props: {
   onSubmitPin: (pin: string) => void | Promise<void>;
   onRetry: () => void;
 }) {
+  const { t } = useI18n();
   const { name, request } = props;
   const status = request.mode === "keep" ? "kept" : name.status === "kept" ? "kept" : name.status;
   let body: React.ReactNode;
   switch (status) {
     case "kept":
-      body = <Badge variant="outline">Not requested — current name kept</Badge>;
+      body = <Badge variant="outline">{t.device.nameResult.kept}</Badge>;
       break;
     case "idle":
       body = (
         <p className="text-sm text-muted-foreground">
-          {request.mode === "custom" ? `Will be set to “${request.name}”` : `Will be reset to “${props.defaultName}”`} when you check your key.
+          {request.mode === "custom" ? t.device.nameResult.willSet(request.name) : t.device.nameResult.willReset(props.defaultName)}
         </p>
       );
       break;
     case "connecting":
-      body = <Waiting>Talking to your key…</Waiting>;
+      body = <Waiting>{t.device.nameResult.talking}</Waiting>;
       break;
     case "needs-pin":
       body = <PinForm name={name} onSubmit={props.onSubmitPin} />;
@@ -152,10 +170,10 @@ export function NameResult(props: {
       body = <ButtonPrompt />;
       break;
     case "reconnecting":
-      body = <Waiting>Waiting for your key to reconnect…</Waiting>;
+      body = <Waiting>{t.device.nameResult.reconnecting}</Waiting>;
       break;
     case "verified":
-      body = <Badge variant="success-light">Applied and verified: {name.applied}</Badge>;
+      body = <Badge variant="success-light">{t.device.nameResult.applied(name.applied ?? "")}</Badge>;
       break;
     default:
       body = <Failure name={name} request={request} onRetry={props.onRetry} />;

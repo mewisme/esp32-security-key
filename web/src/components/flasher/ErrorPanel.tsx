@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import { Alert, AlertDescription, AlertTitle } from "@/components/reui/alert";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { useI18n } from "@/i18n/context";
 import { ERRORS, type ErrorCode } from "@/lib/errors/catalog";
 import type { Milestones } from "@/lib/flashing/machine";
 import { MilestoneList } from "./MilestoneList";
@@ -19,7 +20,9 @@ export function ErrorPanel(props: {
   onRetry?: () => void;
   onRestart?: () => void;
 }) {
-  const info = ERRORS[props.code];
+  const { t } = useI18n();
+  const info = t.errors[props.code];
+  const retry = ERRORS[props.code].retry;
   const showMilestones = props.milestones && (props.milestones.written || props.milestones.flashVerified);
   return (
     <div className="flex flex-col gap-4" data-testid="error-panel" data-error-code={props.code}>
@@ -32,7 +35,7 @@ export function ErrorPanel(props: {
       </Alert>
       {showMilestones && <MilestoneList milestones={props.milestones!} />}
       <div className="flex flex-col gap-2">
-        <h3 className="font-medium">What to do</h3>
+        <h3 className="font-medium">{t.flasher.whatToDo}</h3>
         <ol className="flex list-decimal flex-col gap-1 pl-5">
           {info.next.map((n) => (
             <li key={n}>{n}</li>
@@ -40,28 +43,28 @@ export function ErrorPanel(props: {
         </ol>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        {info.retry && props.onRetry && (
+        {retry && props.onRetry && (
           <Button type="button" onClick={props.onRetry}>
-            <RotateCcw aria-hidden /> Try again
+            <RotateCcw aria-hidden /> {t.common.tryAgain}
           </Button>
         )}
         {props.onRestart && (
           <Button type="button" variant="outline" onClick={props.onRestart}>
-            Start over
+            {t.common.startOver}
           </Button>
         )}
         <Button asChild variant="link">
-          <Link to={`/help#${props.code}`}>More help</Link>
+          <Link to={`/help#${props.code}`}>{t.common.moreHelp}</Link>
         </Button>
       </div>
       <Collapsible>
         <CollapsibleTrigger asChild>
           <Button type="button" variant="ghost" size="sm">
-            Technical details <ChevronDown aria-hidden />
+            {t.common.technicalDetails} <ChevronDown aria-hidden />
           </Button>
         </CollapsibleTrigger>
         <CollapsibleContent className="pt-2">
-          <pre className="max-h-64 overflow-auto rounded-md bg-muted p-3 font-mono text-xs whitespace-pre-wrap">
+          <pre lang="en" className="max-h-64 overflow-auto rounded-md bg-muted p-3 font-mono text-xs whitespace-pre-wrap">
             {`error: ${props.code}\n${props.message}\n\n${props.log.join("\n")}`}
           </pre>
         </CollapsibleContent>

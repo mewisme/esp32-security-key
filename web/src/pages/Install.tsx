@@ -11,9 +11,11 @@ import { StageCard } from "@/components/installer/StageCard";
 import { Page } from "@/components/layout/Page";
 import { Button } from "@/components/ui/button";
 import { useInstaller } from "@/hooks/useInstaller";
+import { useI18n } from "@/i18n/context";
 import { STEPS, stepIndex } from "@/lib/wizard-steps";
 
 export function InstallPage() {
+  const { t } = useI18n();
   const inst = useInstaller();
   const { state, actions } = inst;
   const { phase } = state;
@@ -28,7 +30,7 @@ export function InstallPage() {
   let stage: React.ReactNode;
   if (phase === "failed" && state.error) {
     stage = (
-      <StageCard title={STEPS[step] ?? "Install"} headingRef={heading}>
+      <StageCard title={t.install.steps[STEPS[step] ?? "install"]} headingRef={heading}>
         <ErrorPanel
           code={state.error.code}
           message={state.error.message}
@@ -42,12 +44,12 @@ export function InstallPage() {
   } else if (phase === "cancelled") {
     stage = (
       <StageCard
-        title="Installation cancelled"
-        description="Nothing was written to the board."
+        title={t.install.cancelled.title}
+        description={t.install.cancelled.text}
         headingRef={heading}
         primary={
           <Button type="button" onClick={() => void actions.reset()}>
-            Start over
+            {t.common.startOver}
           </Button>
         }
       />
@@ -69,8 +71,8 @@ export function InstallPage() {
   return (
     <Page width="flow">
       <header className="flex flex-col gap-2">
-        <h1 className="text-2xl font-semibold sm:text-3xl">Install MultiKeys</h1>
-        <p className="text-muted-foreground">Put the MultiKeys FIDO2 firmware on an ESP32-S3 board, straight from your browser.</p>
+        <h1 className="text-2xl font-semibold sm:text-3xl">{t.install.title}</h1>
+        <p className="text-muted-foreground">{t.install.lead}</p>
       </header>
       <InstallStepper stage={step} />
       <section key={`${step}-${phase === "failed"}`} className="step-enter" aria-labelledby="step-heading">

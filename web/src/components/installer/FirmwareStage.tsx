@@ -8,9 +8,11 @@ import { Field, FieldContent, FieldDescription, FieldLabel, FieldLegend, FieldSe
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Installer } from "@/hooks/useInstaller";
+import { formatDate } from "@/components/releases/format-date";
 import { FALLBACK_DEFAULT_NAME, validateDeviceName } from "@/lib/device/device-name";
 import type { NameRequest } from "@/lib/device/mkauth";
 import { buildsBySize, type CatalogRelease } from "@/lib/firmware/catalog";
+import { useI18n } from "@/i18n/context";
 import { profileById } from "@/lib/firmware/policy";
 import { StageCard } from "./StageCard";
 
@@ -23,10 +25,11 @@ function sizesLabel(release: CatalogRelease): string {
 }
 
 function ReleaseTiles({ inst, selectedTag }: { inst: Installer; selectedTag: string | null }) {
+  const { t, locale } = useI18n();
   const { catalog } = inst;
   if (catalog.status === "loading") {
     return (
-      <div className="flex flex-col gap-2" role="status" aria-label="Loading releases">
+      <div className="flex flex-col gap-2" role="status" aria-label={t.common.loadingReleases}>
         <Skeleton className="h-20 w-full" />
         <Skeleton className="h-20 w-full" />
       </div>
@@ -35,11 +38,11 @@ function ReleaseTiles({ inst, selectedTag }: { inst: Installer; selectedTag: str
   if (catalog.status === "error") {
     return (
       <Alert variant="destructive">
-        <AlertTitle>The firmware list couldn't be loaded</AlertTitle>
+        <AlertTitle>{t.install.firmware.listFailed}</AlertTitle>
         <AlertDescription>
-          <p>Check your internet connection.</p>
+          <p>{t.install.firmware.checkConnection}</p>
           <Button type="button" variant="outline" size="sm" onClick={inst.loadCatalog}>
-            Try again
+            {t.common.tryAgain}
           </Button>
         </AlertDescription>
       </Alert>
@@ -49,8 +52,8 @@ function ReleaseTiles({ inst, selectedTag }: { inst: Installer; selectedTag: str
   if (releases.length === 0) {
     return (
       <Alert>
-        <AlertTitle>No firmware release yet</AlertTitle>
-        <AlertDescription>Prebuilt firmware isn't published yet. Check back later or use the developer method from the README.</AlertDescription>
+        <AlertTitle>{t.common.noFirmwareRelease}</AlertTitle>
+        <AlertDescription>{t.install.firmware.noReleaseText}</AlertDescription>
       </Alert>
     );
   }
@@ -65,11 +68,12 @@ function ReleaseTiles({ inst, selectedTag }: { inst: Installer; selectedTag: str
               <FieldContent>
                 <FieldTitle>
                   {build?.title ?? r.name}
-                  <Badge variant={r.prerelease ? "warning-light" : "success-light"}>{r.prerelease ? "Pre-release" : "Stable"}</Badge>
+                  <Badge variant={r.prerelease ? "warning-light" : "success-light"}>
+                    {r.prerelease ? t.common.preRelease : t.common.stable}
+                  </Badge>
                 </FieldTitle>
                 <FieldDescription>
-                  Version {r.manifest.version}
-                  {r.publishedAt ? ` · ${new Date(r.publishedAt).toLocaleDateString()}` : ""}
+                  {t.install.firmware.version(r.manifest.version, r.publishedAt ? formatDate(r.publishedAt, locale) : null)}
                 </FieldDescription>
                 <div className="mt-1 flex flex-wrap items-center gap-2">
                   {sizes && <Badge variant="outline">{sizes}</Badge>}
@@ -80,7 +84,7 @@ function ReleaseTiles({ inst, selectedTag }: { inst: Installer; selectedTag: str
                       target="_blank"
                       rel="noopener noreferrer"
                     >
-                      Release notes <ExternalLink className="size-3" aria-hidden />
+                      {t.common.releaseNotes} <ExternalLink className="size-3" aria-hidden />
                     </a>
                   )}
                 </div>
@@ -93,8 +97,8 @@ function ReleaseTiles({ inst, selectedTag }: { inst: Installer; selectedTag: str
       <FieldLabel htmlFor="rel-openpgp">
         <Field orientation="horizontal" data-disabled="true">
           <FieldContent>
-            <FieldTitle>MultiKeys OpenPGP — not published</FieldTitle>
-            <FieldDescription>Not available in the web installer; build it from source with the developer script.</FieldDescription>
+            <FieldTitle>{t.install.firmware.openpgp.title}</FieldTitle>
+            <FieldDescription>{t.install.firmware.openpgp.text}</FieldDescription>
           </FieldContent>
           <RadioGroupItem id="rel-openpgp" value="openpgp" disabled />
         </Field>
@@ -105,17 +109,10 @@ function ReleaseTiles({ inst, selectedTag }: { inst: Installer; selectedTag: str
 
 type Mode = NameRequest["mode"];
 
-const NAME_OPTIONS: { mode: Mode; title: string; text: string }[] = [
-  {
-    mode: "keep",
-    title: "Don't change the name",
-    text: `New keys show "${FALLBACK_DEFAULT_NAME}"; updated keys keep their current name.`,
-  },
-  { mode: "custom", title: "Custom name", text: "Up to 31 plain ASCII characters. Applied after the firmware is installed." },
-  { mode: "default", title: "Reset to the default name", text: `Sets the name back to "${FALLBACK_DEFAULT_NAME}".` },
-];
+const NAME_MODES: Mode[] = ["keep", "custom", "default"];
 
 export function FirmwareStage({ inst, headingRef }: { inst: Installer; headingRef: React.Ref<HTMLHeadingElement> }) {
+  const { t } = useI18n();
   const { config, catalog, actions } = inst;
   const releases = catalog.status === "ready" ? catalog.catalog.releases : [];
   const selected = releases.find((r) => r.tag === config.tag) ?? inst.defaultRelease;
@@ -139,43 +136,43 @@ export function FirmwareStage({ inst, headingRef }: { inst: Installer; headingRe
   const nameInvalid = config.name.mode === "custom" && validateDeviceName(config.name.name) !== null;
   const previewName =
     config.name.mode === "custom"
-      ? config.name.name || "Your custom name"
+      ? config.name.name || t.install.firmware.customPreview
       : config.name.mode === "default"
         ? defaultName
-        : "your key's current name";
+        : t.install.firmware.currentPreview;
 
   return (
     <StageCard
-      title="Firmware & name"
-      description="Choose the firmware release and, if you like, a name for your key."
+      title={t.install.steps.firmware}
+      description={t.install.firmware.description}
       headingRef={headingRef}
       secondary={
         <Button type="button" variant="outline" onClick={actions.back}>
-          Back
+          {t.common.back}
         </Button>
       }
       primary={
         <Button type="button" disabled={!selected || nameInvalid} onClick={actions.selectFirmware}>
-          Continue
+          {t.common.continue}
         </Button>
       }
     >
       <FieldSet>
-        <FieldLegend variant="label">Firmware</FieldLegend>
+        <FieldLegend variant="label">{t.common.firmware}</FieldLegend>
         <ReleaseTiles inst={inst} selectedTag={selectedTag} />
       </FieldSet>
 
       <FieldSet>
-        <FieldLegend variant="label">Personalize your MultiKeys</FieldLegend>
+        <FieldLegend variant="label">{t.install.firmware.personalize}</FieldLegend>
         <RadioGroup value={mode} onValueChange={chooseMode}>
-          {NAME_OPTIONS.map((o) => (
-            <FieldLabel key={o.mode} htmlFor={`name-${o.mode}`}>
+          {NAME_MODES.map((m) => (
+            <FieldLabel key={m} htmlFor={`name-${m}`}>
               <Field orientation="horizontal">
                 <FieldContent>
-                  <FieldTitle>{o.title}</FieldTitle>
-                  <FieldDescription>{o.text}</FieldDescription>
+                  <FieldTitle>{t.install.firmware.nameOptions[m].title}</FieldTitle>
+                  <FieldDescription>{t.install.firmware.nameOptions[m].text}</FieldDescription>
                 </FieldContent>
-                <RadioGroupItem id={`name-${o.mode}`} value={o.mode} />
+                <RadioGroupItem id={`name-${m}`} value={m} />
               </Field>
             </FieldLabel>
           ))}
@@ -187,7 +184,7 @@ export function FirmwareStage({ inst, headingRef }: { inst: Installer; headingRe
           <Usb className="size-4 shrink-0 text-muted-foreground" aria-hidden />
           <div className="flex min-w-0 flex-col">
             <span className="truncate font-medium">{previewName}</span>
-            <span className="text-xs text-muted-foreground">USB security key · 303A:4002</span>
+            <span className="text-xs text-muted-foreground">{t.install.firmware.usbKey} · 303A:4002</span>
           </div>
         </div>
       </FieldSet>

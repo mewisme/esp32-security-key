@@ -1,7 +1,6 @@
-import { supportedFlashSizes } from "../firmware/policy";
-
-// Every error the installer can show, in plain language. `retry: false` means retrying cannot help without changing
-// something first. Integrity and storage-safety errors never offer a way to continue anyway.
+// Every error the installer can show. The text of each one (title, what happened, what to do) is in src/i18n/messages,
+// next to every other string of the site. `retry: false` means retrying cannot help without changing something first.
+// Integrity and storage-safety errors never offer a way to continue anyway.
 
 export type ErrorCode =
   | "browser-unsupported"
@@ -39,280 +38,59 @@ export type ErrorCode =
   | "name-not-verified"
   | "name-failed";
 
+/** Identity of a Help section: stays English because it feeds the `#group-...` anchors; the label shown is `t.errorGroups`. */
 export type ErrorGroup = "Browser" | "Connecting" | "Board" | "Firmware" | "Flashing" | "After install" | "Personalization";
 
 export interface ErrorInfo {
   group: ErrorGroup;
+  retry: boolean;
+}
+
+/** The words of one error in one language. */
+export interface ErrorText {
   title: string;
   what: string;
   next: string[];
-  retry: boolean;
 }
 
 /** Errors that must never offer "continue anyway". */
 export const NO_BYPASS: readonly ErrorCode[] = ["checksum-mismatch", "manifest-invalid", "unsafe-layout", "storage-incompatible"];
 
-const DOWNLOAD_MODE = "Put the board in download mode: unplug it, hold the BOOT button, plug it back in while holding BOOT, then let go.";
-
-/** "4, 8 or 16 MB", from the hardware profiles of tools/flash_policy.json. */
-const FLASH_SIZES = (() => {
-  const sizes = supportedFlashSizes().map((s) => s.replace("MB", ""));
-  return `${sizes.slice(0, -1).join(", ")} or ${sizes.at(-1)} MB`;
-})();
-
 export const ERRORS: Record<ErrorCode, ErrorInfo> = {
-  "browser-unsupported": {
-    group: "Browser",
-    title: "This browser can't install firmware",
-    what: "Installing needs Web Serial, which only desktop Chrome, Edge and other Chromium browsers have. Firefox, Safari and phones don't.",
-    next: ["Open this page in Google Chrome or Microsoft Edge on a Windows, macOS, Linux or ChromeOS computer."],
-    retry: false,
-  },
-  "insecure-context": {
-    group: "Browser",
-    title: "This page wasn't opened securely",
-    what: "Browsers only allow access to USB devices on pages loaded over https (or from your own computer).",
-    next: ["Open https://multikeys.mewis.me directly instead of a copy or a proxy."],
-    retry: false,
-  },
-  "no-device-selected": {
-    group: "Connecting",
-    title: "No device was chosen",
-    what: "The device list closed without a selection, or it was empty.",
-    next: [
-      DOWNLOAD_MODE,
-      "In the list, pick “USB JTAG/serial debug unit” or an entry mentioning ESP32-S3, then press Connect.",
-      "If the list is empty, try another USB cable: many cables only carry power.",
-    ],
-    retry: true,
-  },
-  "permission-denied": {
-    group: "Connecting",
-    title: "The browser blocked access to the device",
-    what: "Access to serial devices is turned off for this site, or a policy on this computer blocks it.",
-    next: ["Click the icon left of the address bar, allow “Serial ports”, reload the page and try again."],
-    retry: true,
-  },
-  "port-busy": {
-    group: "Connecting",
-    title: "Another program is using the board",
-    what: "The board's port is already open in another tab or program (for example a serial monitor or Arduino IDE).",
-    next: ["Close other tabs of this site and any program that talks to the board, then try again."],
-    retry: true,
-  },
-  "wrong-connector": {
-    group: "Connecting",
-    title: "This is the board's UART connector",
-    what: "You can install through this connector, but the finished key only works when plugged into the connector labelled USB or OTG.",
-    next: ["After installing, move the cable to the USB/OTG connector."],
-    retry: true,
-  },
-  "power-only-cable": {
-    group: "Connecting",
-    title: "The board doesn't show up",
-    what: "Nothing new appeared in the device list. The most common reason is a cable that only carries power.",
-    next: ["Try a different USB cable you know can transfer files.", "Try another USB port on the computer, directly rather than through a hub."],
-    retry: true,
-  },
-  "multiple-devices": {
-    group: "Connecting",
-    title: "Several boards are connected",
-    what: "More than one possible board is plugged in, so it isn't clear which one to install to.",
-    next: ["Unplug every board except the one you want to install, then try again."],
-    retry: true,
-  },
-  "not-download-mode": {
-    group: "Connecting",
-    title: "The board isn't ready for installing",
-    what: "The installer couldn't start talking to the chip. Usually the board is running its normal program instead of waiting in download mode.",
-    next: [
-      DOWNLOAD_MODE,
-      "Boards with an RST button: hold BOOT, press and release RST, then release BOOT.",
-      "Then press Try again and choose the device again.",
-    ],
-    retry: true,
-  },
-  "unsupported-chip": {
-    group: "Board",
-    title: "This board has a different chip",
-    what: "MultiKeys only runs on the ESP32-S3. The connected board reports another chip.",
-    next: [`Use an ESP32-S3 board with ${FLASH_SIZES} of quad flash (for example one marked N16R8).`],
-    retry: false,
-  },
-  "wrong-flash-size": {
-    group: "Board",
-    title: "This board's flash size isn't supported",
-    what: `MultiKeys needs ${FLASH_SIZES} of flash. This board reports a different size.`,
-    next: [`Use an ESP32-S3 board with ${FLASH_SIZES} of flash; the module marking usually contains N4, N8 or N16 (for example N16R8).`],
-    retry: false,
-  },
-  "unsupported-flash-mode": {
-    group: "Board",
-    title: "This board uses octal flash",
-    what: "Your board uses octal flash. MultiKeys only supports ESP32-S3 boards with quad-SPI flash; nothing was written.",
-    next: ["Use an ESP32-S3 board with a quad-flash module. ESP32-S3-WROOM-2 modules (for example N16R8V) use octal flash."],
-    retry: false,
-  },
-  "unknown-flash-size": {
-    group: "Board",
-    title: "The flash size couldn't be read",
-    what: "The flash size couldn't be read, so no firmware can be chosen safely. Reconnect in download mode and try again; nothing was written.",
-    next: [DOWNLOAD_MODE, "Then press Try again and choose the device again."],
-    retry: true,
-  },
-  "profile-not-in-release": {
-    group: "Board",
-    title: "No firmware for this board in the chosen release",
-    what: "This release has no firmware for your board's flash size. Choose a newer release.",
-    next: ["Go back and choose another release, or check the Releases page for the flash sizes each release covers."],
-    retry: false,
-  },
-  "secure-download-mode": {
-    group: "Board",
-    title: "This chip is locked",
-    what: "The chip is in Secure Download Mode, which permanently restricts what can be written. The installer won't try to work around it.",
-    next: ["Use a different board."],
-    retry: false,
-  },
-  "firmware-unavailable": {
-    group: "Firmware",
-    title: "The firmware couldn't be downloaded",
-    what: "The release list or the firmware file couldn't be fetched.",
-    next: ["Check your internet connection and try again.", "If it keeps failing, the GitHub release may be temporarily unavailable."],
-    retry: true,
-  },
-  "manifest-invalid": {
-    group: "Firmware",
-    title: "The firmware description failed safety checks",
-    what: "The release's firmware description doesn't match what this installer considers safe to write. Nothing was written.",
-    next: ["Choose another release, or report the problem on GitHub."],
-    retry: false,
-  },
-  "checksum-mismatch": {
-    group: "Firmware",
-    title: "The downloaded firmware is damaged",
-    what: "The downloaded file doesn't match its published checksum. Nothing was written to your board.",
-    next: ["Try again; if it fails again, report the problem on GitHub."],
-    retry: true,
-  },
-  "unsafe-layout": {
-    group: "Firmware",
-    title: "The board's storage couldn't be checked",
-    what: "The installer couldn't read the board's storage layout, so it can't tell whether installing would destroy data. Nothing was written.",
-    next: ["Unplug the board, put it back in download mode and try again."],
-    retry: true,
-  },
-  "storage-incompatible": {
-    group: "Firmware",
-    title: "This board's MultiKeys storage is incompatible",
-    what: "The board runs MultiKeys with a different storage layout. Installing would destroy its stored keys, so the installer stops.",
-    next: ["Keep using the firmware that is on the board, or ask for help on GitHub before changing anything."],
-    retry: false,
-  },
-  "device-disconnected": {
-    group: "Connecting",
-    title: "The board was disconnected",
-    what: "The connection to the board was lost before anything was written.",
-    next: ["Plug the board back in (in download mode) and try again."],
-    retry: true,
-  },
-  "disconnected-during-flash": {
-    group: "Flashing",
-    title: "The board was disconnected while installing",
-    what: "The connection was lost while firmware was being written. The board won't start normally until it is installed again; your stored keys area was not being written.",
-    next: [DOWNLOAD_MODE, "Then press Try again to install again."],
-    retry: true,
-  },
-  "flash-write-failed": {
-    group: "Flashing",
-    title: "Writing the firmware failed",
-    what: "The board stopped responding while the firmware was being written.",
-    next: [DOWNLOAD_MODE, "Use a short cable plugged directly into the computer, then try again."],
-    retry: true,
-  },
-  "flash-verify-failed": {
-    group: "Flashing",
-    title: "The written firmware didn't check out",
-    what: "After writing, the board's flash didn't match the firmware. The board may not start correctly.",
-    next: [DOWNLOAD_MODE, "Then try again. If it fails repeatedly, the board's flash may be faulty."],
-    retry: true,
-  },
-  "reboot-failed": {
-    group: "After install",
-    title: "The board didn't restart by itself",
-    what: "The firmware was written and verified, but the board couldn't be restarted from the browser.",
-    next: ["Unplug the board and plug it back in (without holding BOOT)."],
-    retry: false,
-  },
-  "no-reenumeration": {
-    group: "After install",
-    title: "The key hasn't shown up yet",
-    what: "The firmware was written and verified, but the key wasn't detected afterwards.",
-    next: ["Unplug the board and plug it back in without holding BOOT.", "Use the connector labelled USB or OTG.", "Then press “Check my key”."],
-    retry: false,
-  },
-  "firmware-version-unknown": {
-    group: "After install",
-    title: "The installed version couldn't be read",
-    what: "The board's current firmware doesn't say which version it is, so the installer can't promise your stored keys stay usable.",
-    next: ["Only continue if you can afford to lose the keys stored on this board."],
-    retry: false,
-  },
-  "name-rename-disabled": {
-    group: "Personalization",
-    title: "This firmware can't be renamed",
-    what: "This firmware was built without renaming support.",
-    next: ["Keep the default name, or install a MultiKeys build that supports renaming."],
-    retry: false,
-  },
-  "name-button-timeout": {
-    group: "Personalization",
-    title: "The BOOT button wasn't pressed in time",
-    what: "The BOOT button wasn't pressed within 15 seconds; the name was not changed.",
-    next: ["Try again, and press the BOOT button on your key as soon as the page asks you to."],
-    retry: true,
-  },
-  "name-pin-wrong": {
-    group: "Personalization",
-    title: "Wrong management PIN",
-    what: "Wrong management PIN; the name was not changed.",
-    next: ["Enter the management PIN again. Too many wrong attempts block the PIN."],
-    retry: true,
-  },
-  "name-pin-blocked": {
-    group: "Personalization",
-    title: "The management PIN is blocked",
-    what: "The management PIN is blocked; renaming is impossible without re-provisioning.",
-    next: ["Keep using the current name. A FIDO reset doesn't clear a blocked management PIN; docs/PROVISIONING.md explains re-provisioning a development unit."],
-    retry: false,
-  },
-  "name-transport-unavailable": {
-    group: "Personalization",
-    title: "This browser can't reach the key's management interface",
-    what: "This browser can't talk to the key's management interface.",
-    next: [
-      "Use desktop Chrome or Edge, with the key plugged into the USB/OTG connector.",
-      "Or rename it from the command line with the host tools: multikey device rename \"My Key\" --reenumerate",
-    ],
-    retry: true,
-  },
-  "name-not-verified": {
-    group: "Personalization",
-    title: "The new name wasn't confirmed",
-    what: "The key accepted the name but didn't come back after restarting its USB connection.",
-    next: ["Unplug the key, plug it in again, and check the name on the First use page."],
-    retry: true,
-  },
-  "name-failed": {
-    group: "Personalization",
-    title: "The key refused the name",
-    what: "The key refused the name; its answer is shown as a status code.",
-    next: [
-      "Use 1–31 plain ASCII characters (letters, digits, spaces, punctuation) without a space at the start or end.",
-      "If it keeps failing, rename it from the command line: multikey device rename \"My Key\" --reenumerate",
-    ],
-    retry: true,
-  },
+  "browser-unsupported": { group: "Browser", retry: false },
+  "insecure-context": { group: "Browser", retry: false },
+  "no-device-selected": { group: "Connecting", retry: true },
+  "permission-denied": { group: "Connecting", retry: true },
+  "port-busy": { group: "Connecting", retry: true },
+  "wrong-connector": { group: "Connecting", retry: true },
+  "power-only-cable": { group: "Connecting", retry: true },
+  "multiple-devices": { group: "Connecting", retry: true },
+  "not-download-mode": { group: "Connecting", retry: true },
+  "unsupported-chip": { group: "Board", retry: false },
+  "wrong-flash-size": { group: "Board", retry: false },
+  "unsupported-flash-mode": { group: "Board", retry: false },
+  "unknown-flash-size": { group: "Board", retry: true },
+  "profile-not-in-release": { group: "Board", retry: false },
+  "secure-download-mode": { group: "Board", retry: false },
+  "firmware-unavailable": { group: "Firmware", retry: true },
+  "manifest-invalid": { group: "Firmware", retry: false },
+  "checksum-mismatch": { group: "Firmware", retry: true },
+  "unsafe-layout": { group: "Firmware", retry: true },
+  "storage-incompatible": { group: "Firmware", retry: false },
+  "device-disconnected": { group: "Connecting", retry: true },
+  "disconnected-during-flash": { group: "Flashing", retry: true },
+  "flash-write-failed": { group: "Flashing", retry: true },
+  "flash-verify-failed": { group: "Flashing", retry: true },
+  "reboot-failed": { group: "After install", retry: false },
+  "no-reenumeration": { group: "After install", retry: false },
+  "firmware-version-unknown": { group: "After install", retry: false },
+  "name-rename-disabled": { group: "Personalization", retry: false },
+  "name-button-timeout": { group: "Personalization", retry: true },
+  "name-pin-wrong": { group: "Personalization", retry: true },
+  "name-pin-blocked": { group: "Personalization", retry: false },
+  "name-transport-unavailable": { group: "Personalization", retry: true },
+  "name-not-verified": { group: "Personalization", retry: true },
+  "name-failed": { group: "Personalization", retry: true },
 };
 
 export const ERROR_GROUPS: ErrorGroup[] = ["Browser", "Connecting", "Board", "Firmware", "Flashing", "After install", "Personalization"];

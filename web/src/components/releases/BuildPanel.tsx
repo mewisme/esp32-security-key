@@ -3,23 +3,26 @@ import { useEffect, useState } from "react";
 import { Badge } from "@/components/reui/badge";
 import { FramePanel } from "@/components/reui/frame";
 import { Button } from "@/components/ui/button";
+import { useI18n } from "@/i18n/context";
+import type { Messages } from "@/i18n/messages/en";
 import type { Build } from "@/lib/firmware/types";
 import { profileById } from "@/lib/firmware/policy";
 import { formatBytes } from "@/lib/format";
 
-function verificationBadge(build: Build): { variant: "success-light" | "warning-light"; text: string } {
+function verificationBadge(build: Build, t: Messages): { variant: "success-light" | "warning-light"; text: string } {
   if (build.verification === "hardware-verified") {
-    return { variant: "success-light", text: `Hardware verified (${build.verified_hardware[0] ?? "ESP32-S3 N16R8"})` };
+    return { variant: "success-light", text: `${t.support["hardware-verified"]} (${build.verified_hardware[0] ?? "ESP32-S3 N16R8"})` };
   }
-  return { variant: "warning-light", text: "Build verified — not hardware tested" };
+  return { variant: "warning-light", text: t.support["build-verified"] };
 }
 
 function CopyHash({ sha256 }: { sha256: string }) {
+  const { t } = useI18n();
   const [copied, setCopied] = useState(false);
   useEffect(() => {
     if (!copied) return;
-    const t = setTimeout(() => setCopied(false), 1500);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setCopied(false), 1500);
+    return () => clearTimeout(timer);
   }, [copied]);
   return (
     <span className="flex items-center gap-2">
@@ -35,15 +38,16 @@ function CopyHash({ sha256 }: { sha256: string }) {
           void navigator.clipboard.writeText(sha256).then(() => setCopied(true));
         }}
       >
-        {copied ? "Copied" : "Copy"}
+        {copied ? t.releases.copied : t.releases.copy}
       </Button>
     </span>
   );
 }
 
 export function BuildPanel({ tag, build }: { tag: string; build: Build }) {
+  const { t, locale } = useI18n();
   const profile = profileById(build.profile_id);
-  const v = verificationBadge(build);
+  const v = verificationBadge(build, t);
   return (
     <FramePanel>
       <div className="flex flex-col gap-3">
@@ -54,12 +58,12 @@ export function BuildPanel({ tag, build }: { tag: string; build: Build }) {
         </div>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
-            <span className="tabular-nums">{formatBytes(build.package.size)}</span>
+            <span className="tabular-nums">{formatBytes(build.package.size, locale)}</span>
             <CopyHash sha256={build.package.sha256} />
           </div>
           <Button asChild variant="outline" size="sm">
             <a href={`/api/firmware/${encodeURIComponent(tag)}/${encodeURIComponent(build.package.name)}`} download={build.package.name}>
-              <Download aria-hidden /> Download
+              <Download aria-hidden /> {t.common.download}
             </a>
           </Button>
         </div>

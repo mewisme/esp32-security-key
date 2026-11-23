@@ -9,6 +9,7 @@ import {
   StepperTitle,
   StepperTrigger,
 } from "@/components/reui/stepper";
+import { useI18n } from "@/i18n/context";
 import { STEPS } from "@/lib/wizard-steps";
 
 // Check mark drawn at the design's 1.4px line weight (3.36 on a 24-unit grid); stroke-[3.36] wins over the svg attribute.
@@ -27,6 +28,7 @@ const indicators = { completed, inactive: <DashedRing />, active: <DashedRing />
 
 /** The six installation stages. Display only: nothing here navigates, the installer state decides the stage. */
 export function InstallStepper({ stage }: { stage: number }) {
+  const { t } = useI18n();
   const rowRef = useRef<HTMLDivElement>(null);
 
   // If the row is wider than its box it scrolls (only the row, never the page); keep the current step in view.
@@ -48,17 +50,17 @@ export function InstallStepper({ stage }: { stage: number }) {
 
   return (
     <div className="flex flex-col gap-2">
-      <Stepper value={stage + 1} indicators={indicators} aria-label="Installation progress">
+      <Stepper value={stage + 1} indicators={indicators} aria-label={t.install.stepper.label}>
         <div ref={rowRef} className="@container relative -mx-1 -my-2 overflow-x-auto p-2">
           <StepperNav className="min-w-max gap-1">
-            {STEPS.map((title, i) => (
-              <StepperItem key={title} step={i + 1} completed={i < stage} className="gap-1.5">
+            {STEPS.map((id, i) => (
+              <StepperItem key={id} step={i + 1} completed={i < stage} className="gap-1.5">
                 <StepperTrigger disabled className="-m-1 gap-1.5 p-1 disabled:opacity-100">
                   <StepperIndicator className="size-4 bg-ring/20 text-ring/50 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=completed]:bg-primary data-[state=completed]:text-primary-foreground" />
                   <StepperTitle className="whitespace-nowrap data-[state=inactive]:text-muted-foreground @max-2xl:not-data-[state=active]:sr-only">
-                    {title}
+                    {t.install.steps[id]}
                   </StepperTitle>
-                  {i < stage && <span className="sr-only">, completed</span>}
+                  {i < stage && <span className="sr-only">{t.install.stepper.completed}</span>}
                 </StepperTrigger>
                 {i < STEPS.length - 1 && (
                   <StepperSeparator className="m-0 min-w-6 bg-transparent bg-linear-to-r from-primary to-ring/20 data-[state=completed]:to-primary data-[state=inactive]:from-ring/20 rtl:bg-linear-to-l" />
@@ -68,9 +70,7 @@ export function InstallStepper({ stage }: { stage: number }) {
           </StepperNav>
         </div>
       </Stepper>
-      <p className="text-xs text-muted-foreground tabular-nums">
-        Step {stage + 1} of {STEPS.length}
-      </p>
+      <p className="text-xs text-muted-foreground tabular-nums">{t.install.stepper.stepOf(stage + 1, STEPS.length)}</p>
     </div>
   );
 }

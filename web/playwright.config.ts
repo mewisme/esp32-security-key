@@ -6,7 +6,8 @@ export default defineConfig({
   fullyParallel: true,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "list",
-  use: { baseURL: "http://localhost:4173", trace: "retain-on-failure" },
+  // English selectors throughout: pinned so the suite does not depend on the machine's language (the site follows it).
+  use: { baseURL: "http://localhost:4173", trace: "retain-on-failure", locale: "en-US" },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: {
     command: "pnpm build:e2e && pnpm preview --port 4173 --strictPort",

@@ -2,8 +2,8 @@ import { CircleCheck, CircleDashed, LoaderCircle } from "lucide-react";
 import type { Ref } from "react";
 import { Badge } from "@/components/reui/badge";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { useI18n } from "@/i18n/context";
 import type { Support } from "@/lib/compatibility/profiles";
-import { SUPPORT_LABEL } from "@/lib/compatibility/profiles";
 import { cn } from "cn";
 
 /**
@@ -52,6 +52,7 @@ export type RowState = "done" | "active" | "waiting";
 /** One line of a live checklist: leading status icon, label, right-aligned value. */
 export function CheckRow(props: { label: string; state: RowState; children?: React.ReactNode; below?: React.ReactNode }) {
   const { state } = props;
+  const { t } = useI18n();
   const Icon = state === "done" ? CircleCheck : state === "active" ? LoaderCircle : CircleDashed;
   return (
     <li className="flex flex-col gap-2">
@@ -67,7 +68,7 @@ export function CheckRow(props: { label: string; state: RowState; children?: Rea
             aria-hidden
           />
           {props.label}
-          <span className="sr-only">({state === "done" ? "done" : state === "active" ? "in progress" : "waiting"})</span>
+          <span className="sr-only">({t.install.rowState[state]})</span>
         </span>
         <span className="min-w-0 text-right text-sm text-muted-foreground">{props.children}</span>
       </div>
@@ -84,7 +85,8 @@ const SUPPORT_BADGE = {
 
 /** How well the connected board is known to work: one state badge, text from the compatibility module. */
 export function CompatibilityBadge({ support, verifiedAs }: { support: Support; verifiedAs: string | null }) {
-  const text = support === "hardware-verified" ? `${SUPPORT_LABEL[support]} (${verifiedAs ?? "ESP32-S3 N16R8"})` : SUPPORT_LABEL[support];
+  const { t } = useI18n();
+  const text = support === "hardware-verified" ? `${t.support[support]} (${verifiedAs ?? "ESP32-S3 N16R8"})` : t.support[support];
   // The text is longer than a phone's row: let it wrap instead of being cut off.
   return (
     <Badge variant={SUPPORT_BADGE[support]} className="h-auto min-h-5 text-left whitespace-normal">

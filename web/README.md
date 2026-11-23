@@ -85,7 +85,7 @@ fallback; `public/_headers` sets CSP (`connect-src 'self'`), `Permissions-Policy
   flash type (quad/octal) from eFuse `EFUSE_RD_REPEAT_DATA3_REG` bit 9 on the ESP32-S3.
 - `src/lib/compatibility/profiles.ts`: `selectProfile(chip, builds, image)` picks the build by exact flash size and says how well
   that board is known to work (`hardware-verified`, `expected-compatible`, `build-verified`); `matrix.ts` is the table on the home
-  page (same rows as `docs/HARDWARE.md`). The hardware profiles themselves are in `tools/flash_policy.json`
+  page (same rows as `docs/HARDWARE.md`; the words of both are in `src/i18n/messages`). The hardware profiles themselves are in `tools/flash_policy.json`
   (`src/lib/firmware/policy.ts`), shared with the Python tools.
 - `src/lib/firmware/manifest.ts` validates `firmware-manifest.json`: schema 2 (`profile_id` per build) and, through an explicit
   mapping, the published v0.2.0 schema 1 (`legacy: true`, treated as the 16 MB profile; its asset name still says `n16r8`).
@@ -97,6 +97,19 @@ fallback; `public/_headers` sets CSP (`connect-src 'self'`), `Permissions-Policy
   "reset to the default name") with the re-enumerate flag, asks for the BOOT button (15 s) and, if the key has a management PIN,
   for the PIN (never stored), waits for the key to reappear and reads the name and the USB product string back. "Applied and
   verified" is shown only when both match. Failures show the same change as a `multikey device rename ...` command.
+- Languages (`src/i18n/`): English and Vietnamese, no library. The header's language menu saves the choice in
+  `localStorage["multikeys-locale"]`; without a choice the site follows `navigator.languages` (the first `vi` or `en` entry,
+  otherwise English) and never saves that guess. `I18nProvider` keeps `<html lang>`, the title and the meta description in step.
+  Every user-visible string is in `messages/en.tsx`, whose type (`Messages`) `messages/vi.tsx` must satisfy: a missing key or a
+  different function signature fails `tsc`. Components read `const { t, locale } = useI18n()`; a sentence with a number, a plural
+  or a link is a function in the dictionary, never fragments joined in a component. Error, support-level, compatibility-matrix
+  and name-problem text is keyed by the ids in `lib/errors/catalog.ts`, `lib/compatibility/` and `lib/device/device-name.ts`,
+  which hold no text. Identity values (the default device name, error codes and their `/help#code` anchors, `REPURPOSE`, CLI
+  commands) and machine diagnostics (the technical-details block, the install decision's reason, release-list errors) stay in
+  English, the diagnostics marked `lang="en"`. Sizes and dates go through `INTL_LOCALE` (`lib/format.ts`,
+  `components/releases/format-date.ts`). Playwright runs with `locale: "en-US"`, so the English selectors do not depend on the
+  machine's language. A new language: add it to `Locale`, `LOCALES` and `INTL_LOCALE`, write `messages/<code>.tsx`, register it in
+  `messages/index.ts` and in `components/layout/LanguageToggle.tsx`.
 - E2E: `vite build --mode e2e` aliases `@/lib/flashing/create-driver` and `@/lib/device/create-key-connector` to
   `tests/e2e/fake-create-driver.ts` and `tests/e2e/fake-create-key-connector.ts` (a simulated board and an in-memory MKAUTH key
   driven by `localStorage["multikeys-e2e-scenario"]`; scenario fields in `tests/e2e/scenario.ts`: chip, flash size/type,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEVICE_NAME_MAX, FALLBACK_DEFAULT_NAME, NAME_PROBLEM_TEXT, validateDeviceName } from "@/lib/device/device-name";
+import { DEVICE_NAME_MAX, FALLBACK_DEFAULT_NAME, validateDeviceName } from "@/lib/device/device-name";
 
 describe("validateDeviceName", () => {
   it("accepts ordinary names", () => {
@@ -36,9 +36,5 @@ describe("validateDeviceName", () => {
 
   it("checks length before characters, as the firmware does", () => {
     expect(validateDeviceName("ê".repeat(40))).toBe("too-long");
-  });
-
-  it("has user-facing text for every problem", () => {
-    for (const p of ["empty", "too-long", "not-ascii", "edge-space"] as const) expect(NAME_PROBLEM_TEXT[p].length).toBeGreaterThan(10);
   });
 });

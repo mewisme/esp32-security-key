@@ -3,7 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Field, FieldError } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { DEVICE_NAME_MAX, NAME_PROBLEM_TEXT, validateDeviceName } from "@/lib/device/device-name";
+import { useI18n } from "@/i18n/context";
+import { DEVICE_NAME_MAX, validateDeviceName } from "@/lib/device/device-name";
 import { cn } from "cn";
 
 /**
@@ -18,6 +19,7 @@ export function DeviceNameField(props: {
   id?: string;
   autoFocus?: boolean;
 }) {
+  const { t } = useI18n();
   const { value, onChange, defaultName } = props;
   const generated = useId();
   const id = props.id ?? generated;
@@ -29,7 +31,7 @@ export function DeviceNameField(props: {
   return (
     <Field data-invalid={shown !== null || undefined}>
       <Label htmlFor={id} className="justify-between">
-        Device name
+        {t.common.deviceName}
         <span className={cn("tabular-nums", over ? "text-destructive" : "text-muted-foreground")} aria-live="polite">
           {value.length}/{DEVICE_NAME_MAX}
         </span>
@@ -50,10 +52,10 @@ export function DeviceNameField(props: {
         }}
         onBlur={() => setTouched(true)}
       />
-      {shown && <FieldError id={`${id}-error`}>{NAME_PROBLEM_TEXT[shown]}</FieldError>}
+      {shown && <FieldError id={`${id}-error`}>{t.nameProblems[shown]}</FieldError>}
       <div>
         <Button type="button" variant="ghost" size="sm" onClick={() => onChange(defaultName)}>
-          Restore default
+          {t.device.nameField.restore}
         </Button>
       </div>
     </Field>

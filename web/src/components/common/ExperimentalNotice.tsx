@@ -1,14 +1,14 @@
 import { TriangleAlert } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/reui/alert";
-
-export const EXPERIMENTAL_TEXT = "Experimental development firmware — not suitable for protecting important accounts.";
+import { useI18n } from "@/i18n/context";
 
 export function ExperimentalNotice({ className }: { className?: string }) {
+  const { t } = useI18n();
   return (
     <Alert variant="warning" className={className}>
       <TriangleAlert aria-hidden />
-      <AlertTitle>Experimental</AlertTitle>
-      <AlertDescription>{EXPERIMENTAL_TEXT}</AlertDescription>
+      <AlertTitle>{t.experimental.title}</AlertTitle>
+      <AlertDescription>{t.experimental.text}</AlertDescription>
     </Alert>
   );
 }

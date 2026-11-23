@@ -9,69 +9,48 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Field } from "@/components/ui/field";
 import { Label } from "@/components/ui/label";
 import type { Installer } from "@/hooks/useInstaller";
-import { supportedFlashSizes } from "@/lib/firmware/policy";
+import { useI18n } from "@/i18n/context";
 import { StageCard } from "./StageCard";
 
-const CAPTION =
-  "Example: an N16R8 module. The number after N is the flash size in MB; N4, N8 and N16 are supported.";
+const FACTS = ["whatHappens", "whatYouNeed", "beforeConfirm"] as const;
 
 export function GetStartedStage({ inst, headingRef }: { inst: Installer; headingRef: React.Ref<HTMLHeadingElement> }) {
+  const { t } = useI18n();
   const [ok, setOk] = useState(false);
   const id = useId();
-  const sizes = supportedFlashSizes()
-    .map((s) => s.replace("MB", ""))
-    .join(", ");
-  const facts = [
-    {
-      title: "What happens",
-      text: "You pick the firmware, put the board in download mode, check what the installer found, and install. Afterwards you can give the key its own name.",
-    },
-    {
-      title: "What you need",
-      text: `An ESP32-S3 board with ${sizes.replace(/, (\d+)$/, " or $1")} MB of quad-SPI flash, a native USB connector, a BOOT button, a USB cable that carries data, and desktop Chrome or Edge.`,
-    },
-    {
-      title: "Before you confirm",
-      text: "Nothing is written to the board until you confirm on the Review screen.",
-    },
-  ];
   return (
     <StageCard
-      title="Get started"
-      description="Install the MultiKeys FIDO2 firmware on an ESP32-S3 board. It takes about five minutes."
+      title={t.install.steps["get-started"]}
+      description={t.install.getStarted.description}
       headingRef={headingRef}
       primary={
         <Button type="button" disabled={!ok || inst.state.phase === "checking-browser"} onClick={() => inst.actions.begin()}>
-          Continue
+          {t.common.continue}
         </Button>
       }
     >
       <ul className="flex flex-col gap-3">
-        {facts.map((f) => (
-          <li key={f.title} className="flex flex-col gap-1">
-            <span className="font-medium">{f.title}</span>
-            <span className="text-muted-foreground">{f.text}</span>
+        {FACTS.map((key) => (
+          <li key={key} className="flex flex-col gap-1">
+            <span className="font-medium">{t.install.getStarted[key].title}</span>
+            <span className="text-muted-foreground">{t.install.getStarted[key].text}</span>
           </li>
         ))}
       </ul>
       <ExperimentalNotice />
       <InstallerStatusBanner />
-      <BoardDiagram caption={CAPTION} />
+      <BoardDiagram caption={t.install.getStarted.boardCaption} />
       <Collapsible>
         <CollapsibleTrigger asChild>
           <Button type="button" variant="ghost" size="sm">
-            Not sure which board you have? <ChevronDown aria-hidden />
+            {t.install.getStarted.unsure} <ChevronDown aria-hidden />
           </Button>
         </CollapsibleTrigger>
-        <CollapsibleContent className="pt-2 text-sm text-muted-foreground">
-          You don't have to know. The Connect &amp; verify stage reads the chip and the flash size electronically and stops, before
-          writing anything, if the board isn't supported. The marking on the metal module (for example N8R2) tells you the flash size
-          too: the number after N.
-        </CollapsibleContent>
+        <CollapsibleContent className="pt-2 text-sm text-muted-foreground">{t.install.getStarted.unsureText}</CollapsibleContent>
       </Collapsible>
       <Field orientation="horizontal">
         <Checkbox id={id} checked={ok} onCheckedChange={(v) => setOk(v === true)} />
-        <Label htmlFor={id}>My board is an ESP32-S3 with a native USB connector and a BOOT button</Label>
+        <Label htmlFor={id}>{t.install.getStarted.hardwareCheck}</Label>
       </Field>
     </StageCard>
   );

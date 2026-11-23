@@ -17,8 +17,9 @@ export default tseslint.config(
     },
   },
   {
-    // shadcn/ui components export variants next to components; main.tsx is the entry (no HMR boundary).
-    files: ["src/components/ui/**/*.tsx", "src/main.tsx"],
+    // shadcn/ui components export variants next to components; main.tsx is the entry (no HMR boundary); the dictionaries
+    // are data modules whose JSX values are not components.
+    files: ["src/components/ui/**/*.tsx", "src/main.tsx", "src/i18n/messages/**/*.tsx"],
     rules: { "react-refresh/only-export-components": "off" },
   },
   {

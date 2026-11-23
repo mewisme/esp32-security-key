@@ -1,16 +1,13 @@
-const DEFAULT_CAPTION =
-  "Connector labels differ between boards. The right one is wired to the chip's own USB (GPIO19/20) and is usually labelled USB or OTG.";
+import { useI18n } from "@/i18n/context";
 
 /** Top view of a typical ESP32-S3 N16R8 devkit: where the module marking, the two USB-C connectors and BOOT/RST are. */
-export function BoardDiagram({ className, caption = DEFAULT_CAPTION }: { className?: string; caption?: string }) {
+export function BoardDiagram({ className, caption }: { className?: string; caption: string }) {
+  const { t } = useI18n();
   return (
     <figure className={className}>
       <svg viewBox="0 0 560 300" role="img" aria-labelledby="board-title board-desc" className="h-auto w-full text-foreground">
-        <title id="board-title">ESP32-S3 N16R8 development board, top view</title>
-        <desc id="board-desc">
-          The metal module at the top carries the N16R8 marking. At the bottom edge are two USB-C connectors: the one labelled USB or
-          OTG is the one to use; the other is labelled UART or COM. The BOOT and RST buttons sit next to the connectors.
-        </desc>
+        <title id="board-title">{t.boardDiagram.title}</title>
+        <desc id="board-desc">{t.boardDiagram.desc}</desc>
         {/* board */}
         <rect x="150" y="20" width="260" height="250" rx="10" fill="var(--card)" stroke="currentColor" strokeOpacity="0.5" strokeWidth="2" />
         {/* pin headers */}
@@ -38,17 +35,17 @@ export function BoardDiagram({ className, caption = DEFAULT_CAPTION }: { classNa
         {/* callouts */}
         <line x1="360" y1="108" x2="430" y2="108" stroke="currentColor" strokeOpacity="0.5" />
         <text x="436" y="104" fontSize="13" fill="currentColor">N4 / N8 / N16</text>
-        <text x="436" y="121" fontSize="13" fill="currentColor">= flash size in MB</text>
+        <text x="436" y="121" fontSize="13" fill="currentColor">{t.boardDiagram.flashSize}</text>
         <line x1="254" y1="278" x2="254" y2="292" stroke="var(--primary)" />
         <line x1="254" y1="292" x2="120" y2="292" stroke="var(--primary)" />
         <text x="10" y="270" fontSize="13" fontWeight="600" fill="var(--primary)">USB / OTG</text>
-        <text x="10" y="287" fontSize="13" fontWeight="600" fill="var(--primary)">use this one</text>
+        <text x="10" y="287" fontSize="13" fontWeight="600" fill="var(--primary)">{t.boardDiagram.useThisOne}</text>
         <line x1="308" y1="278" x2="308" y2="292" stroke="currentColor" strokeOpacity="0.5" />
         <line x1="308" y1="292" x2="440" y2="292" stroke="currentColor" strokeOpacity="0.5" />
         <text x="446" y="287" fontSize="13" fill="currentColor">UART / COM</text>
         <line x1="190" y1="211" x2="120" y2="211" stroke="currentColor" strokeOpacity="0.5" />
-        <text x="10" y="207" fontSize="13" fill="currentColor">BOOT = the</text>
-        <text x="10" y="224" fontSize="13" fill="currentColor">touch button</text>
+        <text x="10" y="207" fontSize="13" fill="currentColor">{t.boardDiagram.bootLine1}</text>
+        <text x="10" y="224" fontSize="13" fill="currentColor">{t.boardDiagram.bootLine2}</text>
       </svg>
       <figcaption className="mt-2 text-sm text-muted-foreground">{caption}</figcaption>
     </figure>

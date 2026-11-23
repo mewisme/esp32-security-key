@@ -3,6 +3,7 @@ import { DeviceNameField } from "@/components/device/DeviceNameField";
 import { NameResult } from "@/components/device/NameResult";
 import { Button } from "@/components/ui/button";
 import { useKeyName } from "@/hooks/useKeyName";
+import { useI18n } from "@/i18n/context";
 import { createKeyConnector } from "@/lib/device/create-key-connector";
 import { FALLBACK_DEFAULT_NAME, validateDeviceName } from "@/lib/device/device-name";
 import type { NameRequest } from "@/lib/device/mkauth";
@@ -16,6 +17,7 @@ function initialName(): string {
 
 /** Renames a key that is already running MultiKeys: custom name or reset to the default; the BOOT press happens on the key. */
 export function RenameKey() {
+  const { t } = useI18n();
   const [text, setText] = useState(initialName);
   const [last, setLast] = useState<NameRequest | null>(null);
   const [busy, setBusy] = useState(false);
@@ -53,10 +55,10 @@ export function RenameKey() {
       <DeviceNameField value={text} onChange={setText} defaultName={FALLBACK_DEFAULT_NAME} />
       <div className="flex flex-wrap gap-2">
         <Button type="button" disabled={invalid || busy} onClick={() => void run(custom())}>
-          Apply name
+          {t.device.renameKey.apply}
         </Button>
         <Button type="button" variant="outline" disabled={busy} onClick={() => void run({ mode: "default" })}>
-          Reset to default
+          {t.device.renameKey.reset}
         </Button>
       </div>
       {last && (

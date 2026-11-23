@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 import { keyWrites, setup } from "./helpers";
 
 test("theme toggle switches the dark class", async ({ page }) => {
@@ -13,17 +13,36 @@ test("theme toggle switches the dark class", async ({ page }) => {
   await expect(page.locator("html")).not.toHaveClass(/dark/);
 });
 
+test("language toggle switches the page to Vietnamese and remembers it", async ({ page }) => {
+  await setup(page, {});
+  await page.goto("/");
+  const html = page.locator("html");
+  await expect(html).toHaveAttribute("lang", "en");
+  await page.getByTestId("language-toggle").click();
+  await page.getByRole("menuitemradio", { name: "Tiếng Việt" }).click();
+  await expect(html).toHaveAttribute("lang", "vi");
+  await expect(page.getByRole("navigation", { name: "Điều hướng chính" }).getByRole("link", { name: "Cài đặt" })).toBeVisible();
+  await page.reload();
+  await expect(html).toHaveAttribute("lang", "vi");
+  await page.getByTestId("language-toggle").click();
+  await page.getByRole("menuitemradio", { name: "English" }).click();
+  await expect(html).toHaveAttribute("lang", "en");
+  await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Install" })).toBeVisible();
+});
+
+async function expectNoHorizontalScroll(page: Page, width: number) {
+  await page.setViewportSize({ width, height: 900 });
+  await setup(page, {});
+  for (const path of ["/", "/install", "/first-use", "/help", "/releases", "/nope"]) {
+    await page.goto(path);
+    await page.waitForLoadState("networkidle");
+    const [scrollWidth, innerWidth] = await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]);
+    expect(scrollWidth, path).toBeLessThanOrEqual(innerWidth!);
+  }
+}
+
 for (const width of [375, 768]) {
-  test(`${width}px wide: no page has horizontal scroll`, async ({ page }) => {
-    await page.setViewportSize({ width, height: 900 });
-    await setup(page, {});
-    for (const path of ["/", "/install", "/first-use", "/help", "/releases", "/nope"]) {
-      await page.goto(path);
-      await page.waitForLoadState("networkidle");
-      const [scrollWidth, innerWidth] = await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]);
-      expect(scrollWidth, path).toBeLessThanOrEqual(innerWidth!);
-    }
-  });
+  test(`${width}px wide: no page has horizontal scroll`, ({ page }) => expectNoHorizontalScroll(page, width));
 }
 
 test("the site header links to every page and marks the current one", async ({ page }) => {
@@ -116,4 +135,37 @@ test.describe("First use", () => {
     await page.getByRole("button", { name: "Send PIN" }).click();
     await expect(page.getByText("Applied and verified: Desk key")).toBeVisible();
   });
+});
+
+test.describe("Vietnamese browser", () => {
+  test.use({ locale: "vi-VN" });
+
+  test("a first visit follows the browser's language without saving a choice", async ({ page }) => {
+    await setup(page, {});
+    await page.goto("/");
+    await expect(page.locator("html")).toHaveAttribute("lang", "vi");
+    await expect(page).toHaveTitle(/cài đặt khóa bảo mật/);
+    await expect(page.getByRole("navigation", { name: "Điều hướng chính" }).getByRole("link", { name: "Cài đặt" })).toBeVisible();
+    expect(await page.evaluate(() => localStorage.getItem("multikeys-locale"))).toBeNull();
+  });
+
+  test("an explicit choice of English wins over the browser's language", async ({ page }) => {
+    await setup(page, {});
+    await page.goto("/");
+    await page.getByTestId("language-toggle").click();
+    await page.getByRole("menuitemradio", { name: "English" }).click();
+    await page.reload();
+    await expect(page.locator("html")).toHaveAttribute("lang", "en");
+  });
+
+  test("an error code in the Help hash scrolls its Vietnamese panel into view", async ({ page }) => {
+    await setup(page, {});
+    await page.goto("/help#unknown-flash-size");
+    await expect(page.locator("#unknown-flash-size")).toBeInViewport();
+    await expect(page.locator("#unknown-flash-size")).toContainText("Không đọc được dung lượng flash");
+  });
+
+  for (const width of [375, 768]) {
+    test(`${width}px wide: no page has horizontal scroll`, ({ page }) => expectNoHorizontalScroll(page, width));
+  }
 });

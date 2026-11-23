@@ -8,27 +8,28 @@ import { Badge } from "@/components/reui/badge";
 import { IconTile } from "@/components/reui/icon-tile";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useI18n } from "@/i18n/context";
 import { DOCS_URL, REPO_URL } from "@/lib/status";
 
-const HOW: { icon: typeof Cable; title: string; text: string }[] = [
-  { icon: Cable, title: "Connect", text: "Plug an ESP32-S3 board into your computer's USB port in download mode." },
-  { icon: Download, title: "Install", text: "The installer checks the board and the firmware, shows what it will write, then writes it." },
-  { icon: MousePointerClick, title: "Press BOOT to sign in", text: "Replug it: it is now a security key. Press BOOT when a website asks you to touch it." },
-];
+const HOW = [
+  { key: "connect", icon: Cable },
+  { key: "install", icon: Download },
+  { key: "signIn", icon: MousePointerClick },
+] as const;
 
-const FEATURES: { icon: typeof Cable; title: string; text: string }[] = [
-  { icon: KeyRound, title: "Passkeys and FIDO2", text: "Works with WebAuthn sign-in on sites and apps that accept security keys." },
-  { icon: Fingerprint, title: "BOOT-button presence", text: "Every sign-in needs a physical press of the BOOT button." },
-  { icon: Hash, title: "PIN", text: "Protect stored credentials with a FIDO PIN set from your browser or OS." },
-  { icon: GitBranch, title: "Open source and auditable", text: "Firmware, host tools and this site are published under the AGPL." },
-];
+const FEATURES = [
+  { key: "passkeys", icon: KeyRound },
+  { key: "presence", icon: Fingerprint },
+  { key: "pin", icon: Hash },
+  { key: "open", icon: GitBranch },
+] as const;
 
-const DOCS: { label: string; href: string }[] = [
-  { label: "Documentation", href: DOCS_URL },
-  { label: "Hardware", href: `${REPO_URL}/blob/main/docs/HARDWARE.md` },
-  { label: "Security", href: `${REPO_URL}/blob/main/docs/SECURITY.md` },
-  { label: "Releases process", href: `${REPO_URL}/blob/main/docs/RELEASES.md` },
-];
+const DOCS = [
+  { key: "documentation", href: DOCS_URL },
+  { key: "hardware", href: `${REPO_URL}/blob/main/docs/HARDWARE.md` },
+  { key: "security", href: `${REPO_URL}/blob/main/docs/SECURITY.md` },
+  { key: "releasesProcess", href: `${REPO_URL}/blob/main/docs/RELEASES.md` },
+] as const;
 
 function Section({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
   return (
@@ -42,45 +43,46 @@ function Section({ id, title, children }: { id: string; title: string; children:
 }
 
 export function HomePage() {
+  const { t } = useI18n();
   return (
     <Page width="wide">
       <section className="flex flex-col items-start gap-4" aria-labelledby="hero">
-        <Badge variant="outline">Experimental · open source</Badge>
+        <Badge variant="outline">{t.home.badge}</Badge>
         <h1 id="hero" className="max-w-3xl text-4xl font-bold sm:text-5xl">
-          Turn an ESP32-S3 into a FIDO2 security key
+          {t.home.title}
         </h1>
-        <p className="max-w-2xl text-lg text-muted-foreground">Install MultiKeys from your browser in a few minutes, no command line needed.</p>
+        <p className="max-w-2xl text-lg text-muted-foreground">{t.home.lead}</p>
         <div className="flex flex-wrap items-center gap-2">
           <Button asChild size="lg">
-            <Link to="/install">Install</Link>
+            <Link to="/install">{t.layout.nav.install}</Link>
           </Button>
           <Button asChild size="lg" variant="outline">
-            <Link to="/first-use">First use</Link>
+            <Link to="/first-use">{t.layout.nav.firstUse}</Link>
           </Button>
           <Button asChild size="lg" variant="link">
             <a href={REPO_URL} target="_blank" rel="noopener noreferrer">
-              Source on GitHub
+              {t.home.source}
             </a>
           </Button>
         </div>
         <p className="flex items-center gap-2 text-sm text-muted-foreground">
-          <ShieldCheck className="size-4" aria-hidden /> Hardware verified on ESP32-S3 N16R8
+          <ShieldCheck className="size-4" aria-hidden /> {t.home.verified}
         </p>
       </section>
 
-      <Section id="how" title="How it works">
+      <Section id="how" title={t.home.how.title}>
         <ol className="grid gap-4 sm:grid-cols-3">
           {HOW.map((s, i) => (
-            <li key={s.title} className="flex">
+            <li key={s.key} className="flex">
               <Card className="w-full">
                 <CardHeader>
                   <IconTile variant="soft">
                     <s.icon aria-hidden />
                   </IconTile>
                   <CardTitle>
-                    {i + 1}. {s.title}
+                    {i + 1}. {t.home.how[s.key].title}
                   </CardTitle>
-                  <CardDescription>{s.text}</CardDescription>
+                  <CardDescription>{t.home.how[s.key].text}</CardDescription>
                 </CardHeader>
               </Card>
             </li>
@@ -88,17 +90,17 @@ export function HomePage() {
         </ol>
       </Section>
 
-      <Section id="features" title="Features">
+      <Section id="features" title={t.home.features.title}>
         <ul className="grid gap-4 sm:grid-cols-2">
           {FEATURES.map((f) => (
-            <li key={f.title} className="flex">
+            <li key={f.key} className="flex">
               <Card className="w-full">
                 <CardHeader>
                   <IconTile variant="soft">
                     <f.icon aria-hidden />
                   </IconTile>
-                  <CardTitle>{f.title}</CardTitle>
-                  <CardDescription>{f.text}</CardDescription>
+                  <CardTitle>{t.home.features[f.key].title}</CardTitle>
+                  <CardDescription>{t.home.features[f.key].text}</CardDescription>
                 </CardHeader>
               </Card>
             </li>
@@ -106,33 +108,33 @@ export function HomePage() {
         </ul>
       </Section>
 
-      <Section id="hardware" title="Supported hardware">
+      <Section id="hardware" title={t.home.hardware.title}>
         <HardwareTable />
         <p className="text-sm text-muted-foreground">
-          Details and how to read your module's marking:{" "}
-          <a className="underline underline-offset-4" href={`${REPO_URL}/blob/main/docs/HARDWARE.md`} target="_blank" rel="noopener noreferrer">
-            docs/HARDWARE.md
-          </a>
-          .
+          {t.home.hardware.details(
+            <a className="underline underline-offset-4" href={`${REPO_URL}/blob/main/docs/HARDWARE.md`} target="_blank" rel="noopener noreferrer">
+              docs/HARDWARE.md
+            </a>,
+          )}
         </p>
       </Section>
 
       <Alert variant="warning">
         <TriangleAlert aria-hidden />
-        <AlertTitle>Development firmware</AlertTitle>
-        <AlertDescription>Development firmware: not FIDO-certified, no secure element, flash encryption off. Don't use it as your only key.</AlertDescription>
+        <AlertTitle>{t.home.warning.title}</AlertTitle>
+        <AlertDescription>{t.home.warning.text}</AlertDescription>
       </Alert>
 
-      <Section id="release" title="Latest release">
+      <Section id="release" title={t.home.latest}>
         <LatestRelease />
       </Section>
 
-      <Section id="docs" title="Documentation">
+      <Section id="docs" title={t.home.docs.title}>
         <div className="flex flex-wrap gap-2">
           {DOCS.map((d) => (
-            <Button key={d.label} asChild variant="outline">
+            <Button key={d.key} asChild variant="outline">
               <a href={d.href} target="_blank" rel="noopener noreferrer">
-                {d.label}
+                {t.home.docs[d.key]}
               </a>
             </Button>
           ))}
