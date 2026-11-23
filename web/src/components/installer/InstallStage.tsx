@@ -47,7 +47,8 @@ export function InstallStage({ inst, headingRef }: { inst: Installer; headingRef
         <Label id="flash-label">
           {flashing ? t.install.installing.written(formatBytes(written, locale), formatBytes(total, locale), pct) : t.install.installing.verifying}
         </Label>
-        <Progress value={flashing ? pct : 100} aria-labelledby="flash-label" />
+        {/* The bar is full while the key is read back and restarted, which has no progress to show: it pulses so it is not mistaken for finished. */}
+        <Progress value={flashing ? pct : 100} aria-labelledby="flash-label" className={flashing ? undefined : "animate-pulse"} />
       </div>
       <p className="text-sm text-muted-foreground">{t.install.installing.note}</p>
     </StageCard>

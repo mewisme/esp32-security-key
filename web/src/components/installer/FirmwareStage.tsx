@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Field, FieldContent, FieldDescription, FieldLabel, FieldLegend, FieldSet, FieldTitle } from "@/components/ui/field";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useChangedSinceMount } from "@/hooks/useChangedSinceMount";
 import type { Installer } from "@/hooks/useInstaller";
 import { formatDate } from "@/components/releases/format-date";
 import { FALLBACK_DEFAULT_NAME, validateDeviceName } from "@/lib/device/device-name";
@@ -27,6 +28,8 @@ function sizesLabel(release: CatalogRelease): string {
 function ReleaseTiles({ inst, selectedTag }: { inst: Installer; selectedTag: string | null }) {
   const { t, locale } = useI18n();
   const { catalog } = inst;
+  // The list replaces its skeleton (or an error) once the catalog answers; a list that is already there rides on the stage.
+  const reveal = useChangedSinceMount(catalog.status) ? "enter-reveal" : undefined;
   if (catalog.status === "loading") {
     return (
       <div className="flex flex-col gap-2" role="status" aria-label={t.common.loadingReleases}>
@@ -37,7 +40,7 @@ function ReleaseTiles({ inst, selectedTag }: { inst: Installer; selectedTag: str
   }
   if (catalog.status === "error") {
     return (
-      <Alert variant="destructive">
+      <Alert variant="destructive" className={reveal}>
         <AlertTitle>{t.install.firmware.listFailed}</AlertTitle>
         <AlertDescription>
           <p>{t.install.firmware.checkConnection}</p>
@@ -51,19 +54,19 @@ function ReleaseTiles({ inst, selectedTag }: { inst: Installer; selectedTag: str
   const releases = catalog.catalog.releases;
   if (releases.length === 0) {
     return (
-      <Alert>
+      <Alert className={reveal}>
         <AlertTitle>{t.common.noFirmwareRelease}</AlertTitle>
         <AlertDescription>{t.install.firmware.noReleaseText}</AlertDescription>
       </Alert>
     );
   }
   return (
-    <RadioGroup value={selectedTag ?? ""} onValueChange={inst.actions.setRelease}>
+    <RadioGroup value={selectedTag ?? ""} onValueChange={inst.actions.setRelease} className={reveal}>
       {releases.map((r) => {
         const build = r.manifest.builds.find((b) => b.image === "fido");
         const sizes = sizesLabel(r);
         return (
-          <FieldLabel key={r.tag} htmlFor={`rel-${r.tag}`}>
+          <FieldLabel key={r.tag} htmlFor={`rel-${r.tag}`} className="transition-colors">
             <Field orientation="horizontal">
               <FieldContent>
                 <FieldTitle>
@@ -79,7 +82,7 @@ function ReleaseTiles({ inst, selectedTag }: { inst: Installer; selectedTag: str
                   {sizes && <Badge variant="outline">{sizes}</Badge>}
                   {r.notesUrl && (
                     <a
-                      className="inline-flex items-center gap-1 text-sm underline underline-offset-4"
+                      className="inline-flex items-center gap-1 text-sm underline underline-offset-4 transition-colors hover:text-primary"
                       href={r.notesUrl}
                       target="_blank"
                       rel="noopener noreferrer"
@@ -94,7 +97,7 @@ function ReleaseTiles({ inst, selectedTag }: { inst: Installer; selectedTag: str
           </FieldLabel>
         );
       })}
-      <FieldLabel htmlFor="rel-openpgp">
+      <FieldLabel htmlFor="rel-openpgp" className="transition-colors">
         <Field orientation="horizontal" data-disabled="true">
           <FieldContent>
             <FieldTitle>{t.install.firmware.openpgp.title}</FieldTitle>
@@ -123,6 +126,8 @@ export function FirmwareStage({ inst, headingRef }: { inst: Installer; headingRe
   // The typed text survives switching between the three options (and Back/Continue through the persisted config).
   const [customText, setCustomText] = useState(config.name.mode === "custom" ? config.name.name : "");
   const mode = config.name.mode;
+  // The name field opens after a click on "custom"; one that is already there rides on the stage.
+  const revealCustom = useChangedSinceMount(mode) ? "enter-reveal" : undefined;
 
   const chooseMode = (m: string) => {
     if (m === "custom") actions.setNameRequest({ mode: "custom", name: customText });
@@ -166,7 +171,7 @@ export function FirmwareStage({ inst, headingRef }: { inst: Installer; headingRe
         <FieldLegend variant="label">{t.install.firmware.personalize}</FieldLegend>
         <RadioGroup value={mode} onValueChange={chooseMode}>
           {NAME_MODES.map((m) => (
-            <FieldLabel key={m} htmlFor={`name-${m}`}>
+            <FieldLabel key={m} htmlFor={`name-${m}`} className="transition-colors">
               <Field orientation="horizontal">
                 <FieldContent>
                   <FieldTitle>{t.install.firmware.nameOptions[m].title}</FieldTitle>
@@ -178,7 +183,9 @@ export function FirmwareStage({ inst, headingRef }: { inst: Installer; headingRe
           ))}
         </RadioGroup>
         {config.name.mode === "custom" && (
-          <DeviceNameField id="device-name" value={config.name.name} onChange={changeText} defaultName={FALLBACK_DEFAULT_NAME} />
+          <div className={revealCustom}>
+            <DeviceNameField id="device-name" value={config.name.name} onChange={changeText} defaultName={FALLBACK_DEFAULT_NAME} />
+          </div>
         )}
         <div className="flex items-center gap-3 rounded-lg border bg-muted/40 p-3">
           <Usb className="size-4 shrink-0 text-muted-foreground" aria-hidden />

@@ -1,5 +1,6 @@
 import { Download } from "lucide-react";
 import { useEffect, useState } from "react";
+import { DrawnCheck } from "@/components/common/DrawnCheck";
 import { Badge } from "@/components/reui/badge";
 import { FramePanel } from "@/components/reui/frame";
 import { Button } from "@/components/ui/button";
@@ -38,7 +39,14 @@ function CopyHash({ sha256 }: { sha256: string }) {
           void navigator.clipboard.writeText(sha256).then(() => setCopied(true));
         }}
       >
-        {copied ? t.releases.copied : t.releases.copy}
+        {copied ? (
+          <span className="enter-reveal inline-flex items-center gap-1">
+            <DrawnCheck className="size-3.5" />
+            {t.releases.copied}
+          </span>
+        ) : (
+          t.releases.copy
+        )}
       </Button>
     </span>
   );

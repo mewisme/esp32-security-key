@@ -1,8 +1,8 @@
-import { ChevronDown, CircleX, RotateCcw } from "lucide-react";
+import { CircleX, RotateCcw } from "lucide-react";
 import { Link } from "react-router";
+import { Disclosure } from "@/components/common/Disclosure";
 import { Alert, AlertDescription, AlertTitle } from "@/components/reui/alert";
 import { Button } from "@/components/ui/button";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useI18n } from "@/i18n/context";
 import { ERRORS, type ErrorCode } from "@/lib/errors/catalog";
 import type { Milestones } from "@/lib/flashing/machine";
@@ -57,18 +57,11 @@ export function ErrorPanel(props: {
           <Link to={`/help#${props.code}`}>{t.common.moreHelp}</Link>
         </Button>
       </div>
-      <Collapsible>
-        <CollapsibleTrigger asChild>
-          <Button type="button" variant="ghost" size="sm">
-            {t.common.technicalDetails} <ChevronDown aria-hidden />
-          </Button>
-        </CollapsibleTrigger>
-        <CollapsibleContent className="pt-2">
-          <pre lang="en" className="max-h-64 overflow-auto rounded-md bg-muted p-3 font-mono text-xs whitespace-pre-wrap">
-            {`error: ${props.code}\n${props.message}\n\n${props.log.join("\n")}`}
-          </pre>
-        </CollapsibleContent>
-      </Collapsible>
+      <Disclosure label={t.common.technicalDetails} className="pt-2">
+        <pre lang="en" className="max-h-64 overflow-auto rounded-md bg-muted p-3 font-mono text-xs whitespace-pre-wrap">
+          {`error: ${props.code}\n${props.message}\n\n${props.log.join("\n")}`}
+        </pre>
+      </Disclosure>
     </div>
   );
 }

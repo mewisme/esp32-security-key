@@ -13,7 +13,7 @@ export function InstallerStatusBanner({ className }: { className?: string }) {
       <AlertDescription>
         <p>
           {t.statusBanner.text(
-            <a className="underline underline-offset-4" href={README_INSTALL_URL} target="_blank" rel="noopener noreferrer">
+            <a className="underline underline-offset-4 transition-colors hover:text-primary" href={README_INSTALL_URL} target="_blank" rel="noopener noreferrer">
               {t.statusBanner.link}
             </a>,
           )}

@@ -1,5 +1,5 @@
-import { CheckIcon } from "lucide-react";
 import { useEffect, useRef } from "react";
+import { DrawnCheck } from "@/components/common/DrawnCheck";
 import {
   Stepper,
   StepperIndicator,
@@ -12,8 +12,8 @@ import {
 import { useI18n } from "@/i18n/context";
 import { STEPS } from "@/lib/wizard-steps";
 
-// Check mark drawn at the design's 1.4px line weight (3.36 on a 24-unit grid); stroke-[3.36] wins over the svg attribute.
-const completed = <CheckIcon strokeWidth={3.36} className="size-2.5 stroke-[3.36]" aria-hidden="true" />;
+// Check mark at the design's 1.4px line weight (3.36 on a 24-unit grid); it draws itself when its step completes.
+const completed = <DrawnCheck strokeWidth={3.36} className="size-2.5" />;
 
 // pathLength counts the circle as 28 units, so the 3:1 dash pattern closes in seven even dashes.
 function DashedRing() {
@@ -63,7 +63,7 @@ export function InstallStepper({ stage }: { stage: number }) {
                   {i < stage && <span className="sr-only">{t.install.stepper.completed}</span>}
                 </StepperTrigger>
                 {i < STEPS.length - 1 && (
-                  <StepperSeparator className="m-0 min-w-6 bg-transparent bg-linear-to-r from-primary to-ring/20 data-[state=completed]:to-primary data-[state=inactive]:from-ring/20 rtl:bg-linear-to-l" />
+                  <StepperSeparator className="relative m-0 min-w-6 overflow-hidden bg-transparent bg-linear-to-r from-primary to-ring/20 data-[state=inactive]:from-ring/20 rtl:bg-linear-to-l after:absolute after:inset-0 after:origin-left after:scale-x-0 after:bg-primary after:transition-transform after:duration-200 after:ease-[cubic-bezier(0.22,1,0.36,1)] data-[state=completed]:after:scale-x-100 motion-reduce:after:transition-none rtl:after:origin-right" />
                 )}
               </StepperItem>
             ))}

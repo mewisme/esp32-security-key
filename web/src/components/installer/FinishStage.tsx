@@ -6,9 +6,11 @@ import { MilestoneList } from "@/components/flasher/MilestoneList";
 import { Badge } from "@/components/reui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { useChangedSinceMount } from "@/hooks/useChangedSinceMount";
 import type { Installer } from "@/hooks/useInstaller";
 import { useI18n } from "@/i18n/context";
 import { FALLBACK_DEFAULT_NAME } from "@/lib/device/device-name";
+import { cn } from "cn";
 import { StageCard } from "./StageCard";
 
 function ResultRow(props: { icon: LucideIcon; title: string; badge?: React.ReactNode; children?: React.ReactNode }) {
@@ -35,6 +37,8 @@ export function FinishStage({ inst, headingRef }: { inst: Installer; headingRef:
   const waiting = state.phase === "awaiting-reenumeration";
   const detected = done && state.milestones.deviceDetected && state.device;
   const shownName = name.applied ?? state.device?.productName ?? t.common.unnamedDevice;
+  // The outcome of the key check replaces the replug instructions; instructions that are already there ride on the stage.
+  const resolved = useChangedSinceMount(done) ? "enter-reveal" : undefined;
 
   return (
     <StageCard
@@ -112,13 +116,13 @@ export function FinishStage({ inst, headingRef }: { inst: Installer; headingRef:
           </>
         )}
         {detected && state.device && (
-          <div className="flex flex-col gap-1">
+          <div className={cn("flex flex-col gap-1", resolved)}>
             <p className="font-medium">{t.install.finish.key.detectedTitle(shownName)}</p>
             <p className="text-sm text-muted-foreground">{t.install.finish.key.landing(state.device.landingUrl ?? null)}</p>
           </div>
         )}
         {done && !detected && (
-          <div className="flex flex-col gap-2">
+          <div className={cn("flex flex-col gap-2", resolved)}>
             <p className="font-medium">{t.install.finish.key.unverifiedTitle}</p>
             <p className="text-sm text-muted-foreground">{t.install.finish.key.unverifiedText}</p>
             <ul className="list-disc pl-5 text-sm text-muted-foreground">

@@ -123,22 +123,217 @@
   }
 }
 
-/* The only animation on the site: a wizard step entering. */
-@keyframes step-in {
+/*
+ * Motion (web/README.md, "Motion"). One curve and three speeds: 150 ms for hover (Tailwind's transition-colors), 200 ms for
+ * entrances and reveals, 300 ms for the largest surface. Only transform and opacity move. Two one-shots are the exception:
+ * a check mark drawn with stroke-dashoffset, and a height reveal that a click starts (.collapse-content). Reduced motion
+ * swaps every movement for a fade of 150 ms or less, or an instant change; progress bars, loaders and chevrons keep going.
+ * The installed components (components/ui, components/reui) keep their own motion; only the reduced-motion block at the
+ * end overrides it, for WCAG 2.3.3.
+ */
+:root {
+  --ease-house: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Entrances, at most one per view: a page (Page), or a wizard stage from the side it was reached from (pages/Install). */
+@keyframes enter-rise {
   from {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translateY(8px);
   }
   to {
     opacity: 1;
     transform: none;
   }
 }
-.step-enter {
-  animation: step-in 200ms cubic-bezier(0.22, 1, 0.36, 1);
+@keyframes enter-from-right {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
+@keyframes enter-from-left {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+/* Feedback that arrives after a load or an action (data replacing its skeleton, a result, a state change), not an entrance. */
+@keyframes enter-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes enter-fade {
+  from {
+    opacity: 0;
+  }
+}
+.enter-page,
+.enter-stage {
+  animation: enter-rise 200ms var(--ease-house);
+}
+.enter-stage[data-direction="forward"] {
+  animation-name: enter-from-right;
+}
+.enter-stage[data-direction="back"] {
+  animation-name: enter-from-left;
+}
+.enter-reveal {
+  animation: enter-reveal 200ms var(--ease-house);
+}
+
+/* A check mark that draws itself when it mounts (components/common/DrawnCheck; the path has pathLength 1). */
+@keyframes draw-check {
+  from {
+    stroke-dashoffset: 1;
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.draw-check {
+  stroke-dasharray: 1;
+  animation: draw-check 200ms var(--ease-house);
+}
+
+/* A height reveal started by a click (components/common/Disclosure): Radix keeps the content mounted while it plays. */
+@keyframes collapse-down {
+  from {
+    height: 0;
+  }
+  to {
+    height: var(--radix-collapsible-content-height);
+  }
+}
+@keyframes collapse-up {
+  from {
+    height: var(--radix-collapsible-content-height);
+  }
+  to {
+    height: 0;
+  }
+}
+.collapse-content {
+  overflow: hidden;
+}
+.collapse-content[data-state="open"] {
+  animation: collapse-down 200ms var(--ease-house);
+}
+.collapse-content[data-state="closed"] {
+  animation: collapse-up 200ms var(--ease-house);
+}
+
+/* The BOOT-button wait (components/device/NameResult): a bar that runs out in the firmware's window, linear like any progress. */
+@keyframes countdown {
+  to {
+    transform: scaleX(0);
+  }
+}
+.countdown {
+  transform-origin: left;
+  animation: countdown var(--countdown-duration, 15s) linear forwards;
+}
+
+/* Ambient attention cues, two seconds or longer: a ring that spreads from a dot, and one around an SVG shape. */
+@keyframes pulse-ring {
+  from {
+    opacity: 0.5;
+    transform: scale(1);
+  }
+  70%,
+  to {
+    opacity: 0;
+    transform: scale(2.4);
+  }
+}
+@keyframes pulse-ring-svg {
+  from {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+  70%,
+  to {
+    opacity: 0;
+    transform: scale(1.5);
+  }
+}
+.pulse-ring {
+  animation: pulse-ring 2.4s var(--ease-house) infinite;
+}
+.pulse-ring-svg {
+  transform-box: fill-box;
+  transform-origin: center;
+  vector-effect: non-scaling-stroke;
+  animation: pulse-ring-svg 2.4s var(--ease-house) infinite;
+}
+
+/* A refused PIN: the field shakes once. */
+@keyframes shake {
+  20% {
+    transform: translateX(-4px);
+  }
+  40% {
+    transform: translateX(4px);
+  }
+  60% {
+    transform: translateX(-3px);
+  }
+  80% {
+    transform: translateX(3px);
+  }
+}
+.shake-on-invalid[aria-invalid="true"] {
+  animation: shake 300ms linear;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .step-enter {
+  .enter-page,
+  .enter-stage,
+  .enter-stage[data-direction],
+  .enter-reveal {
+    animation: enter-fade 150ms var(--ease-house);
+  }
+  .draw-check,
+  .shake-on-invalid[aria-invalid="true"],
+  .collapse-content[data-state] {
+    animation: none;
+  }
+  .pulse-ring,
+  .pulse-ring-svg {
+    display: none;
+  }
+  /* WCAG 2.3.3: the installed overlays keep their fade but stop zooming and sliding, and the accordion opens at once. */
+  [data-slot="dropdown-menu-content"],
+  [data-slot="dropdown-menu-sub-content"],
+  [data-slot="tooltip-content"],
+  [data-slot="sheet-content"],
+  [data-slot="alert-dialog-content"] {
+    --tw-enter-translate-x: 0;
+    --tw-enter-translate-y: 0;
+    --tw-enter-scale: 1;
+    --tw-exit-translate-x: 0;
+    --tw-exit-translate-y: 0;
+    --tw-exit-scale: 1;
+  }
+  [data-slot="accordion-content"] {
     animation: none;
   }
 }

@@ -1,7 +1,7 @@
-import { ChevronDown, Usb } from "lucide-react";
+import { Usb } from "lucide-react";
 import { useState } from "react";
+import { Disclosure } from "@/components/common/Disclosure";
 import { Button } from "@/components/ui/button";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Progress } from "@/components/ui/progress";
 import type { Installer } from "@/hooks/useInstaller";
 import { useI18n } from "@/i18n/context";
@@ -24,26 +24,19 @@ function BootSequence() {
         ))}
       </ol>
       <p className="text-sm text-muted-foreground">{boot.rstTip}</p>
-      <Collapsible>
-        <CollapsibleTrigger asChild>
-          <Button type="button" variant="ghost" size="sm">
-            {boot.notListed} <ChevronDown aria-hidden />
-          </Button>
-        </CollapsibleTrigger>
-        <CollapsibleContent className="flex flex-col gap-3 pt-2 text-sm">
-          {(["power-only-cable", "wrong-connector", "multiple-devices"] as const).map((c) => (
-            <div key={c} className="flex flex-col gap-1">
-              <p className="font-medium">{t.errors[c].title}</p>
-              <p className="text-muted-foreground">{t.errors[c].what}</p>
-              <ul className="list-disc pl-5 text-muted-foreground">
-                {t.errors[c].next.map((n) => (
-                  <li key={n}>{n}</li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </CollapsibleContent>
-      </Collapsible>
+      <Disclosure label={boot.notListed} className="flex flex-col gap-3 pt-2 text-sm">
+        {(["power-only-cable", "wrong-connector", "multiple-devices"] as const).map((c) => (
+          <div key={c} className="flex flex-col gap-1">
+            <p className="font-medium">{t.errors[c].title}</p>
+            <p className="text-muted-foreground">{t.errors[c].what}</p>
+            <ul className="list-disc pl-5 text-muted-foreground">
+              {t.errors[c].next.map((n) => (
+                <li key={n}>{n}</li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </Disclosure>
     </div>
   );
 }

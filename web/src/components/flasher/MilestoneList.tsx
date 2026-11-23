@@ -1,4 +1,5 @@
-import { CircleCheck, CircleHelp } from "lucide-react";
+import { CircleHelp } from "lucide-react";
+import { DrawnCheck } from "@/components/common/DrawnCheck";
 import { useI18n } from "@/i18n/context";
 import type { Milestones } from "@/lib/flashing/machine";
 
@@ -10,10 +11,13 @@ export function MilestoneList({ milestones }: { milestones: Milestones }) {
     <ul className="flex flex-col gap-2" data-testid="milestones">
       {KEYS.map((key) => {
         const ok = milestones[key];
-        const Icon = ok ? CircleCheck : CircleHelp;
         return (
           <li key={key} className="flex items-center gap-2">
-            <Icon className={ok ? "size-4 text-success-foreground dark:text-success" : "size-4 text-muted-foreground"} aria-hidden />
+            {ok ? (
+              <DrawnCheck ring className="size-4 text-success-foreground dark:text-success" />
+            ) : (
+              <CircleHelp className="size-4 text-muted-foreground" aria-hidden />
+            )}
             <span>{t.flasher.milestones.state(t.flasher.milestones[key], ok)}</span>
           </li>
         );

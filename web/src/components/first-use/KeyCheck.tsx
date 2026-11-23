@@ -32,9 +32,9 @@ export function KeyCheck() {
         <KeyRound aria-hidden /> {t.common.checkMyKey}
       </Button>
       <div aria-live="polite">
-        {result === "failed" && <p className="text-sm">{t.device.keyCheck.notFound}</p>}
+        {result === "failed" && <p className="enter-reveal text-sm">{t.device.keyCheck.notFound}</p>}
         {result && result !== "failed" && (
-          <Alert>
+          <Alert className="enter-reveal">
             <AlertTitle>{t.device.keyCheck.found(result.productName ?? t.common.unnamedDevice)}</AlertTitle>
             <AlertDescription>{t.device.keyCheck.landing(result.landingUrl ?? null)}</AlertDescription>
           </Alert>

@@ -52,7 +52,11 @@ export function DeviceNameField(props: {
         }}
         onBlur={() => setTouched(true)}
       />
-      {shown && <FieldError id={`${id}-error`}>{t.nameProblems[shown]}</FieldError>}
+      {shown && (
+        <FieldError id={`${id}-error`} className="enter-reveal">
+          {t.nameProblems[shown]}
+        </FieldError>
+      )}
       <div>
         <Button type="button" variant="ghost" size="sm" onClick={() => onChange(defaultName)}>
           {t.device.nameField.restore}

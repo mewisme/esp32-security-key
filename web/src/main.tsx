@@ -19,7 +19,7 @@ const InstallPage = lazy(() => import("@/pages/Install").then((m) => ({ default:
 function InstallFallback() {
   const { t } = useI18n();
   return (
-    <Page width="flow">
+    <Page width="flow" enter={false}>
       <p className="text-muted-foreground" role="status">
         {t.install.loading}
       </p>

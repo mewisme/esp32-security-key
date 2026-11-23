@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ErrorPanel } from "@/components/flasher/ErrorPanel";
 import { ConnectVerifyStage } from "@/components/installer/ConnectVerifyStage";
 import { FinishStage } from "@/components/installer/FinishStage";
@@ -21,6 +21,16 @@ export function InstallPage() {
   const { phase } = state;
   const step = stepIndex(phase, state.error?.phase);
   const heading = useRef<HTMLHeadingElement>(null);
+
+  // One stage view per key: a step, its failure, or (in Connect & verify) the device chooser before the checks. The stage
+  // enters from the side it was reached from; the first view rides on the page's own entrance.
+  const view = `${step}-${phase === "failed"}-${phase === "requesting-permission"}`;
+  const [shown, setShown] = useState({ view, step });
+  const [direction, setDirection] = useState<"forward" | "back" | "swap" | null>(null);
+  if (view !== shown.view) {
+    setShown({ view, step });
+    setDirection(step > shown.step ? "forward" : step < shown.step ? "back" : "swap");
+  }
 
   // Move focus to the stage heading whenever the stage (or the failed state) changes.
   useEffect(() => {
@@ -75,7 +85,7 @@ export function InstallPage() {
         <p className="text-muted-foreground">{t.install.lead}</p>
       </header>
       <InstallStepper stage={step} />
-      <section key={`${step}-${phase === "failed"}`} className="step-enter" aria-labelledby="step-heading">
+      <section key={view} className={direction ? "enter-stage" : undefined} data-direction={direction ?? undefined} aria-labelledby="step-heading">
         {stage}
       </section>
     </Page>

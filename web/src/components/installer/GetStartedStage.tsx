@@ -1,11 +1,10 @@
-import { ChevronDown } from "lucide-react";
 import { useId, useState } from "react";
+import { Disclosure } from "@/components/common/Disclosure";
 import { ExperimentalNotice } from "@/components/common/ExperimentalNotice";
 import { InstallerStatusBanner } from "@/components/common/InstallerStatusBanner";
 import { BoardDiagram } from "@/components/hardware/BoardDiagram";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Field } from "@/components/ui/field";
 import { Label } from "@/components/ui/label";
 import type { Installer } from "@/hooks/useInstaller";
@@ -40,14 +39,9 @@ export function GetStartedStage({ inst, headingRef }: { inst: Installer; heading
       <ExperimentalNotice />
       <InstallerStatusBanner />
       <BoardDiagram caption={t.install.getStarted.boardCaption} />
-      <Collapsible>
-        <CollapsibleTrigger asChild>
-          <Button type="button" variant="ghost" size="sm">
-            {t.install.getStarted.unsure} <ChevronDown aria-hidden />
-          </Button>
-        </CollapsibleTrigger>
-        <CollapsibleContent className="pt-2 text-sm text-muted-foreground">{t.install.getStarted.unsureText}</CollapsibleContent>
-      </Collapsible>
+      <Disclosure label={t.install.getStarted.unsure} className="pt-2 text-sm text-muted-foreground">
+        {t.install.getStarted.unsureText}
+      </Disclosure>
       <Field orientation="horizontal">
         <Checkbox id={id} checked={ok} onCheckedChange={(v) => setOk(v === true)} />
         <Label htmlFor={id}>{t.install.getStarted.hardwareCheck}</Label>

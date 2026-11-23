@@ -1,16 +1,18 @@
-import { LoaderCircle, TriangleAlert } from "lucide-react";
-import { useEffect, useId, useState } from "react";
+import { TriangleAlert } from "lucide-react";
+import { type CSSProperties, useEffect, useId, useState } from "react";
+import { Spinner } from "@/components/common/Spinner";
 import { Badge } from "@/components/reui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Progress } from "@/components/ui/progress";
+import { useChangedSinceMount } from "@/hooks/useChangedSinceMount";
 import { useI18n } from "@/i18n/context";
 import { cliFallback } from "@/lib/device/cli-fallback";
 import type { NameRequest } from "@/lib/device/mkauth";
 import type { NameState } from "@/lib/device/personalize";
 import { ERRORS } from "@/lib/errors/catalog";
+import { cn } from "cn";
 
 /** The BOOT-button wait of the firmware (multikey_auth: 15000 ms). */
 const BUTTON_SECONDS = 15;
@@ -20,7 +22,7 @@ const PIN_MAX = 63;
 function Waiting({ children }: { children: React.ReactNode }) {
   return (
     <p className="flex items-center gap-2 text-sm" role="status">
-      <LoaderCircle className="size-4 motion-safe:animate-spin" aria-hidden />
+      <Spinner className="size-4" />
       {children}
     </p>
   );
@@ -36,18 +38,25 @@ function ButtonPrompt() {
   return (
     <div className="flex flex-col gap-2" role="status">
       <div className="flex flex-wrap items-center gap-2">
+        <span className="relative flex size-2" aria-hidden="true">
+          <span className="pulse-ring absolute inset-0 rounded-full bg-primary" />
+          <span className="relative size-2 rounded-full bg-primary" />
+        </span>
         <Badge variant="primary-light">{t.device.nameResult.pressBoot}</Badge>
         {left > 0 ? (
           <span className="text-xs text-muted-foreground tabular-nums">{t.device.nameResult.secondsLeft(left)}</span>
         ) : (
           // The key's own window is over: it is either saving the name or about to say the button was missed.
           <span className="flex items-center gap-1 text-xs text-muted-foreground">
-            <LoaderCircle className="size-3 motion-safe:animate-spin" aria-hidden />
+            <Spinner className="size-3" />
             {t.device.nameResult.talking}
           </span>
         )}
       </div>
-      <Progress value={(left / BUTTON_SECONDS) * 100} aria-hidden="true" />
+      {/* Runs out in the firmware's own window: a linear countdown, not a bar that steps once a second. */}
+      <div className="h-1 w-full overflow-hidden rounded-full bg-muted" aria-hidden="true">
+        <div className="countdown h-full w-full rounded-full bg-primary" style={{ "--countdown-duration": `${BUTTON_SECONDS}s` } as CSSProperties} />
+      </div>
     </div>
   );
 }
@@ -75,6 +84,7 @@ function PinForm({ name, onSubmit }: { name: NameState; onSubmit: (pin: string) 
         <Label htmlFor={id}>{t.device.nameResult.pinLabel}</Label>
         <Input
           id={id}
+          className="shake-on-invalid"
           type="password"
           autoComplete="off"
           value={pin}
@@ -86,7 +96,7 @@ function PinForm({ name, onSubmit }: { name: NameState; onSubmit: (pin: string) 
           {t.device.nameResult.pinHint(PIN_MIN, PIN_MAX)}
         </FieldDescription>
         {wrong && (
-          <FieldError>
+          <FieldError className="enter-reveal">
             {t.errors["name-pin-wrong"].what}
             {tries !== undefined && ` ${t.device.nameResult.triesLeft(tries)}`}
           </FieldError>
@@ -148,6 +158,8 @@ export function NameResult(props: {
   const { t } = useI18n();
   const { name, request } = props;
   const status = request.mode === "keep" ? "kept" : name.status === "kept" ? "kept" : name.status;
+  // A state that replaces another fades in; the state the view opens with rides on the view.
+  const changed = useChangedSinceMount(status);
   let body: React.ReactNode;
   switch (status) {
     case "kept":
@@ -179,7 +191,7 @@ export function NameResult(props: {
       body = <Failure name={name} request={request} onRetry={props.onRetry} />;
   }
   return (
-    <div className="flex flex-col gap-3" data-testid="name-result" data-status={status}>
+    <div key={status} className={cn("flex flex-col gap-3", changed && "enter-reveal")} data-testid="name-result" data-status={status}>
       {body}
     </div>
   );

@@ -62,7 +62,9 @@ export function RenameKey() {
         </Button>
       </div>
       {last && (
-        <NameResult name={keyName.name} request={last} defaultName={FALLBACK_DEFAULT_NAME} onSubmitPin={keyName.submitPin} onRetry={retry} />
+        <div className="enter-reveal">
+          <NameResult name={keyName.name} request={last} defaultName={FALLBACK_DEFAULT_NAME} onSubmitPin={keyName.submitPin} onRetry={retry} />
+        </div>
       )}
     </div>
   );

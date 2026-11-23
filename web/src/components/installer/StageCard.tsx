@@ -1,5 +1,7 @@
-import { CircleCheck, CircleDashed, LoaderCircle } from "lucide-react";
+import { CircleDashed } from "lucide-react";
 import type { Ref } from "react";
+import { DrawnCheck } from "@/components/common/DrawnCheck";
+import { Spinner } from "@/components/common/Spinner";
 import { Badge } from "@/components/reui/badge";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useI18n } from "@/i18n/context";
@@ -49,30 +51,32 @@ export function StageCard({
 
 export type RowState = "done" | "active" | "waiting";
 
-/** One line of a live checklist: leading status icon, label, right-aligned value. */
+/**
+ * One line of a live checklist: leading status icon, label, right-aligned value. The check draws itself when a row
+ * completes, a value fades in when it arrives, and a row's `below` (a progress bar) fades in when it appears.
+ */
 export function CheckRow(props: { label: string; state: RowState; children?: React.ReactNode; below?: React.ReactNode }) {
   const { state } = props;
   const { t } = useI18n();
-  const Icon = state === "done" ? CircleCheck : state === "active" ? LoaderCircle : CircleDashed;
   return (
     <li className="flex flex-col gap-2">
       <div className="flex items-center justify-between gap-3">
         <span className={cn("flex items-center gap-2", state === "waiting" && "text-muted-foreground")}>
-          <Icon
-            className={cn(
-              "size-4 shrink-0",
-              state === "done" && "text-success-foreground dark:text-success",
-              state === "active" && "text-primary motion-safe:animate-spin",
-              state === "waiting" && "text-muted-foreground",
-            )}
-            aria-hidden
-          />
+          {state === "done" ? (
+            <DrawnCheck ring className="size-4 text-success-foreground dark:text-success" />
+          ) : state === "active" ? (
+            <Spinner className="size-4 text-primary" />
+          ) : (
+            <CircleDashed className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+          )}
           {props.label}
           <span className="sr-only">({t.install.rowState[state]})</span>
         </span>
-        <span className="min-w-0 text-right text-sm text-muted-foreground">{props.children}</span>
+        <span className="min-w-0 text-right text-sm text-muted-foreground">
+          {props.children ? <span className="enter-reveal block">{props.children}</span> : null}
+        </span>
       </div>
-      {props.below}
+      {props.below ? <div className="enter-reveal">{props.below}</div> : null}
     </li>
   );
 }

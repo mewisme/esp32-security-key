@@ -42,7 +42,7 @@ export function SiteHeader() {
   return (
     <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur">
       <div className="mx-auto flex h-14 w-full max-w-5xl items-center gap-2 px-4 sm:px-6">
-        <Link to="/" className="mr-auto flex items-center gap-2 font-heading text-lg font-semibold">
+        <Link to="/" className="mr-auto flex items-center gap-2 font-heading text-lg font-semibold transition-colors hover:text-primary">
           <KeyRound className="size-5 text-primary" aria-hidden />
           MultiKeys
         </Link>

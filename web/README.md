@@ -120,6 +120,36 @@ fallback; `public/_headers` sets CSP (`connect-src 'self'`), `Permissions-Policy
   PSRAM features, installed firmware, which release is published, key name/PIN/button/re-enumeration). Production builds never
   contain the fakes; check with `rg -l "multikeys-e2e-scenario|FakeDriver|FakeKeyConnector" dist/client` (no output).
 
+## Motion
+
+CSS first, no animation library; the installed `components/ui` and `components/reui` keep their own motion, and the kit below lives
+in `src/styles/index.css`. One curve (`--ease-house`, `cubic-bezier(0.22, 1, 0.36, 1)`) and three speeds: 150 ms for hover
+(`transition-colors`), 200 ms for entrances and reveals, 300 ms for the largest surface. Only `transform` and `opacity` move;
+the exceptions are one-shots (a check mark drawn with `stroke-dashoffset`, the click-started height of a disclosure). A view has
+at most one entrance: what is already there when it opens rides on it, and only what arrives later (a load finishing, a result,
+a state change) is revealed, which `hooks/useChangedSinceMount` decides. Reduced motion swaps every movement for a fade of 150 ms
+or an instant change; progress bars, loaders (they pulse) and chevrons keep going.
+
+| Piece | What it does | Reduced motion |
+|---|---|---|
+| `.enter-page` (`Page`) | a page rises 8 px when its route mounts; `Layout` also scrolls a page entered by a link to its top (not on back/forward, not with a hash) | fade |
+| `.enter-stage` + `data-direction` (`pages/Install`) | a wizard stage comes in from the side it was reached from (Back: from the left); the first stage rides on the page entrance; a failure or the device chooser enters with a plain rise | fade |
+| `.enter-reveal` | content that replaces a skeleton (releases, latest release, firmware list), the custom-name field, key-check and rename results, name-state changes, the Finish outcome, field errors | fade |
+| `DrawnCheck` (`.draw-check`) | a check that draws itself: stepper step, checklist row, milestone, "Copied" | instant |
+| stepper separator | an overlay sweeps over it when its step completes | instant |
+| `Disclosure` (`.collapse-content`) | height reveal of the four "details" blocks, with a turning chevron | instant height, chevron still turns |
+| `Spinner` | busy checklist rows and name-state waits | pulses |
+| `.countdown` | the BOOT-button wait: a linear bar over the firmware's 15 s window | kept (progress bar) |
+| `.pulse-ring`, `.pulse-ring-svg` | 2.4 s attention rings: the BOOT prompt, the connector to use on the board diagram | hidden |
+| `.shake-on-invalid` | a refused management PIN shakes once | none |
+| theme icon, install progress | the icon turns into the new one; the full bar pulses while the key is read back and restarted | fade; pulse kept |
+| `GroupRail` | the installed `Scrollspy` scrolls smoothly unless the OS asks otherwise (`usePrefersReducedMotion`) | instant |
+
+Installed overlays (menus, tooltips, the sheet, dialogs) keep their 100 to 200 ms fade, zoom and slide; under reduced motion a block
+at the end of `index.css` zeroes their zoom and slide (WCAG 2.3.3) and the accordion opens at once. New motion reuses the kit,
+uses only 100, 150, 200 or 300 ms, never `transition-all`, and has a reduced-motion path;
+`tests/e2e/motion.spec.ts` fails if a page, stage, disclosure or menu moves under `reducedMotion: "reduce"`.
+
 ## Staging and the custom domain
 
 1. `pnpm exec wrangler login` (once, by the account owner).

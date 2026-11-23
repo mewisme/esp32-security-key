@@ -31,6 +31,8 @@ export function BoardDiagram({ className, caption }: { className?: string; capti
         <text x="353" y="240" textAnchor="middle" fontSize="12" fill="currentColor">RST</text>
         {/* connectors */}
         <rect x="236" y="252" width="36" height="26" rx="6" fill="var(--primary)" fillOpacity="0.25" stroke="var(--primary)" strokeWidth="2" />
+        {/* attention cue: a ring spreads from the connector to use (styles/index.css, off under reduced motion) */}
+        <rect className="pulse-ring-svg" x="236" y="252" width="36" height="26" rx="6" fill="none" stroke="var(--primary)" strokeWidth="2" />
         <rect x="290" y="252" width="36" height="26" rx="6" fill="var(--muted)" stroke="currentColor" strokeOpacity="0.6" />
         {/* callouts */}
         <line x1="360" y1="108" x2="430" y2="108" stroke="currentColor" strokeOpacity="0.5" />

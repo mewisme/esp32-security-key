@@ -112,7 +112,7 @@ export function HomePage() {
         <HardwareTable />
         <p className="text-sm text-muted-foreground">
           {t.home.hardware.details(
-            <a className="underline underline-offset-4" href={`${REPO_URL}/blob/main/docs/HARDWARE.md`} target="_blank" rel="noopener noreferrer">
+            <a className="underline underline-offset-4 transition-colors hover:text-primary" href={`${REPO_URL}/blob/main/docs/HARDWARE.md`} target="_blank" rel="noopener noreferrer">
               docs/HARDWARE.md
             </a>,
           )}

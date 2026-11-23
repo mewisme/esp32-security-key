@@ -34,7 +34,7 @@ export function FirstUsePage() {
           <p>{f.more.pin.intro}</p>
           <p>
             {f.more.pin.read(
-              <a className="underline underline-offset-4" href={`${REPO_URL}/blob/main/docs/FIDO_UV.md`} target="_blank" rel="noopener noreferrer">
+              <a className="underline underline-offset-4 transition-colors hover:text-primary" href={`${REPO_URL}/blob/main/docs/FIDO_UV.md`} target="_blank" rel="noopener noreferrer">
                 {f.more.pin.link}
               </a>,
             )}
