@@ -57,6 +57,20 @@ else()
     set(APP_DIR "pico-openpgp")
 endif()
 
+# Firmware version (esp_app_desc_t.version) follows the host workspace version so one release
+# number covers host tools and firmware. Non-release builds carry a -dev suffix.
+file(READ "${CMAKE_CURRENT_LIST_DIR}/host/Cargo.toml" _mk_cargo)
+string(REGEX MATCH "\\[workspace\\.package\\][^[]*\nversion = \"([^\"]+)\"" _mk_match "${_mk_cargo}")
+if(NOT _mk_match)
+    message(FATAL_ERROR "could not read [workspace.package] version from host/Cargo.toml")
+endif()
+set(_mk_ver "${CMAKE_MATCH_1}")
+if(MULTIKEY_RELEASE_BUILD)
+    set(PROJECT_VER "${_mk_ver}")
+else()
+    set(PROJECT_VER "${_mk_ver}-dev")
+endif()
+
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 include(pico-keys-sdk/picokeys_sdk_import.cmake)
 SET_BUILD_NUMBER("${CMAKE_CURRENT_LIST_DIR}/${APP_DIR}")

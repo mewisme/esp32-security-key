@@ -129,7 +129,7 @@ menu "MultiKeys board and USB identity"
 
     config MULTIKEY_WEBUSB_LANDING_URL
         string "WebUSB landing page URL"
-        default "https://github.com/mewisme/esp32-security-key"
+        default "https://multikeys.mewis.me"
         depends on MULTIKEY_WEBUSB_LANDING_ENABLED
         help
             Must start with https:// followed by 1..200 printable ASCII characters without spaces

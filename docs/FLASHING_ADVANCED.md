@@ -73,7 +73,8 @@ port belongs to it and no COM port exists.
 
 ## Checking the WebUSB landing page
 
-The firmware advertises `MULTIKEY_WEBUSB_LANDING_URL` (default the project's GitHub page) as a WebUSB landing page. Static
+The firmware advertises `MULTIKEY_WEBUSB_LANDING_URL` (default `https://multikeys.mewis.me`, the web installer; keys flashed
+before v0.2.0 keep advertising the old GitHub URL until reflashed) as a WebUSB landing page. Static
 check of a build: `python tools/check_usb_descriptors.py`. Read-only check of a running key:
 `python tools/check_usb_descriptors.py --live` (needs `pip install pyusb libusb-package` and a libusb-accessible interface;
 see the tool's help). To drop the capability set `CONFIG_MULTIKEY_WEBUSB_LANDING_ENABLED=n` in `sdkconfig.board`.

@@ -18,10 +18,10 @@ def bos_bytes(webusb: bool, vendor=1, page=1, ms_len=0xB2, ms_vendor=2) -> bytes
 
 class UrlRules(unittest.TestCase):
     def test_valid(self):
-        d = cud.expected_url_descriptor("https://github.com/mewisme/esp32-security-key")
-        self.assertEqual(d[0], 40)
+        d = cud.expected_url_descriptor("https://multikeys.mewis.me")
+        self.assertEqual(d[0], 21)
         self.assertEqual(d[1:3], b"\x03\x01")
-        self.assertEqual(d[3:], b"github.com/mewisme/esp32-security-key")
+        self.assertEqual(d[3:], b"multikeys.mewis.me")
 
     def test_http_rejected(self):
         with self.assertRaises(cud.DescriptorError):

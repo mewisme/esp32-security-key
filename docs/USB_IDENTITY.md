@@ -76,7 +76,7 @@ when the key is plugged in. It is only a link: the device never fetches it and t
 | Kconfig | Default | Meaning |
 |---|---|---|
 | `MULTIKEY_WEBUSB_LANDING_ENABLED` | `y` | `n` removes the WebUSB capability from the BOS descriptor (BOS 33 bytes, 1 capability; the Microsoft OS 2.0 descriptor that binds WinUSB stays) |
-| `MULTIKEY_WEBUSB_LANDING_URL` | `https://github.com/mewisme/esp32-security-key` | must be `https://` plus 1..200 printable ASCII characters without spaces; `http://` is rejected at configure time |
+| `MULTIKEY_WEBUSB_LANDING_URL` | `https://multikeys.mewis.me` (the web installer; before v0.2.0 the default was `https://github.com/mewisme/esp32-security-key`, and keys flashed earlier keep advertising that URL until reflashed) | must be `https://` plus 1..200 printable ASCII characters without spaces; `http://` is rejected at configure time |
 
 Enabled, the BOS is 57 bytes with 2 capabilities (5 header + 24 WebUSB + 28 Microsoft OS 2.0). The WebUSB `GET_URL` request is
 answered only for `wValue == 1` (iLandingPage) and `wIndex == 2`; anything else stalls. Previously the firmware advertised upstream's

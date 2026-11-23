@@ -7,6 +7,7 @@ Requires an activated ESP-IDF v5.5.x environment (idf.py on PATH).
   python tools/build.py dev                       # FIDO2 image, dev profile, needs sdkconfig.board
   python tools/build.py prod --app openpgp
   python tools/build.py dev --ci-pins             # compile check without pins; image is unusable
+  python tools/build.py dev --release             # firmware version without the -dev suffix (release packaging)
 """
 import argparse
 import os
@@ -25,6 +26,8 @@ def main() -> int:
     ap.add_argument("--ci-pins", action="store_true",
                     help="allow unset GPIOs (compile check only; never flash the result)")
     ap.add_argument("--clean", action="store_true", help="remove the build directory first")
+    ap.add_argument("--release", action="store_true",
+                    help="stamp the plain host/Cargo.toml version (no -dev suffix) into the app descriptor")
     ap.add_argument("--harden", action="store_true",
                     help="prod only: apply sdkconfig.hardening (Secure Boot v2 + flash encryption). BUILD ONLY.")
     ap.add_argument("--signing-key", help="Secure Boot v2 RSA-3072 PEM key (with --harden)")
@@ -41,6 +44,9 @@ def main() -> int:
     if rc:
         return rc
 
+    if args.release and args.ci_pins:
+        print("--release cannot be combined with --ci-pins", file=sys.stderr)
+        return 2
     if args.harden:
         if args.profile != "prod":
             print("--harden is only valid with the prod profile", file=sys.stderr)
@@ -79,7 +85,8 @@ def main() -> int:
         env["IDF_PATH"] = env["IDF_PATH"].replace("\\", "/")
     env["SDKCONFIG_DEFAULTS"] = ";".join(defaults)
     common = [idf, "-B", build_dir.as_posix(), f"-DSDKCONFIG={sdkconfig.as_posix()}",
-              f"-DMULTIKEY_PROFILE={args.profile}", f"-DMULTIKEY_APP={args.app}"]
+              f"-DMULTIKEY_PROFILE={args.profile}", f"-DMULTIKEY_APP={args.app}",
+              f"-DMULTIKEY_RELEASE_BUILD={1 if args.release else 0}"]
     steps = [common + ["build"]]
     if not (build_dir / "CMakeCache.txt").exists():
         steps.insert(0, common + ["set-target", "esp32s3"])
