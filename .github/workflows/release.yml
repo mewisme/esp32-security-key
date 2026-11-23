@@ -268,9 +268,7 @@ jobs:
           submodules: recursive
           persist-credentials: false
       - name: ccache
-        run: |
-          ccache --version || (apt-get update && apt-get install -y ccache)
-          ccache -z
+        run: ccache --version || (apt-get update && apt-get install -y ccache)
       # Pull requests and main restore the compiler cache; a tagged release compiles from scratch.
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: needs.meta.outputs.is_release != 'true'
@@ -279,6 +277,10 @@ jobs:
           key: ccache-release-${{ matrix.hw }}-idf5.5.6-${{ github.sha }}
           restore-keys: |
             ccache-release-${{ matrix.hw }}-idf5.5.6-
+      # The saved cache carries the statistics of the run that saved it; zero them after the restore so the numbers printed
+      # at the end describe this run only.
+      - name: Zero ccache statistics
+        run: ccache -z
       - name: Apply patches
         run: git config --global --add safe.directory '*' && python3 tools/apply_patches.py
       - name: Build tag

@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Build and flash the MultiKeys DEVELOPMENT firmware to an ESP32-S3 N16R8 over its native USB port (Windows).
+  Build and flash the MultiKeys DEVELOPMENT firmware to an ESP32-S3 (4, 8 or 16 MB quad flash) over its native USB port (Windows).
 
 .DESCRIPTION
   Thin front end for tools/flash_dev.py, which holds every safety rule. It writes only the bootloader (0x0), the
@@ -14,12 +14,16 @@
 .PARAMETER App
   fido (default) or openpgp. The openpgp image is a different product with the same storage layout; it needs
   -AcknowledgeOpenPgpImage.
+.PARAMETER Hw
+  Hardware profile = the board's flash size: esp32s3-16mb (default), esp32s3-8mb or esp32s3-4mb. The board's flash
+  size must match exactly (it is read from the chip before anything is written). Each profile builds into its own
+  directory (build-fido-dev for 16 MB, build-fido-dev-8mb, build-fido-dev-4mb).
 .PARAMETER IdfPath
   ESP-IDF v5.5.x directory (default: $env:IDF_PATH, C:\esp\v5.5.*, $HOME\esp\v5.5.*).
 .PARAMETER DryRun
   Do everything read-only (build, identify the board, check its partition table) and stop before writing.
 .PARAMETER NoBuild
-  Reuse the existing build-<app>-dev directory.
+  Reuse the existing build directory of this app and -Hw (build-<app>-dev, build-<app>-dev-8mb or build-<app>-dev-4mb).
 .PARAMETER WaitSeconds
   How long to wait for download mode (default 60).
 
@@ -30,6 +34,7 @@ Exit codes: 0 PASS or dry run, 1 failure, 2 prerequisite/arguments, 3 no or ambi
 param(
     [string]$Port,
     [ValidateSet('fido', 'openpgp')][string]$App = 'fido',
+    [ValidateSet('esp32s3-4mb', 'esp32s3-8mb', 'esp32s3-16mb')][string]$Hw = 'esp32s3-16mb',
     [string]$IdfPath,
     [switch]$DryRun,
     [switch]$NoBuild,
@@ -84,7 +89,7 @@ if (-not $Idf) {
     exit 2
 }
 
-$flashArgs = @('tools\flash_dev.py', 'flash', '--app', $App, '--wait', "$WaitSeconds")
+$flashArgs = @('tools\flash_dev.py', 'flash', '--app', $App, '--hw', $Hw, '--wait', "$WaitSeconds")
 if ($Port) { $flashArgs += @('--port', $Port) }
 if ($DryRun) { $flashArgs += '--dry-run' }
 if ($NoBuild) { $flashArgs += '--no-build' }

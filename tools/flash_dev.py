@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Safety logic and orchestration behind tools/flash-dev.ps1 (stdlib only; runs inside the ESP-IDF environment).
 
-Flashes the DEVELOPMENT image of this repository to an ESP32-S3 N16R8 over its native USB port and verifies that it
-enumerates. It writes exactly three regions (bootloader 0x0, partition table 0x8000, app 0x20000) and never touches the
-credential store (`part0`), nvs, phy_init or eFuses. There is no override for any of these stop conditions.
+Flashes the DEVELOPMENT image of this repository to an ESP32-S3 over its native USB port and verifies that it
+enumerates. The board's flash size must match the selected hardware profile (--hw esp32s3-4mb | esp32s3-8mb |
+esp32s3-16mb, default esp32s3-16mb; see tools/flash_policy.json). It writes exactly three regions (bootloader 0x0,
+partition table 0x8000, app 0x20000) and never touches the credential store (`part0`), nvs, phy_init or eFuses. There
+is no override for any of these stop conditions.
 
 Exit codes: 0 PASS / dry run ok, 1 failure, 2 prerequisite or argument problem, 3 no or ambiguous device,
 4 user declined, 5 storage-safety stop, 6 verification FAIL.
@@ -407,7 +409,7 @@ def stop_on(problems: list, code: int, what: str) -> None:
 def run_flash(args: argparse.Namespace) -> int:
     total = 9
     app = args.app
-    tag = f"{app}-dev"
+    tag = build_tag(app, "dev", args.hw)
     build_dir = ROOT / f"build-{tag}"
     py = sys.executable
 
@@ -467,7 +469,7 @@ def run_flash(args: argparse.Namespace) -> int:
 
     step(5, total, "build (development image, real pins)")
     if not args.no_build:
-        if run([py, str(ROOT / "tools" / "build.py"), "dev", "--app", app], cwd=ROOT).returncode != 0:
+        if run([py, str(ROOT / "tools" / "build.py"), "dev", "--app", app, "--hw", args.hw], cwd=ROOT).returncode != 0:
             raise Stop(EXIT_FAIL, "build failed")
     cfg_path = ROOT / f"sdkconfig.{tag}.generated"
     if not cfg_path.is_file() or not (build_dir / "flash_args").is_file():
@@ -490,9 +492,9 @@ def run_flash(args: argparse.Namespace) -> int:
     out = r.stdout + r.stderr
     if r.returncode != 0:
         raise Stop(EXIT_DEVICE, "could not talk to the chip (is it in download mode?):\n" + out[-600:])
-    problems, mac = check_flash_id(out)
+    problems, mac = check_flash_id(out, args.hw)
     stop_on(problems, EXIT_STORAGE, "this is not the supported board")
-    print(f"  chip ESP32-S3, 16MB flash, MAC {mac}")
+    print(f"  chip ESP32-S3, {profile(args.hw)['flash_size']} flash, MAC {mac}")
     tmp = ROOT / "build-flash-dev-ptable.bin"
     try:
         r = run(esptool_readonly(py, port, "read_flash", hex(PARTITION_TABLE_OFFSET), hex(PARTITION_TABLE_LEN), str(tmp)),
@@ -511,7 +513,7 @@ def run_flash(args: argparse.Namespace) -> int:
     step(7, total, "confirmation")
     cmd = build_flash_cmd(py, port)
     print()
-    print(f"  board       : ESP32-S3 16MB, MAC {mac}, port {port}")
+    print(f"  board       : ESP32-S3 {profile(args.hw)['flash_size']}, MAC {mac}, port {port}")
     print(f"  app image   : build-{tag}/{app_image} ({sizes[app_image]} bytes, sha256 {sha})")
     print("  will write  : 0x0 bootloader.bin | 0x8000 partition-table.bin | 0x20000 " + Path(app_image).name)
     print("  will NOT touch: part0 (credentials, PINs, keys) 0x200000-0x2FFFFF, nvs, phy_init, eFuses;")
@@ -597,6 +599,8 @@ def main() -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
     f = sub.add_parser("flash", help="the full flow (used by flash-dev.ps1)")
     f.add_argument("--app", choices=["fido", "openpgp"], default="fido")
+    f.add_argument("--hw", choices=sorted(PROFILES), default=DEFAULT_PROFILE,
+                   help="hardware profile (flash size) of the board; the board's flash must match exactly")
     f.add_argument("--port")
     f.add_argument("--dry-run", action="store_true")
     f.add_argument("--no-build", action="store_true")
