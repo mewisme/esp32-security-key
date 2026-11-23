@@ -259,7 +259,7 @@ test("S: resetting to the default name clears the stored name", async ({ page })
   await page.goto("/install");
   await page.getByRole("checkbox", { name: HARDWARE_CHECK }).check();
   await next(page).click();
-  await page.getByRole("radio", { name: "Reset to the default name" }).check();
+  await page.getByRole("radio", { name: "Default" }).check();
   await next(page).click();
   await page.getByRole("button", { name: "Choose device" }).click();
   await ackAll(page);
@@ -385,11 +385,12 @@ test("OpenPGP: a blank board needs the experimental acknowledgement, not the SWI
   await expect(install).toBeEnabled();
 });
 
-test("OpenPGP: a release without an OpenPGP build leaves the option disabled", async ({ page }) => {
+test("OpenPGP: a release without an OpenPGP build says so instead of offering it", async ({ page }) => {
   await setup(page, { device: "blank" });
   await page.goto("/install");
   await page.getByRole("checkbox", { name: HARDWARE_CHECK }).check();
   await next(page).click();
-  await expect(page.locator("#image-openpgp")).toBeDisabled();
-  await expect(page.locator("#image-fido")).toBeChecked();
+  await expect(page.getByTestId("openpgp-unavailable")).toContainText("has not been published");
+  await expect(page.locator("#image-openpgp")).toHaveCount(0);
+  await expect(next(page)).toBeEnabled();
 });

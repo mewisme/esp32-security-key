@@ -32,12 +32,13 @@ describe("WebUsbKeyConnector", () => {
   });
 
   it("identity() returns the USB strings the browser has without opening the device", async () => {
-    const d = dev("a", { controlTransferIn: vi.fn() });
+    const controlTransferIn = vi.fn();
+    const d = dev("a", { controlTransferIn });
     fakeUsb(d);
     const c = await new WebUsbKeyConnector().connect(1, 2);
     expect(await c.identity()).toEqual({ productName: "K", manufacturerName: "M", serialNumber: "a" });
     expect(d.open).not.toHaveBeenCalled();
-    expect(d.controlTransferIn).not.toHaveBeenCalled();
+    expect(controlTransferIn).not.toHaveBeenCalled();
   });
 
   it("waitForReenumeration resolves on a connect event with the same serial and swaps the device", async () => {

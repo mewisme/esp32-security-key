@@ -18,6 +18,8 @@ export function DeviceNameField(props: {
   defaultName: string;
   id?: string;
   autoFocus?: boolean;
+  /** Leave out "Restore default" where the caller already offers the default as its own choice. */
+  hideRestore?: boolean;
 }) {
   const { t } = useI18n();
   const { value, onChange, defaultName } = props;
@@ -57,11 +59,13 @@ export function DeviceNameField(props: {
           {t.nameProblems[shown]}
         </FieldError>
       )}
-      <div>
-        <Button type="button" variant="ghost" size="sm" onClick={() => onChange(defaultName)}>
-          {t.device.nameField.restore}
-        </Button>
-      </div>
+      {!props.hideRestore && (
+        <div>
+          <Button type="button" variant="ghost" size="sm" onClick={() => onChange(defaultName)}>
+            {t.device.nameField.restore}
+          </Button>
+        </div>
+      )}
     </Field>
   );
 }

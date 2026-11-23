@@ -9,7 +9,7 @@
 import type { ReactNode } from "react";
 import type { MatrixLevel, MatrixRowId } from "@/lib/compatibility/matrix";
 import type { Support } from "@/lib/compatibility/profiles";
-import { DEVICE_NAME_MAX, FALLBACK_DEFAULT_NAME, type NameProblem } from "@/lib/device/device-name";
+import { DEVICE_NAME_MAX, type NameProblem } from "@/lib/device/device-name";
 import type { NameRequest } from "@/lib/device/mkauth";
 import type { ErrorCode, ErrorGroup, ErrorText } from "@/lib/errors/catalog";
 import type { AckId, InstallMode, TypedAckId } from "@/lib/flashing/install-mode";
@@ -398,10 +398,13 @@ export const en = {
       listFailed: "The firmware list couldn't be loaded",
       checkConnection: "Check your internet connection.",
       noReleaseText: "Prebuilt firmware isn't published yet. Check back later or use the developer method from the README.",
-      version: (version: string, date: string | null) => (date ? `Version ${version} · ${date}` : `Version ${version}`),
+      latest: "Latest",
+      chooseVersion: "Choose another version",
+      released: (date: string) => `Released ${date}`,
+      flashSizes: (sizes: string) => `${sizes} · board size is detected in the next step`,
       imageLegend: "Firmware type",
-      experimental: "Advanced / Experimental",
-      notInRelease: "Not part of this release.",
+      experimental: "Experimental",
+      openpgpUnavailable: "An OpenPGP image has not been published for this release.",
       images: {
         fido: {
           title: "MultiKeys FIDO2",
@@ -422,13 +425,23 @@ export const en = {
         ],
       },
       nameOptions: {
-        keep: { title: "Don't change the name", text: `New keys show "${FALLBACK_DEFAULT_NAME}"; updated keys keep their current name.` },
-        custom: { title: "Custom name", text: `Up to ${DEVICE_NAME_MAX} plain ASCII characters. Applied after the firmware is installed.` },
-        default: { title: "Reset to the default name", text: `Sets the name back to "${FALLBACK_DEFAULT_NAME}".` },
-      } satisfies Record<NameRequest["mode"], { title: string; text: string }>,
-      customPreview: "Your custom name",
-      currentPreview: "your key's current name",
-      usbKey: "USB security key",
+        keep: { title: "Keep current" },
+        custom: { title: "Custom name" },
+        default: { title: "Default" },
+      } satisfies Record<NameRequest["mode"], { title: string }>,
+      nameHints: {
+        keep: (defaultName: string) =>
+          `The name already on the key is preserved. A key that has none yet uses the firmware default, “${defaultName}”. Nothing is read until your key is connected.`,
+        custom: `Up to ${DEVICE_NAME_MAX} plain ASCII characters, no space at the start or end. Applied after the firmware is installed.`,
+        default: (defaultName: string) => `The USB product name is set to the firmware default, “${defaultName}”.`,
+      },
+      preview: {
+        title: "USB identity",
+        notApplied: "Not applied yet",
+        keep: "Current name kept",
+        custom: "Your custom name",
+        vidPid: (vidPid: string) => `USB ${vidPid}`,
+      },
     },
 
     connect: {

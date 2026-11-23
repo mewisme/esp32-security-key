@@ -1,6 +1,7 @@
 // Bản dịch tiếng Việt của en.tsx. Phải có đúng cùng khóa và cùng chữ ký hàm với `en` (kiểu `Messages`).
 import type { ReactNode } from "react";
-import { DEVICE_NAME_MAX, FALLBACK_DEFAULT_NAME } from "@/lib/device/device-name";
+import { DEVICE_NAME_MAX } from "@/lib/device/device-name";
+import type { NameRequest } from "@/lib/device/mkauth";
 import type { InstallMode } from "@/lib/flashing/install-mode";
 import type { Messages } from "./en";
 import { flashSizeList } from "./shared";
@@ -383,10 +384,13 @@ export const vi: Messages = {
       listFailed: "Không tải được danh sách firmware",
       checkConnection: "Kiểm tra kết nối internet của bạn.",
       noReleaseText: "Firmware dựng sẵn chưa được công bố. Hãy quay lại sau hoặc dùng cách dành cho nhà phát triển trong README.",
-      version: (version: string, date: string | null) => (date ? `Phiên bản ${version} · ${date}` : `Phiên bản ${version}`),
+      latest: "Mới nhất",
+      chooseVersion: "Chọn phiên bản khác",
+      released: (date: string) => `Phát hành ${date}`,
+      flashSizes: (sizes: string) => `${sizes} · dung lượng bo mạch được phát hiện ở bước sau`,
       imageLegend: "Loại firmware",
-      experimental: "Nâng cao / Thử nghiệm",
-      notInRelease: "Không có trong bản phát hành này.",
+      experimental: "Thử nghiệm",
+      openpgpUnavailable: "Chưa có image OpenPGP được công bố cho bản phát hành này.",
       images: {
         fido: {
           title: "MultiKeys FIDO2",
@@ -407,13 +411,23 @@ export const vi: Messages = {
         ],
       },
       nameOptions: {
-        keep: { title: "Không đổi tên", text: `Khóa mới hiển thị "${FALLBACK_DEFAULT_NAME}"; khóa được cập nhật giữ tên hiện tại.` },
-        custom: { title: "Tên tùy chỉnh", text: `Tối đa ${DEVICE_NAME_MAX} ký tự ASCII thông thường. Được áp dụng sau khi cài đặt firmware.` },
-        default: { title: "Đặt lại về tên mặc định", text: `Đặt tên về lại "${FALLBACK_DEFAULT_NAME}".` },
+        keep: { title: "Giữ hiện tại" },
+        custom: { title: "Tên tùy chỉnh" },
+        default: { title: "Mặc định" },
+      } satisfies Record<NameRequest["mode"], { title: string }>,
+      nameHints: {
+        keep: (defaultName: string) =>
+          `Tên đang có trên khóa được giữ nguyên. Khóa chưa có tên sẽ dùng mặc định của firmware, “${defaultName}”. Chưa đọc gì cho đến khi khóa được kết nối.`,
+        custom: `Tối đa ${DEVICE_NAME_MAX} ký tự ASCII thông thường, không có khoảng trắng ở đầu hoặc cuối. Được áp dụng sau khi cài đặt firmware.`,
+        default: (defaultName: string) => `Tên sản phẩm USB được đặt về mặc định của firmware, “${defaultName}”.`,
       },
-      customPreview: "Tên tùy chỉnh của bạn",
-      currentPreview: "tên hiện tại của khóa",
-      usbKey: "Khóa bảo mật USB",
+      preview: {
+        title: "Danh tính USB",
+        notApplied: "Chưa áp dụng",
+        keep: "Giữ tên hiện tại",
+        custom: "Tên tùy chỉnh của bạn",
+        vidPid: (vidPid: string) => `USB ${vidPid}`,
+      },
     },
 
     connect: {
