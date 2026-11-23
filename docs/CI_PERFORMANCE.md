@@ -13,7 +13,7 @@ What was slow, what changed, and what the numbers are. Every number below comes 
 | `Swatinem/rust-cache` on `host -> target` | `ci.yml` `host`, `release.yml` `build` | dependency crates are not rebuilt |
 | The fido dev board build, its irreversible-operation check and firmware packaging live only in `release.yml` (3 profiles); `ci.yml` keeps the openpgp board build | `ci.yml`, `release.yml` | no duplicate firmware packaging per push |
 | `release.yml` `build` runs `fmt`/`clippy`/`test` only for a tag (`ci.yml` covers `main` and pull requests) | `release.yml` | one fewer test run per push |
-| Playwright browsers cached by Playwright's version; `install-deps` only on a hit; no separate `pnpm typecheck` (`pnpm build` runs `tsc -b`) | `web.yml` | skips the browser download and one `tsc` |
+| No separate `pnpm typecheck` (`pnpm build` runs `tsc -b`). A Playwright browser cache was added, measured and removed again (see "Playwright" below) | `web.yml` | one `tsc` fewer |
 | Every action is pinned by commit SHA | all | none (supply chain) |
 
 Not changed: the `espressif/idf:v5.5.6` container is pulled on every firmware job ("Initialize containers", 59-95 s in every run below,
@@ -102,8 +102,37 @@ Steps that explain them (seconds; release firmware 16 MB leg, ci fido dev, ci ho
 | ci fido dev: compile-check build | 59 | 72 | 40 | n/a |
 | ci host windows: `cargo clippy` | n/a | 58 | 19 | n/a |
 | ci host windows: `cargo test` | n/a | 33 | 10 | n/a |
-| web: Playwright browser and system packages | 32 | 21 (miss) | 4 (cache) + 13 (system packages) | 18 (`1c905dc`, hit) |
-| web: `pnpm test:e2e` | 18 | 40 | 45 | 47 |
+
+Playwright setup in the `web` job (seconds). The browser cache existed from `2508afe` until it was removed; "setup total" adds the 0-1 s
+`playwright --version` step. Test counts and step times are from the run's own jobs:
+
+| Run | Cache | Cache restore | Browser / system packages | Setup total | Cache save (post step) | `pnpm test:e2e` step | e2e tests |
+|---|---|---|---|---|---|---|---|
+| baseline 45116366962 | none | n/a | 32 (`install --with-deps chromium`) | 32 | n/a | 18 | 12 |
+| cold 45127378997, attempt 1 (`2508afe`) | miss | 1 | 21 (`install --with-deps chromium`) | 22 | 3 | 40 | 39 |
+| warm 45127378997, attempt 2 | hit | 4 | 13 (`install-deps chromium`) | 18 | 0 | 45 | 39 |
+| 45138973294 (`1c905dc`) | hit | 2 | 18 | 21 | 1 | 47 | 41 |
+| 45139907508 (`f195cb6`) | hit | 6 | 32 | 39 | 0 | 54 | 47 |
+| 45140803455 (`e7fc777`) | hit | 6 | 13 | 19 | 0 | 56 | 47 |
+
+Artifact and cache steps in `release.yml` (seconds per step; ranges are over the three firmware legs of one run; the build jobs are listed
+linux / pam / windows):
+
+| Step | Baseline | Cold | Warm | `1c905dc` | `f195cb6` |
+|---|---|---|---|---|---|
+| firmware: ccache restore | n/a | 0-1 | 1-2 | 1-2 | 1-2 |
+| firmware: ccache save | n/a | 2 | 1-2 | 1-3 | 1-2 |
+| firmware: upload-artifact | 1 | 2 | 1-2 | 1-2 | 1-2 |
+| build: rust-cache restore | n/a | 1 / 1 / 2 | 4 / 2 / 8 | 2 / 8 / 7 | 1 / 3 / 8 |
+| build: rust-cache save (post step) | n/a | 4 / 8 / 6 | 1 / 1 / 0 | 0 / 0 / 0 | 0 / 0 / 0 |
+| build: upload-artifact | 6 / 2 / 2 | 1 / 1 / 2 | 1 / 1 / 2 | 2 / 1 / 1 | 1 / 1 / 2 |
+| assemble: the four download-artifact steps | 1, 1, 0, 1 | 6, 1, 0, 1 | 0, 1, 0, 1 | 1, 1, 1, 1 | 1, 0, 1, 0 |
+| assemble: upload-artifact | 1 | 2 | 1 | 2 | 1 |
+
+Artifact upload and download cost 0-2 s per step, with two single 6 s outliers (the baseline's linux archive upload, the cold run's first download in
+`assemble`). The cache steps are the larger part: 0-3 s per ccache restore or save, 1-8 s per Rust cache restore (7-8 s for the 113 MB Windows
+entry of the release build on a hit) and 4-8 s to save one on the first run. They are repaid by the compile time they remove (release windows
+build -46 s, ci windows host -69 s, firmware legs -37 to -64 s).
 
 ccache (compiler calls of the job; one release leg compiles once, a ci job two or three times):
 
@@ -122,21 +151,24 @@ The two misses per build were not investigated; a plausible cause is a file that
 
 What the numbers say:
 
-- A cold run is not faster than the baseline (ci 227 s against 207 s, release 221 s against 202 s: the `changes`/`meta` jobs, cache saves and the
-  three release firmware legs). The gain starts with the second run.
-- With a warm cache single jobs are 25-55 % faster (firmware legs -38 to -64 s, windows host -69 s, release windows build -46 s, linux -53 s) and the
+- A cold run is not faster than the baseline (ci 227 s against 207 s, release 221 s against 202 s). Not isolated: the sequential `changes`/`meta` job
+  (6-7 s), the cache saves and the three release firmware legs are candidates. The gain starts with the second run.
+- With a warm cache single jobs are 20-58 % faster (firmware legs -37 to -64 s, windows host -69 s, release windows build -46 s, linux -53 s) and the
   compiler hit rate is 99.7 % even when only the key prefix of an older commit matches, so a one-line source change would recompile only what it touches.
-- The workflow wall clock improves less than its jobs (ci warm 175 s against 207 s, release warm 167 s against 202 s, about -15 %), because
+- The workflow wall clock improves less than its jobs (ci warm 175 s against 207 s: -15 %; release warm 167 s against 202 s: -17 %), because
   it is the slowest job that counts: a firmware leg is about 60-77 s of container initialization, 25 s of CMake configure and the compile.
   The container pull is the biggest cost left and was not addressed.
 - A change that touches only `web/**` or docs now costs 8 s in `ci` (run 45138973264) instead of 207 s. `release` has no path filter (a tag
   push must always build) and still runs on every push to `main`.
-- Playwright: a hit costs 17-18 s (4 s cache restore plus 13-18 s for the system packages) against 32 s in the baseline, so the rule set for this
-  work (keep the cache if a warm run saves at least 10 s) is met. The miss path of the same runs took 21 s, so the cache itself saves 3-4 s over a
-  miss; the system packages (`install-deps`) are the larger part and cannot be cached by `actions/cache`. The e2e step grew from 18 s to 40-47 s
-  because the suite grew (41 to 47 tests), not because of the cache, so the `web` workflow is not faster than its baseline: 88 s against 98-140 s.
-- Cache storage after three pushes that saved caches (24 entries): each ccache entry 14-16 MB, one per push and leg (7 per push); the Playwright browsers 292 MB per
-  Playwright version; Rust 54-212 MB per job; the pnpm store 192 MB. The repository limit is 10 GB with least-recently-used eviction.
+- Playwright: the browser cache did not pay for itself and was removed (table above). The four hits took 18, 21, 39 and 19 s to set up; the plain
+  install took 32 s in the baseline run but 21 s in the cold run next to them, so run-to-run variance is as large as the saving (`install-deps` alone
+  took 13-32 s, and restoring the 292 MB entry 1-6 s). The rule fixed in the plan was to keep the cache only if the warm setup is at least 10 s
+  faster than the cold 32 s: that holds against the baseline in three of four hits (14, 11 and 13 s faster; the fourth was 7 s slower) but is a
+  3-4 s saving against the cold run measured alongside. The `web` job runs plain `playwright install --with-deps chromium` again.
+- The `web` workflow is not faster than its baseline (88 s; 98-140 s in the runs above). Its e2e step grew with the suite: 12 tests in 18 s at the
+  baseline, 39 in 40-45 s (cold and warm), 41 in 47 s, 47 in 54-56 s.
+- Cache storage when this was measured (24 entries): each ccache entry 14-16 MB, one per push and leg (7 per push); Rust 54-212 MB per job; the pnpm
+  store 192 MB; the Playwright browsers 292 MB (that cache was removed afterwards, see above). The repository limit is 10 GB with least-recently-used eviction.
 
 Not measured: cancellation of a superseded pull request run (no pull request was opened), the tag path of `release.yml` (it restores no
 cache; asserted by `tests/release/test_workflows.py`, never run on a tag with this change), eviction behaviour after the 10 GB limit.

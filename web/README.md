@@ -130,7 +130,8 @@ fallback; `public/_headers` sets CSP (`connect-src 'self'`), `Permissions-Policy
    Cloudflare account), then `pnpm run deploy`.
 
 CI (`.github/workflows/web.yml`) runs lint, unit tests, the production build (`tsc -b` then `vite build`, then a grep that the
-bundle holds no test double: `multikeys-e2e-scenario`, `FakeDriver`, `FakeKeyConnector`) and the e2e tests on every push (the
-Playwright browser download is cached by Playwright's version); it deploys only from a manual `workflow_dispatch` with
+bundle holds no test double: `multikeys-e2e-scenario`, `FakeDriver`, `FakeKeyConnector`) and the e2e tests on every push that touches `web/**` or
+`tools/flash_policy.json` (the browser is installed with `playwright install --with-deps chromium` on every run; a browser cache was measured and gave no reliable gain,
+`docs/CI_PERFORMANCE.md`); it deploys only from a manual `workflow_dispatch` with
 `deploy: staging|production`, using the `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` secrets of the `cloudflare-<target>`
 environment.
