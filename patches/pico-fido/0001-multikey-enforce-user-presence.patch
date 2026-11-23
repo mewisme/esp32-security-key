@@ -1,0 +1,44 @@
+diff --git a/src/fido/cbor_get_assertion.c b/src/fido/cbor_get_assertion.c
+index 7caa61a..2201fad 100644
+--- a/src/fido/cbor_get_assertion.c
++++ b/src/fido/cbor_get_assertion.c
+@@ -529,14 +529,9 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
+                 }
+             }
+         }
+-        bool require_button = numberOfCredentials > 0 && (creds[0].require_button != NULL
+-            ? *creds[0].require_button
+-#ifndef ENABLE_EMULATION
+-            : button_timeout_seconds() != 0
+-#else
+-            : false
+-#endif
+-        );
++        /* MultiKey: a credential's stored "no button" property (settable through authenticatorConfig) is ignored:
++         * physical presence is always required when the request asks for user presence. */
++        bool require_button = numberOfCredentials > 0;
+ 
+         if (options.up == ptrue || options.present == false || options.up == NULL) { //9.1
+             if (pinUvAuthParam.present == true) {
+diff --git a/src/fido/cbor_make_credential.c b/src/fido/cbor_make_credential.c
+index 589acf4..ae0e033 100644
+--- a/src/fido/cbor_make_credential.c
++++ b/src/fido/cbor_make_credential.c
+@@ -543,6 +543,17 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
+ #endif
+             }
+         }
++        else if (!(flags & FIDO2_AUT_FLAG_UP)) {
++            /* MultiKey: upstream set the UP flag here WITHOUT collecting presence when the platform sent no
++             * pinUvAuthParam (the normal case for a key with no PIN). CTAP 2.1 6.1.2 step 14 requires a
++             * user-presence gesture whenever the "up" option is true or absent. */
++            if (check_user_presence() == false) {
++                CBOR_ERROR(CTAP2_ERR_OPERATION_DENIED);
++            }
++#ifndef ENABLE_EMULATION
++            button_pressed = phy_data.up_btn != 0;
++#endif
++        }
+         flags |= FIDO2_AUT_FLAG_UP;
+         clearUserPresentFlag();
+         clearUserVerifiedFlag();

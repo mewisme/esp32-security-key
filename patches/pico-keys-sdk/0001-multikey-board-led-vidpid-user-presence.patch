@@ -212,7 +212,7 @@ index 7a910ac..056ef01 100644
      tusb_cfg.string_descriptor[3] = pico_serial_str;
      if (phy_data.usb_product_present) {
 diff --git a/src/usb/usb_descriptors.c b/src/usb/usb_descriptors.c
-index b6b8c61..cf9ace9 100644
+index b6b8c61..249d635 100644
 --- a/src/usb/usb_descriptors.c
 +++ b/src/usb/usb_descriptors.c
 @@ -24,6 +24,14 @@
@@ -230,3 +230,17 @@ index b6b8c61..cf9ace9 100644
  #ifndef USB_VID
  #define USB_VID   0x2E8A
  #endif
+@@ -347,8 +355,13 @@ uint8_t const *tud_descriptor_bos_cb(void) {
+ char *string_desc_itf[5] = {0};
+ char const *string_desc_arr [] = {
+     (const char[]) { 0x09, 0x04 }, // 0: is supported language is English (0x0409)
++#if defined(ESP_PLATFORM)
++    "MultiKey (dev)",                    // 1: Manufacturer (not the upstream author's name; override for distribution)
++    "ESP32-S3 MultiKey",                 // 2: Product
++#else
+     "Pol Henarejos",                     // 1: Manufacturer
+     "Pico Key",                       // 2: Product
++#endif
+     "11223344",                      // 3: Serials, should use chip ID
+     "MAC"                   // 4: MAC address string, handled separately
+     , "HID Interface"

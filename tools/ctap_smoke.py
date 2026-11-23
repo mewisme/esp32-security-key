@@ -40,7 +40,7 @@ def record(name, status, reason=""):
 
 def touch_cb(status):
     if int(status) == 2:
-        print("    ... touch the device button now", flush=True)
+        print("    ... touch the device button now (press and release BOOT once; 15 s limit)", flush=True)
 
 
 def pin_token(dev_ctap, pin, perms, rpid=None):
@@ -65,6 +65,7 @@ def roundtrip(ctap, alg, pin, created):
     cdh = os.urandom(32)
     user = {"id": os.urandom(16), "name": f"smoke-{alg}", "displayName": f"smoke {alg}"}
     p, v = auth_params(ctap, pin, ClientPin.PERMISSION.MAKE_CREDENTIAL, cdh, RP_ID)
+    print(f"  step: makeCredential alg {alg} (press BOOT within 15 s of the prompt)", flush=True)
     att = ctap.make_credential(
         cdh, RP, user, [{"type": "public-key", "alg": alg}],
         options={"rk": True}, pin_uv_param=p, pin_uv_protocol=v, on_keepalive=touch_cb,
@@ -81,6 +82,7 @@ def roundtrip(ctap, alg, pin, created):
         raise AssertionError(f"credential alg {pub[3]} != requested {alg}")
     cdh2 = os.urandom(32)
     p, v = auth_params(ctap, pin, ClientPin.PERMISSION.GET_ASSERTION, cdh2, RP_ID)
+    print(f"  step: getAssertion alg {alg}", flush=True)
     asr = ctap.get_assertion(
         RP_ID, cdh2, [{"type": "public-key", "id": cred.credential_id}],
         pin_uv_param=p, pin_uv_protocol=v, on_keepalive=touch_cb,
@@ -104,6 +106,7 @@ def main():
     ap.add_argument("--yes-wipe-device", action="store_true", help="required together with --reset")
     ap.add_argument("--skip-pin-change", action="store_true", help="skip PIN set/verify/change")
     ap.add_argument("--index", type=int, default=0, help="which HID device to use if several are present")
+    ap.add_argument("--skip-eddsa", action="store_true", help="skip the EdDSA credential (avoids leaving another test credential)")
     a = ap.parse_args()
     if a.reset and not a.yes_wipe_device:
         print("--reset erases all credentials; add --yes-wipe-device to confirm.", file=sys.stderr)
@@ -168,7 +171,9 @@ def main():
                 record("makeCredential(rk, ES256)+getAssertion", "PASS", "signature verified with cryptography")
             except Exception as e:
                 record("makeCredential(rk, ES256)+getAssertion", "FAIL", repr(e))
-        if not eddsa:
+        if a.skip_eddsa:
+            record("EdDSA credential", "SKIP", "--skip-eddsa")
+        elif not eddsa:
             record("EdDSA credential", "SKIP", "-8 not listed in GetInfo algorithms")
         elif pin_set and not a.pin:
             record("EdDSA credential", "SKIP", "device has a PIN set; pass --pin")
