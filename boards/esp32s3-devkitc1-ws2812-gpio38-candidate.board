@@ -1,0 +1,7 @@
+# CANDIDATE, NOT VERIFIED: Espressif ESP32-S3-DevKitC-1 1.1 reference wiring (WS2812 data on GPIO38; v1.0 uses GPIO48, v1.1 uses GPIO38).
+# A clone may differ. Use only for the LED identification test in docs/HARDWARE.md; after observing it on the real board,
+# add a verified profile and remove the candidate that did not light.
+CONFIG_MULTIKEY_BUTTON_GPIO=0
+CONFIG_MULTIKEY_BUTTON_ACTIVE_LOW=y
+CONFIG_MULTIKEY_LED_TYPE_WS2812=y
+CONFIG_MULTIKEY_LED_GPIO=38
