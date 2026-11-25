@@ -52,7 +52,7 @@ download mode instead of booting the firmware. After boot it is an ordinary GPIO
 5. **LED.** Boards often have a WS2812 or a plain LED, but its GPIO varies between vendors/revisions. The default here is
    no LED. To use one, read your board schematic, then set `CONFIG_MULTIKEY_LED_TYPE_WS2812` or `..._PLAIN` and
    `CONFIG_MULTIKEY_LED_GPIO`. **Without an LED nothing indicates that the key is waiting**: the browser or tool prompt
-   ("touch your security key") is the only cue; press BOOT once, briefly. Patterns: [Status LED](#status-led).
+   ("touch your security key") is the only cue; press BOOT once, briefly.
 
 ## Using a different button or an LED
 
@@ -65,39 +65,6 @@ CONFIG_MULTIKEY_LED_ACTIVE_LOW=y        # plain LED only, if lit when LOW
 ```
 
 With an LED type selected the build fails while `MULTIKEY_LED_GPIO` is -1. With the button unset the build always fails.
-
-## Status LED
-
-Status: Implemented, build verified (no LED, WS2812, plain), host unit tested (state machine). **Not hardware verified**: no
-board's LED GPIO has been identified yet. The LED only observes state; a missing or failed LED changes nothing in FIDO, PIN, UV or
-user-presence handling. It is dark when idle and while USB is suspended or unplugged.
-
-| Situation | Colour LED (WS2812) | Plain LED |
-|---|---|---|
-| Power-up / USB attached | blue, one 0.4 s pulse | one 0.4 s pulse |
-| Idle, suspended, not mounted | off | off |
-| Waiting for BOOT (user presence) | blue, 0.8 s on / 0.8 s off | same |
-| Command running (not waiting) | dim blue, steady | lit, steady |
-| BOOT accepted | green, one short flash | one short flash |
-| Request answered with CTAP status 0x00 after a touch | green, 2 flashes | 2 flashes |
-| Request answered with an error after a touch | red, 2 flashes | 3 flashes |
-| Wait timed out | yellow, 2 long flashes | 3 long flashes |
-| Cancelled by the host, or channel reset | feedback cleared, no success flash | same |
-
-"Success" means the key answered 0x00 to a request that needed a touch. It does not mean a website accepted the login, and it
-is not user verification. Requests that never ask for a touch (getInfo polling, PIN commands) show nothing, so a wrong PIN is
-not displayed on the key.
-
-`CONFIG_MULTIKEY_LED_BRIGHTNESS` (1-15, default 3, WS2812 only) scales the colour LED; full output is glaring.
-
-### Identifying the LED of a board (needs the owner; flashing requires approval)
-
-Candidate profiles `boards/esp32s3-devkitc1-ws2812-gpio48-candidate.board` (DevKitC-1 v1.0 reference) and
-`...-gpio38-candidate.board` (v1.1 reference) are **unverified guesses**; a clone may wire it elsewhere. Build with one
-(`python tools/build.py dev --board <name> --clean`), flash the app only, replug, and look for the blue power-up pulse. No pulse:
-try the other candidate. Neither: the pin is unidentified, find the schematic. Both candidate pins are ordinary free GPIOs, so a
-wrong guess drives nothing harmful on a DevKitC-style board. After observing, record it in `docs/hw-reports/` and add a verified
-profile; keep `esp32s3-boot-button` (no LED) as the default for CI and releases.
 
 ## Compatibility levels
 
