@@ -1,0 +1,16 @@
+diff --git a/src/fido/fido.c b/src/fido/fido.c
+index 085c4c7..9e357b9 100644
+--- a/src/fido/fido.c
++++ b/src/fido/fido.c
+@@ -637,8 +637,10 @@ bool check_user_presence_for_credential(bool require_button) {
+ }
+ 
+ void fido_led_3_blinks(void) {
+-#ifndef ENABLE_EMULATION
++#if !defined(ENABLE_EMULATION) && !defined(ESP_PLATFORM)
+     led_blink_n_times(3, LED_COLOR_GREEN, 100, 100);
++#else
++    /* MultiKeys: outcome feedback comes from hid_task() once cancellation is known (pico-keys-sdk 0007). */
+ #endif
+ }
+ 
