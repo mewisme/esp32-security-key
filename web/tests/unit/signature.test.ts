@@ -148,11 +148,11 @@ describe("fetchCatalog authentication", () => {
     expect(c.rejected[0]?.detail).toContain("signature: HTTP 503");
   });
 
-  it("with the site's own (empty) key list, a signed release is refused and an unsigned one is allowed", async () => {
+  it("with the site's own key list, a release signed by an unlisted key, or unsigned from the required version on, is refused", async () => {
     const { manifestBytes } = await serve(["v0.4.0"], {});
     const signed = await serve(["v0.4.0"], { "v0.4.0": await sign(manifestBytes, pair) });
     expect((await fetchCatalog(signed.fetchImpl)).rejected[0]?.detail).toContain("signature unknown-key");
-    const plain = await serve(["v0.4.0"], {});
-    expect((await fetchCatalog(plain.fetchImpl)).releases).toHaveLength(1);
+    const unsignedNew = await serve(["v0.4.0"], {});
+    expect((await fetchCatalog(unsignedNew.fetchImpl)).rejected[0]?.detail).toContain("signature missing");
   });
 });
