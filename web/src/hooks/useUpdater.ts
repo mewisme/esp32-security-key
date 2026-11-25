@@ -22,7 +22,7 @@ import type { Phase } from "@/lib/flashing/machine";
 import { md5Hex } from "@/lib/flashing/md5";
 import { clearPending, loadPending, savePending } from "@/lib/flashing/update-pending";
 import { buildReport, type UpdateReport } from "@/lib/flashing/update-report";
-import { defaultUpdateTarget, findUpdateTarget, listUpdateTargets, targetByTag, type UpdateTarget } from "@/lib/flashing/update-target";
+import { defaultUpdateTarget, findUpdateTarget, listUpdateTargets, reinstallTarget, targetByTag, type UpdateTarget } from "@/lib/flashing/update-target";
 import { SERIAL_FILTERS } from "@/hooks/useInstaller";
 import type { UpdateStep } from "@/lib/update-steps";
 
@@ -84,6 +84,8 @@ export interface UpdateState {
   report: UpdateReport | null;
   /** A write that started in an earlier visit and was never verified. */
   pending: PendingUpdate | null;
+  /** The person chose to write the installed application again; set by `reinstall`, cleared by `toReview`. */
+  reinstall: boolean;
   log: string[];
 }
 
@@ -101,6 +103,7 @@ const initial = (): UpdateState => ({
   error: null,
   report: null,
   pending: loadPending(),
+  reinstall: false,
   log: [],
 });
 
@@ -138,6 +141,8 @@ export interface UpdaterActions {
   discardPending(): Promise<void>;
   loadCatalog(): void;
   setRelease(tag: string): void;
+  /** Offer to write the installed release's application again (same single app write as an update). */
+  reinstall(): void;
 }
 
 export interface Updater {
@@ -267,7 +272,9 @@ export function useUpdater(): Updater {
 
   const skipInspect = useCallback(() => patch({ phase: "inspected", baseline: { status: "skipped" }, inspectNote: null }), [patch]);
   const toCheck = useCallback(() => patch({ phase: "checked" }), [patch]);
-  const toReview = useCallback(() => patch({ phase: "awaiting-boot", decision: null, target: null, error: null }), [patch]);
+  const toReview = useCallback(() => patch({ phase: "awaiting-boot", decision: null, target: null, error: null, reinstall: false }), [patch]);
+  /** Writes the application again although it already equals the release: back to download mode, then the usual review. */
+  const reinstall = useCallback(() => patch({ phase: "awaiting-boot", decision: null, target: null, error: null, reinstall: true }), [patch]);
   const back = useCallback(() => {
     const prev: Partial<Record<UpdatePhase, UpdatePhase>> = { inspected: "idle", checked: "inspected", "awaiting-boot": "checked", reviewed: "awaiting-boot" };
     const to = prev[state.phase];
@@ -310,7 +317,12 @@ export function useUpdater(): Updater {
       const installed = parseAppDescriptor(await d.readFlash(policy.app_descriptor.offset - 0x20, policy.app_descriptor.read_length));
       const image = imageOf(installed?.project_name) ?? baselineImage;
       phase = "validating-compatibility";
-      const wanted = selected ? targetByTag(catalog.catalog, selected.release.tag, image, chip.flashSize) : null;
+      const wanted = state.reinstall
+        ? reinstallTarget(catalog.catalog, image, chip.flashSize, installed?.version ?? null)
+        : selected
+          ? targetByTag(catalog.catalog, selected.release.tag, image, chip.flashSize)
+          : null;
+      if (state.reinstall && !wanted) throw new FirmwareError("profile-not-in-release", `no release carries the installed version ${installed?.version ?? "?"}`);
       const offered = wanted ?? findUpdateTarget(catalog.catalog, image, chip.flashSize);
       if (!offered) throw new FirmwareError("profile-not-in-release", `no ${image} build in any release`);
       const picked = selectProfile(chip, offered.release.manifest.builds, image);
@@ -337,6 +349,7 @@ export function useUpdater(): Updater {
         baseline: baselineOf(state.baseline),
         untestedHardware: !BOARD_IDENTITY_VERIFIED,
         unsignedRelease: target.release.authentication.status !== "signed",
+        reinstall: state.reinstall,
       });
       patch({ phase: "reviewed", stage: null, decision, log: d.log() });
       if (!decision.allowed) await closeDriver();
@@ -344,7 +357,7 @@ export function useUpdater(): Updater {
       fail(err, phase, "choosing");
       await closeDriver();
     }
-  }, [baselineImage, catalog, closeDriver, fail, patch, readDevice, selected, state.baseline, state.pending]);
+  }, [baselineImage, catalog, closeDriver, fail, patch, readDevice, selected, state.baseline, state.pending, state.reinstall]);
 
   const confirm = useCallback(
     async (acks: UpdateAckId[]) => {
@@ -367,7 +380,8 @@ export function useUpdater(): Updater {
           chipMac: chipMac.current,
           baseline: baselineOf(state.baseline),
           untestedHardware: !BOARD_IDENTITY_VERIFIED,
-        unsignedRelease: target.release.authentication.status !== "signed",
+          unsignedRelease: target.release.authentication.status !== "signed",
+          reinstall: state.reinstall,
         });
         if (!again.allowed || again.outcome !== decision.outcome) {
           patch({ phase: "reviewed", decision: again });
@@ -488,6 +502,6 @@ export function useUpdater(): Updater {
     latest,
     offers,
     selected,
-    actions: { inspect, skipInspect, toCheck, toReview, back, choosePort, confirm, verifyDevice, skipVerify, reset, discardPending, loadCatalog, setRelease },
+    actions: { inspect, skipInspect, toCheck, toReview, reinstall, back, choosePort, confirm, verifyDevice, skipVerify, reset, discardPending, loadCatalog, setRelease },
   };
 }

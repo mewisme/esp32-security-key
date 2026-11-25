@@ -28,9 +28,14 @@ export function CheckStage({ up, headingRef }: { up: Updater; headingRef: React.
   let primary: React.ReactNode;
   if (upToDate) {
     primary = (
-      <Button type="button" onClick={() => void actions.reset()}>
-        {t.common.startOver}
-      </Button>
+      <>
+        <Button type="button" variant="outline" onClick={() => void actions.reset()}>
+          {t.common.startOver}
+        </Button>
+        <Button type="button" onClick={actions.reinstall}>
+          {c.reinstall}
+        </Button>
+      </>
     );
   } else if (selected && !unsupported) {
     primary = (

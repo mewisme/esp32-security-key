@@ -22,6 +22,7 @@ const BADGE = {
   "safe-update": "success-light",
   repair: "warning-light",
   "already-current": "info-light",
+  reinstall: "info-light",
   downgrade: "destructive-light",
   incompatible: "destructive-light",
   unknown: "warning-light",
@@ -116,7 +117,11 @@ export function ReviewStage({ up, headingRef }: { up: Updater; headingRef: React
       primary={
         decision.allowed ? (
           <Button type="button" disabled={!ready} onClick={() => void actions.confirm(given)}>
-            {r.confirm}
+            {decision.outcome === "reinstall" ? r.reinstallConfirm : r.confirm}
+          </Button>
+        ) : decision.outcome === "already-current" ? (
+          <Button type="button" onClick={actions.reinstall}>
+            {r.reinstallButton}
           </Button>
         ) : installerLink ? (
           <Button asChild>

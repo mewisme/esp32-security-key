@@ -15,6 +15,7 @@ export type AppUpdateOutcome =
   | "safe-update"
   | "repair"
   | "already-current"
+  | "reinstall"
   | "downgrade"
   | "incompatible"
   | "unknown"
@@ -34,6 +35,7 @@ export type AppUpdateReason =
   | "protected-overlap"
   | "flash-profile"
   | "different-family"
+  | "reinstall"
   | "different-key"
   | "not-multikeys"
   | "release-unsupported"
@@ -147,6 +149,8 @@ export interface AppUpdateInput {
   untestedHardware?: boolean;
   /** True when the release manifest carries no valid signature: the person must acknowledge that first. */
   unsignedRelease?: boolean;
+  /** The person chose to write the application again although it already equals this build. */
+  reinstall?: boolean;
   policy?: FlashPolicy;
 }
 
@@ -257,7 +261,19 @@ export function decideAppUpdate(input: AppUpdateInput): AppUpdateDecision {
 
   // 6. The flash content, not the version string, says whether there is anything to do.
   if (input.installedAppMd5 !== null && input.installedAppMd5 === input.targetAppMd5) {
-    return refuse("already-current", "current", `installed ${inst} is byte-identical to this build`);
+    if (!input.reinstall) return refuse("already-current", "current", `installed ${inst} is byte-identical to this build`);
+    // The person asked for it: the same single app write, with the same layout, family and flash-size checks above.
+    return {
+      mode: "app-only-update",
+      outcome: "reinstall",
+      allowed: true,
+      reason: "reinstall",
+      detail: `installed ${inst} is byte-identical to this build; the application is written again`,
+      acks: acksFor("safe-update", build, untestedHardware, unsignedRelease),
+      writes: [appWrite(appImage)],
+      installed,
+      target,
+    };
   }
 
   // 7. Version order and the release's declared data compatibility.

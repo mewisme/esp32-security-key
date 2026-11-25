@@ -702,6 +702,7 @@ export const en = {
       noRelease: "No release has a build for this firmware.",
       nothingNewer: "No published release is newer than the version on the key.",
       useInstaller: "Open the installer",
+      reinstall: "Reinstall the application",
     },
     review: {
       bootDescription: "Put the key in download mode. Nothing is written yet.",
@@ -709,6 +710,8 @@ export const en = {
       rows: { connect: "Key in download mode", download: "Download and verify the release", read: "Read the key (read-only)" },
       description: "Check what will happen. Nothing has been written yet.",
       confirm: "Update application",
+      reinstallConfirm: "Write the application again",
+      reinstallButton: "Reinstall the application anyway",
       table: { installed: "Installed", offered: "New version", type: "Update type", flash: "Flash" },
       type: "Application-only update",
       unreadable: "Not readable",
@@ -722,6 +725,7 @@ export const en = {
         "safe-update": "Compatible",
         repair: "Repair",
         "already-current": "Up to date",
+        reinstall: "Reinstall",
         downgrade: "Downgrade",
         incompatible: "Incompatible",
         unknown: "Not shown safe",
@@ -760,6 +764,10 @@ export const en = {
         "flash-profile": {
           title: "Different flash size",
           text: "The bootloader on this key was built for a different flash size than this build. Nothing was written.",
+        },
+        reinstall: {
+          title: "Write the same application again",
+          text: "The application on the key is byte-identical to this release. You asked to write it again; only the application is written. The bootloader, partition table and storage (part0) are not touched.",
         },
         "different-family": {
           title: "The other MultiKeys firmware",

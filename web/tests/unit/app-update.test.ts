@@ -51,6 +51,15 @@ describe("decideAppUpdate", () => {
     expect(summary(d)).toEqual({ outcome: "already-current", reason: "current", allowed: false, writes: [] });
   });
 
+  it("writes the identical image again only when reinstall is asked for, still as the single app write", () => {
+    const d = decideAppUpdate(input({ installedAppMd5: md5Hex(appOnly.images.app), reinstall: true }, "0.3.3"));
+    expect(summary(d)).toEqual({ outcome: "reinstall", reason: "reinstall", allowed: true, writes: [0x20000] });
+    expect(d.acks).toEqual(["update-confirm"]);
+    // The other safety checks still apply: a changed layout is refused even when reinstalling.
+    const bad = decideAppUpdate(input({ installedAppMd5: md5Hex(appOnly.images.app), reinstall: true, table: withFactorySize(0x1000) }, "0.3.3"));
+    expect(bad.allowed).toBe(false);
+  });
+
   it("blocks a downgrade", () => {
     expect(summary(decideAppUpdate(input({}, "0.4.0")))).toEqual({ outcome: "downgrade", reason: "downgrade", allowed: false, writes: [] });
   });

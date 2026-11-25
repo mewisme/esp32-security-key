@@ -687,6 +687,7 @@ export const vi: Messages = {
       noRelease: "Không có bản phát hành nào có bản dựng cho firmware này.",
       nothingNewer: "Không có bản phát hành nào mới hơn phiên bản trên khóa.",
       useInstaller: "Mở trình cài đặt",
+      reinstall: "Cài lại ứng dụng",
     },
     review: {
       bootDescription: "Đưa khóa vào chế độ nạp. Chưa ghi gì cả.",
@@ -694,6 +695,8 @@ export const vi: Messages = {
       rows: { connect: "Khóa ở chế độ nạp", download: "Tải và xác minh bản phát hành", read: "Đọc khóa (chỉ đọc)" },
       description: "Xem lại những gì sẽ xảy ra. Chưa ghi gì cả.",
       confirm: "Cập nhật ứng dụng",
+      reinstallConfirm: "Ghi lại ứng dụng",
+      reinstallButton: "Vẫn cài lại ứng dụng",
       table: { installed: "Đang cài", offered: "Phiên bản mới", type: "Loại cập nhật", flash: "Flash" },
       type: "Cập nhật chỉ ứng dụng",
       unreadable: "Không đọc được",
@@ -707,6 +710,7 @@ export const vi: Messages = {
         "safe-update": "Tương thích",
         repair: "Sửa chữa",
         "already-current": "Đã mới nhất",
+        reinstall: "Cài lại",
         downgrade: "Hạ cấp",
         incompatible: "Không tương thích",
         unknown: "Chưa chứng minh an toàn",
@@ -745,6 +749,10 @@ export const vi: Messages = {
         "flash-profile": {
           title: "Dung lượng flash khác",
           text: "Bootloader trên khóa này được dựng cho dung lượng flash khác với bản dựng này. Chưa ghi gì.",
+        },
+        reinstall: {
+          title: "Ghi lại đúng ứng dụng này",
+          text: "Ứng dụng trên khóa giống từng byte với bản phát hành này. Bạn đã chọn ghi lại; chỉ ứng dụng được ghi. Bootloader, bảng phân vùng và vùng lưu trữ (part0) không bị đụng tới.",
         },
         "different-family": {
           title: "Firmware MultiKeys khác",

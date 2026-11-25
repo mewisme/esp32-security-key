@@ -43,6 +43,17 @@ export function defaultUpdateTarget(offers: UpdateTarget[], installedVersion: st
   return offers.at(-1) ?? null;
 }
 
+/** The release the installed application comes from, for writing it again; null when no release carries that version. */
+export function reinstallTarget(catalog: Catalog, image: Build["image"], flashSize: string | null, installedVersion: string | null): UpdateTarget | null {
+  if (installedVersion === null) return null;
+  return (
+    catalog.releases.flatMap((release): UpdateTarget[] => {
+      const build = buildOf(release, image, flashSize);
+      return build && build.version === installedVersion && build.update.app_only === true ? [{ release, build }] : [];
+    })[0] ?? null
+  );
+}
+
 export function targetByTag(catalog: Catalog, tag: string, image: Build["image"], flashSize: string | null): UpdateTarget | null {
   const release = catalog.releases.find((r) => r.tag === tag);
   const build = release && buildOf(release, image, flashSize);
