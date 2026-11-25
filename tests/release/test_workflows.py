@@ -112,8 +112,8 @@ class Workflows(unittest.TestCase):
         on = web["on"]
         self.assertIn("workflow_dispatch", on)
         jobs = web["jobs"]
-        self.assertEqual(sorted(jobs), ["check", "deploy-production", "deploy-staging"])
-        for job_id, env in (("deploy-staging", "staging"), ("deploy-production", "production")):
+        self.assertEqual(sorted(jobs), ["check", "deploy-production"])
+        for job_id, env in (("deploy-production", "production"),):
             job = jobs[job_id]
             self.assertEqual(job["environment"], env)
             self.assertEqual(job["permissions"], {"contents": "read"})
@@ -123,8 +123,8 @@ class Workflows(unittest.TestCase):
         self.assertIn("inputs.deploy == 'production'", jobs["deploy-production"]["if"])
         self.assertIn("refs/heads/main", jobs["deploy-production"]["if"])
         self.assertIn("confirm_production", jobs["deploy-production"]["if"])
-        self.assertNotIn("production", jobs["deploy-staging"]["if"])
-        # Cloudflare credentials appear nowhere but the two deploy jobs, and no other workflow can deploy.
+        self.assertNotIn("staging", yaml.safe_dump(jobs))
+        # Cloudflare credentials appear nowhere but the deploy job, and no other workflow can deploy.
         for job_id, job in jobs.items():
             self.assertEqual("CLOUDFLARE_API_TOKEN" in yaml.safe_dump(job), job_id.startswith("deploy-"), job_id)
         for name, wf in self.flows.items():

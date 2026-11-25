@@ -12,9 +12,6 @@
   },
   "observability": { "enabled": true },
   // Production custom domain: Cloudflare creates the DNS record and the certificate on deploy (the mewis.me zone must be on
-  // the same account). Staging sets its own empty routes so that it can never take the domain over.
-  "routes": [{ "pattern": "multikeys.mewis.me", "custom_domain": true }],
-  "env": {
-    "staging": { "name": "multikeys-web-staging", "workers_dev": true, "preview_urls": true, "routes": [] }
-  }
+  // the same account).
+  "routes": [{ "pattern": "multikeys.mewis.me", "custom_domain": true }]
 }

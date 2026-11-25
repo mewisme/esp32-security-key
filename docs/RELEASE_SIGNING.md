@@ -53,7 +53,7 @@ A refused release is not offered anywhere; the reason appears under "Technical d
 3. Sign each release: `MULTIKEYS_SIGNING_KEY=<seed> python tools/sign_manifest.py sign dist/firmware-manifest.json --key-id <id>`
    and upload `firmware-manifest.json.sig` with the release assets. `python tools/sign_manifest.py verify <manifest> <sig>
    --public <base64>` checks it.
-4. After the first signed release is published and verified on staging, set `SIGNATURE_REQUIRED_FROM` to that version so an
+4. After the first signed release is published and verified, set `SIGNATURE_REQUIRED_FROM` to that version so an
    unsigned copy can no longer stand in for it.
 
 ## Rotation and compromise

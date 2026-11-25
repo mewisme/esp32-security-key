@@ -21,7 +21,6 @@ MULTIKEYS_LOCAL_FIRMWARE=../build-localfw pnpm dev  # serve a locally packaged f
 pnpm typecheck && pnpm lint && pnpm test        # tsc, eslint, vitest (pure logic + components)
 pnpm test:e2e                                    # Playwright against `vite build --mode e2e` + preview
 pnpm build && pnpm preview                       # production build, served by the local Worker runtime
-pnpm run deploy:staging                          # multikeys-web-staging.<account>.workers.dev
 pnpm run deploy                                  # production Worker (multikeys-web)
 ```
 
@@ -179,20 +178,17 @@ at the end of `index.css` zeroes their zoom and slide (WCAG 2.3.3) and the accor
 uses only 100, 150, 200 or 300 ms, never `transition-all`, and has a reduced-motion path;
 `tests/e2e/motion.spec.ts` fails if a page, stage, disclosure or menu moves under `reducedMotion: "reduce"`.
 
-## Staging, production and the custom domain
+## Production and the custom domain
 
 1. `pnpm exec wrangler login` (once, by the account owner). All deploys so far ran locally with that OAuth login: no GitHub
-   environment (`staging`, `production`) exists yet, so the manual CI deploy jobs below cannot run.
-2. `pnpm run deploy:staging` → `multikeys-web-staging.<subdomain>.workers.dev`; check `/api/releases` and `/install`. Staging sets
-   `routes: []` in `wrangler.jsonc`, so it can never take the custom domain over (the Vite-generated config of each environment
-   was checked).
-3. Production: `pnpm run deploy` (never bare `pnpm deploy`, which is pnpm's own command) deploys the Worker `multikeys-web` to
+   environment (`production`) exists yet, so the manual CI deploy job below cannot run.
+2. Production: `pnpm run deploy` (never bare `pnpm deploy`, which is pnpm's own command) deploys the Worker `multikeys-web` to
    `https://multikeys-web.mewisme.workers.dev` and to the custom domain `https://multikeys.mewis.me`, the `routes` entry of
    `wrangler.jsonc` (`custom_domain: true`). Cloudflare created the DNS record and the certificate on the first deploy because the
    `mewis.me` zone is on the same account; the domain answered over HTTPS at once.
-4. A new firmware release needs no redeploy: the Worker lists releases from GitHub's `releases.atom` (cached 5 minutes) and
+3. A new firmware release needs no redeploy: the Worker lists releases from GitHub's `releases.atom` (cached 5 minutes) and
    proxies their assets.
-5. On the custom domain Cloudflare's Web Analytics injects `static.cloudflareinsights.com/beacon.min.js`. The strict CSP
+4. On the custom domain Cloudflare's Web Analytics injects `static.cloudflareinsights.com/beacon.min.js`. The strict CSP
    (`default-src 'self'`) blocks it, which shows as one console error per page; nothing else is affected, and it does not happen on
    `workers.dev`. It is a zone setting, not part of this repo: turn off automatic injection for the hostname in the dashboard to
    silence it. The CSP is not loosened for it.
@@ -201,7 +197,7 @@ CI (`.github/workflows/web.yml`) runs lint, unit tests, the production build (`t
 bundle holds no test double: `multikeys-e2e-scenario`, `FakeDriver`, `FakeKeyConnector`) and the e2e tests on pushes to `main` and on
 pull requests, both only when they touch `web/**`, `tools/flash_policy.json` or the workflow itself (the browser is installed with
 `playwright install --with-deps chromium` on every run; a browser cache was measured and gave no reliable gain,
-`docs/CI_PERFORMANCE.md`); it deploys only from a manual `workflow_dispatch` with
-`deploy: staging|production`, using the `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` secrets of the `staging` or `production`
-GitHub Environment. Production also needs `main` and the typed confirmation `deploy-production`; required reviewers, the
+`docs/CI_PERFORMANCE.md`); it deploys only from a manual `workflow_dispatch` with `deploy: production`, using the
+`CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` secrets of the `production` GitHub Environment. Production also needs `main` and
+the typed confirmation `deploy-production`; required reviewers, the
 branch rule and the token scope are settings, listed in `docs/DEPLOYMENT.md`.
