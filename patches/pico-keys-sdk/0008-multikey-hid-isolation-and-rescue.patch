@@ -1,0 +1,694 @@
+MultiKeys 0008: HID channel isolation and rescue/OTP/RNG hardening.
+- src/usb/hid/hid.c: packets from other channels never touch shared buffers while a job runs; responses use
+  the job's channel, WINK does not sleep, channel ids are random.
+- src/rescue.c: presence wait honours EV_EXIT, PHY write is parsed into a scratch record and must keep the
+  application interface, SET TIME needs presence, unknown P1 rejected.
+- src/otp/otp_esp32.c: upstream secure-boot burn removed; MKEK locking only after a successful write.
+- src/rng: repetition-count test, consumed pool bytes zeroed, random_bytes_get serialised.
+
+diff --git a/src/otp/otp_esp32.c b/src/otp/otp_esp32.c
+index 2a9cfd7..72cc7f6 100644
+--- a/src/otp/otp_esp32.c
++++ b/src/otp/otp_esp32.c
+@@ -33,19 +33,9 @@
+ uint8_t _otp_key_1[32] = {0};
+ uint8_t _otp_key_2[32] = {0};
+ 
+-static const uint8_t esp_secure_boot_digest[32] = {
+-    0x0c, 0x1e, 0xce, 0xf3, 0xb4, 0x8f, 0x4a, 0x81,
+-    0x45, 0x6c, 0x85, 0x39, 0x15, 0xcc, 0x05, 0x36,
+-    0xbe, 0x23, 0x24, 0xee, 0xac, 0x8e, 0x3b, 0xb5,
+-    0x77, 0x6f, 0x2d, 0xb9, 0x62, 0x38, 0x75, 0x6a
+-};
+-
+ #ifndef SECURE_BOOT_BOOTKEY_INDEX
+ #define SECURE_BOOT_BOOTKEY_INDEX 0
+ #endif
+-#ifndef PICOKEYS_REQUIRE_SECURE_BOOT_BEFORE_LOCK
+-#define PICOKEYS_REQUIRE_SECURE_BOOT_BEFORE_LOCK 1
+-#endif
+ 
+ static esp_efuse_purpose_t esp_secure_boot_purpose(uint8_t digest_idx) {
+     switch (digest_idx) {
+@@ -72,101 +62,6 @@ static bool esp_find_secure_boot_block(uint8_t digest_idx, esp_efuse_block_t *ou
+     return false;
+ }
+ 
+-static esp_err_t esp_provision_secure_boot_digest(uint8_t digest_idx, esp_efuse_block_t *out_block) {
+-    esp_efuse_purpose_t purpose = esp_secure_boot_purpose(digest_idx);
+-    if (purpose == ESP_EFUSE_KEY_PURPOSE_MAX) {
+-        return ESP_ERR_INVALID_ARG;
+-    }
+-
+-    esp_efuse_block_t block = EFUSE_BLK_KEY_MAX;
+-    if (esp_find_secure_boot_block(digest_idx, &block)) {
+-        const esp_efuse_desc_t **key_desc = esp_efuse_get_key(block);
+-        if (!key_desc) {
+-            return ESP_FAIL;
+-        }
+-        uint8_t existing[32] = {0};
+-        esp_err_t err = esp_efuse_read_field_blob(key_desc, existing, sizeof(existing) * 8);
+-        if (err != ESP_OK) {
+-            return err;
+-        }
+-        if (memcmp(existing, esp_secure_boot_digest, sizeof(existing)) != 0) {
+-            return ESP_ERR_INVALID_STATE;
+-        }
+-        if (out_block) {
+-            *out_block = block;
+-        }
+-        return ESP_OK;
+-    }
+-
+-    block = esp_efuse_find_unused_key_block();
+-    if (block == EFUSE_BLK_KEY_MAX) {
+-        return ESP_ERR_NOT_FOUND;
+-    }
+-
+-    esp_err_t err = esp_efuse_batch_write_begin();
+-    if (err != ESP_OK) {
+-        return err;
+-    }
+-
+-    err = esp_efuse_set_key_purpose(block, purpose);
+-    if (err == ESP_OK) {
+-        const esp_efuse_desc_t **key_desc = esp_efuse_get_key(block);
+-        if (!key_desc) {
+-            err = ESP_FAIL;
+-        } else {
+-            err = esp_efuse_write_field_blob(key_desc, esp_secure_boot_digest, sizeof(esp_secure_boot_digest) * 8);
+-        }
+-    }
+-
+-    if (err == ESP_OK) {
+-        err = esp_efuse_batch_write_commit();
+-    } else {
+-        esp_efuse_batch_write_cancel();
+-    }
+-
+-    if (err == ESP_OK && out_block) {
+-        *out_block = block;
+-    }
+-    return err;
+-}
+-
+-static esp_err_t esp_disable_debug_interfaces(void) {
+-    esp_err_t err = ESP_OK;
+-
+-#ifdef ESP_EFUSE_SOFT_DIS_JTAG
+-    err = esp_efuse_write_field_bit(ESP_EFUSE_SOFT_DIS_JTAG);
+-    if (err != ESP_OK) {
+-        return err;
+-    }
+-#endif
+-#ifdef ESP_EFUSE_HARD_DIS_JTAG
+-    err = esp_efuse_write_field_bit(ESP_EFUSE_HARD_DIS_JTAG);
+-    if (err != ESP_OK) {
+-        return err;
+-    }
+-#endif
+-#ifdef ESP_EFUSE_DIS_USB_JTAG
+-    err = esp_efuse_write_field_bit(ESP_EFUSE_DIS_USB_JTAG);
+-    if (err != ESP_OK) {
+-        return err;
+-    }
+-#endif
+-#ifdef ESP_EFUSE_DIS_USB_SERIAL_JTAG
+-    err = esp_efuse_write_field_bit(ESP_EFUSE_DIS_USB_SERIAL_JTAG);
+-    if (err != ESP_OK) {
+-        return err;
+-    }
+-#endif
+-#ifdef ESP_EFUSE_DIS_PAD_JTAG
+-    err = esp_efuse_write_field_bit(ESP_EFUSE_DIS_PAD_JTAG);
+-    if (err != ESP_OK) {
+-        return err;
+-    }
+-#endif
+-
+-    return err;
+-}
+-
+ static esp_err_t read_key_from_efuse(esp_efuse_block_t block, byte_array_t key) {
+     const esp_efuse_desc_t **key_desc = esp_efuse_get_key(block);
+     if (!key_desc) {
+@@ -227,72 +122,8 @@ int otp_platform_enable_secure_boot(uint8_t bootkey, bool secure_lock) {
+     return ESP_ERR_NOT_SUPPORTED;
+ }
+ 
+-/* Upstream implementation kept verbatim below to keep the patch small; intentionally unreferenced. */
+-static __attribute__((unused)) int otp_platform_enable_secure_boot_upstream(uint8_t bootkey, bool secure_lock) {
+-    if (bootkey > 2) {
+-        return ESP_ERR_INVALID_ARG;
+-    }
+-
+-    if (secure_lock && PICOKEYS_REQUIRE_SECURE_BOOT_BEFORE_LOCK && !esp_efuse_read_field_bit(ESP_EFUSE_SECURE_BOOT_EN)) {
+-        printf("Secure lock requires SECURE_BOOT_EN already set. Enable secure boot first.\n");
+-        return ESP_ERR_INVALID_STATE;
+-    }
+-
+-    esp_efuse_block_t key_block = EFUSE_BLK_KEY_MAX;
+-    esp_err_t err = esp_provision_secure_boot_digest(bootkey, &key_block);
+-    if (err != ESP_OK) {
+-        printf("Error provisioning secure boot digest %u [%d]\n", bootkey, err);
+-        return err;
+-    }
+-
+-    if (!esp_efuse_read_field_bit(ESP_EFUSE_SECURE_BOOT_EN)) {
+-        err = esp_efuse_write_field_bit(ESP_EFUSE_SECURE_BOOT_EN);
+-        if (err != ESP_OK) {
+-            printf("Error enabling secure boot [%d]\n", err);
+-            return err;
+-        }
+-    }
+-
+-    if (secure_lock) {
+-        for (uint8_t idx = 0; idx <= 2; idx++) {
+-            if (idx == bootkey) {
+-                continue;
+-            }
+-            err = esp_efuse_set_digest_revoke(idx);
+-            if (err != ESP_OK) {
+-                printf("Error revoking secure boot digest %u [%d]\n", idx, err);
+-                return err;
+-            }
+-        }
+-
+-        err = esp_efuse_set_key_dis_write(key_block);
+-        if (err != ESP_OK) {
+-            printf("Error setting secure boot key block read only [%d]\n", err);
+-            return err;
+-        }
+-        err = esp_efuse_set_keypurpose_dis_write(key_block);
+-        if (err != ESP_OK) {
+-            printf("Error setting secure boot key purpose read only [%d]\n", err);
+-            return err;
+-        }
+-
+-        /* // Not sure if it allows future upgrades if ROM download mode is disabled, so leaving it enabled for now
+-        err = esp_efuse_disable_rom_download_mode();
+-        if (err != ESP_OK) {
+-            printf("Error disabling ROM download mode [%d]\n", err);
+-            return err;
+-        }
+-        */
+-
+-        err = esp_disable_debug_interfaces();
+-        if (err != ESP_OK) {
+-            printf("Error disabling JTAG interfaces [%d]\n", err);
+-            return err;
+-        }
+-    }
+-
+-    return PICOKEYS_OK;
+-}
++/* MultiKeys: the upstream rescue-interface secure-boot/JTAG burn (and its helpers) was deleted instead of
++ * being left unreferenced: it burned digests of the upstream project's boot key. */
+ 
+ /* MultiKeys: upstream silently burns random MKEK keys into eFuse blocks KEY3/KEY4 on first boot.
+  * That is irreversible, so the code that does it is compiled in ONLY when the operator enables
+@@ -310,26 +141,41 @@ static void multikey_provision_otp_keys(void) {
+         if (ret != 0) {
+             printf("Error writing OTP key 1 [%d]\n", ret);
+         }
++        else {
++            /* Lock only a block that was really written (a failed write must stay retryable). */
++            write_otp[0] = OTP_KEY_1;
++        }
+         mbedtls_platform_zeroize(mkek, sizeof(mkek));
+-        write_otp[0] = OTP_KEY_1;
+     }
+     if (esp_efuse_key_block_unused(OTP_KEY_2)) {
+         mbedtls_ecdsa_context ecdsa;
+         size_t olen = 0;
+         uint8_t pkey[MBEDTLS_ECP_MAX_BYTES];
+-        while (olen != 32) {
++        int genkey_failures = 0;
++        while (olen != 32 && genkey_failures < 3) {
+             mbedtls_ecdsa_init(&ecdsa);
+             mbedtls_ecp_group_id ec_id = MBEDTLS_ECP_DP_SECP256K1;
+-            mbedtls_ecdsa_genkey(&ecdsa, ec_id, random_fill_iterator, NULL);
+-            mbedtls_ecp_write_key_ext(&ecdsa, &olen, pkey, sizeof(pkey));
++            olen = 0;
++            if (mbedtls_ecdsa_genkey(&ecdsa, ec_id, random_fill_iterator, NULL) != 0 ||
++                mbedtls_ecp_write_key_ext(&ecdsa, &olen, pkey, sizeof(pkey)) != 0) {
++                olen = 0;
++                genkey_failures++;
++            }
+             mbedtls_ecdsa_free(&ecdsa);
+         }
+-        ret = esp_efuse_write_key(OTP_KEY_2, ESP_EFUSE_KEY_PURPOSE_USER, pkey, olen);
+-        if (ret != 0) {
+-            printf("Error writing OTP key 2 [%d]\n", ret);
++        if (olen == 32) {
++            ret = esp_efuse_write_key(OTP_KEY_2, ESP_EFUSE_KEY_PURPOSE_USER, pkey, olen);
++            if (ret != 0) {
++                printf("Error writing OTP key 2 [%d]\n", ret);
++            }
++            else {
++                write_otp[1] = OTP_KEY_2;
++            }
++        }
++        else {
++            printf("Error generating OTP key 2\n");
+         }
+         mbedtls_platform_zeroize(pkey, sizeof(pkey));
+-        write_otp[1] = OTP_KEY_2;
+     }
+     for (size_t i = 0; i < sizeof(write_otp) / sizeof(write_otp[0]); i++) {
+         if (write_otp[i] != 0xFFFF) {
+diff --git a/src/rescue.c b/src/rescue.c
+index 772fa3c..d474eb0 100644
+--- a/src/rescue.c
++++ b/src/rescue.c
+@@ -221,6 +221,15 @@ static bool rescue_require_user_presence(void) {
+     queue_add_blocking(&card_to_usb_q, &event);
+     do {
+         queue_remove_blocking(&usb_to_card_q, &event);
++        if (event == EV_EXIT) {
++            /* MultiKeys: the host is tearing the card thread down. Stop waiting, disarm the button wait, hand
++             * EV_EXIT back so the thread loop sees it, and report "no presence" (same pattern as pico-fido's
++             * user-presence wait). Dropping it left card_exit() blocked and could not be told from a press. */
++            queue_try_add(&usb_to_card_q, &event);
++            button_wait_abort();
++            force_button_wait = previous_force;
++            return false;
++        }
+     } while (event != EV_BUTTON_PRESSED && event != EV_BUTTON_TIMEOUT && event != EV_BUTTON_CANCELLED);
+     force_button_wait = previous_force;
+     return event == EV_BUTTON_PRESSED;
+@@ -348,11 +357,27 @@ static int cmd_write(void) {
+             return SW_CONDITIONS_NOT_SATISFIED();
+         }
+ #ifndef ENABLE_EMULATION
+-        int ret = phy_unserialize_data(CONST_BYTE_ARRAY(apdu.data, (uint16_t)apdu.nc), &phy_data);
+-        if (ret == PICOKEYS_OK) {
+-            if (phy_save() != PICOKEYS_OK) {
+-                return SW_EXEC_ERROR();
+-            }
++        /* MultiKeys: parse into a scratch record. Upstream wrote straight into the live phy_data (a malformed
++         * blob clobbered it) and accepted a record that disables every interface the application is reachable
++         * on, which bricks the key until the flash is wiped. */
++        phy_data_t candidate;
++        int ret = phy_unserialize_data(CONST_BYTE_ARRAY(apdu.data, (uint16_t)apdu.nc), &candidate);
++        if (ret != PICOKEYS_OK) {
++            return SW_INCORRECT_PARAMS();
++        }
++#if defined(USB_ITF_HID)
++        const uint8_t required_itf = PHY_USB_ITF_HID;
++#elif defined(USB_ITF_CCID)
++        const uint8_t required_itf = PHY_USB_ITF_CCID;
++#else
++        const uint8_t required_itf = 0;
++#endif
++        if (candidate.enabled_usb_itf_present && (candidate.enabled_usb_itf & required_itf) != required_itf) {
++            return SW_INCORRECT_PARAMS();
++        }
++        phy_data = candidate;
++        if (phy_save() != PICOKEYS_OK) {
++            return SW_EXEC_ERROR();
+         }
+ #endif
+     }
+@@ -361,11 +386,16 @@ static int cmd_write(void) {
+         if (p2 != 0x1 && p2 != 0x2) {
+             return SW_INCORRECT_P1P2();
+         }
++        if ((p2 == 0x1 && apdu.nc != 8) || (p2 == 0x2 && apdu.nc != 4)) {
++            return SW_WRONG_LENGTH();
++        }
++        if (!rescue_require_user_presence()) {
++            return SW_CONDITIONS_NOT_SATISFIED();
++        }
+         if (p2 == 0x1) {
+-            if (apdu.nc != 8) {
+-                return SW_WRONG_LENGTH();
+-            }
+             struct tm tm;
++            memset(&tm, 0, sizeof(tm));
++            tm.tm_isdst = -1;
+             tm.tm_year = get_uint16_be(apdu.data) - 1900;
+             tm.tm_mon = apdu.data[2];
+             tm.tm_mday = apdu.data[3];
+@@ -376,14 +406,14 @@ static int cmd_write(void) {
+             tv_sec = mktime(&tm);
+         }
+         else if (p2 == 0x2) {
+-            if (apdu.nc != 4) {
+-                return SW_WRONG_LENGTH();
+-            }
+             uint32_t t = (apdu.data[0] << 24) | (apdu.data[1] << 16) | (apdu.data[2] << 8) | apdu.data[3];
+             tv_sec = (time_t)t;
+         }
+         set_rtc_time(tv_sec);
+     }
++    else {
++        return SW_INCORRECT_P1P2();
++    }
+     led_3_blinks();
+     return SW_OK();
+ }
+diff --git a/src/rng/hwrng.c b/src/rng/hwrng.c
+index 5f1621f..b60b1bd 100644
+--- a/src/rng/hwrng.c
++++ b/src/rng/hwrng.c
+@@ -18,6 +18,7 @@
+ #include "picokeys.h"
+ #include "hwrng.h"
+ #include "pico_time.h"
++#include "mbedtls/platform_util.h"
+ 
+ #if defined(PICO_PLATFORM)
+ #include "pico/rand.h"
+@@ -41,6 +42,31 @@ static void hwrng_start(void) {
+ static uint64_t random_word = 0xcbf29ce484222325;
+ static uint8_t hwrng_mix_round = 0;
+ 
++/* MultiKeys: repetition-count health test (NIST SP 800-90B 4.4.1, cutoff 4 identical consecutive 32-bit
++ * samples: a healthy source repeats that often with probability 2^-96). A stuck source makes the draw fail, so
++ * nothing from it is mixed into the pool and the pool keeps filling only from healthy samples. */
++#define HWRNG_RCT_CUTOFF 4
++static uint32_t rct_last = 0;
++static uint8_t rct_count = 0;
++static bool rct_valid = false;
++
++static bool hwrng_rct_accept(uint64_t word) {
++    for (int i = 0; i < 2; i++) {
++        uint32_t s = (uint32_t)(word >> (32 * i));
++        if (rct_valid && s == rct_last) {
++            if (++rct_count >= HWRNG_RCT_CUTOFF) {
++                return false;
++            }
++        }
++        else {
++            rct_last = s;
++            rct_count = 1;
++            rct_valid = true;
++        }
++    }
++    return true;
++}
++
+ static void hwrng_mix_init(void) {
+     random_word = 0xcbf29ce484222325;
+     hwrng_mix_round = 0;
+@@ -62,6 +88,9 @@ static int hwrng_mix_process(void) {
+     word <<= 32;
+     word |= rand();
+ #endif
++    if (!hwrng_rct_accept(word)) {
++        return 0; /* health test failed: discard the sample, the round does not advance */
++    }
+     random_word ^= word ^ board_millis();
+     random_word *= 0x00000100000001B3;
+     if (++hwrng_mix_round == 8) {
+@@ -137,6 +166,7 @@ static size_t hwrng_buf_del(struct hwrng_buf *rb, byte_array_t data) {
+     }
+     if (first) {
+         memcpy(data.data, rb->buf + head, first);
++        mbedtls_platform_zeroize(rb->buf + head, first);
+         head += first;
+         if (head >= rb->size) {
+             head = 0;
+@@ -145,6 +175,7 @@ static size_t hwrng_buf_del(struct hwrng_buf *rb, byte_array_t data) {
+     if (n > first) {
+         size_t second = n - first;
+         memcpy(data.data + first, rb->buf + head, second);
++        mbedtls_platform_zeroize(rb->buf + head, second);
+         head += second;
+     }
+     rb->head = head;
+diff --git a/src/rng/random.c b/src/rng/random.c
+index 94333ff..fe918e6 100644
+--- a/src/rng/random.c
++++ b/src/rng/random.c
+@@ -20,11 +20,23 @@
+ #include "picokeys.h"
+ #include "hwrng.h"
+ #include "random.h"
++#if defined(PICO_PLATFORM)
++#include "pico/mutex.h"
++#elif defined(ESP_PLATFORM)
++#include "compat/esp_compat.h"
++#else
++#include "compat/queue.h"
++#endif
+ 
+ #define RANDOM_BYTES_LENGTH 32
+ static uint8_t random_pool[256];
+ 
++static mutex_t random_bytes_mutex;
++static bool random_bytes_mutex_ready = false;
++
+ void random_init(void) {
++    mutex_init(&random_bytes_mutex);
++    random_bytes_mutex_ready = true;
+     hwrng_init(BYTE_ARRAY(random_pool, sizeof(random_pool)));
+ 
+     for (int i = 0; i < HWRNG_PRE_LOOP; i++) {
+@@ -36,15 +48,28 @@ void random_init(void) {
+  * Return pointer to random 32-byte
+  */
+ #define MAX_RANDOM_BUFFER 1024
++/* MultiKeys: the returned pointer is shared static storage and callers (other submodules) copy from it after the
++ * call returns. The fill is serialised and two buffers alternate, so one caller on the USB task and one on the
++ * card thread never fill the buffer the other is still copying from. */
+ const uint8_t *random_bytes_get(size_t len) {
+     if (len > MAX_RANDOM_BUFFER) {
+         return NULL;
+     }
+-    static uint8_t return_word[MAX_RANDOM_BUFFER];
+-    if (random_fill_buffer(BYTE_ARRAY(return_word, len)) != 0) {
++    static uint8_t return_word[2][MAX_RANDOM_BUFFER];
++    static uint8_t slot = 0;
++    if (random_bytes_mutex_ready) {
++        mutex_enter_blocking(&random_bytes_mutex);
++    }
++    slot ^= 1;
++    uint8_t *out = return_word[slot];
++    int ret = random_fill_buffer(BYTE_ARRAY(out, len));
++    if (random_bytes_mutex_ready) {
++        mutex_exit(&random_bytes_mutex);
++    }
++    if (ret != 0) {
+         return NULL;
+     }
+-    return (const uint8_t *) return_word;
++    return (const uint8_t *) out;
+ }
+ 
+ /*
+diff --git a/src/usb/hid/hid.c b/src/usb/hid/hid.c
+index 8e77d4d..e1d8421 100644
+--- a/src/usb/hid/hid.c
++++ b/src/usb/hid/hid.c
+@@ -32,6 +32,7 @@ static portMUX_TYPE mutex = portMUX_INITIALIZER_UNLOCKED;
+ #include "apdu.h"
+ #include "usb.h"
+ #include "button.h"
++#include "random.h"
+ 
+ extern void init_fido(void);
+ bool is_nk = false;
+@@ -288,6 +289,8 @@ int (*hid_set_report_cb)(uint8_t, uint8_t, hid_report_type_t, uint8_t const *, u
+ // Invoked when received SET_REPORT control request or
+ // received data on OUT endpoint ( Report ID = 0, Type = 0 )
+ 
++static bool hid_busy_filter(const CTAPHID_FRAME *in);
++
+ void tud_hid_set_report_cb(uint8_t itf, uint8_t report_id, hid_report_type_t report_type, uint8_t const *buffer, uint16_t bufsize) {
+     // This example doesn't use multiple report and report ID
+     (void) itf;
+@@ -300,6 +303,10 @@ void tud_hid_set_report_cb(uint8_t itf, uint8_t report_id, hid_report_type_t rep
+             if (bufsize != HID_RPT_SIZE) {
+                 return;
+             }
++            /* MultiKeys: while a job runs, packets are judged before they touch any shared buffer. */
++            if (hid_busy_filter((const CTAPHID_FRAME *)buffer)) {
++                return;
++            }
+             memcpy(hid_rx[itf].buffer + hid_rx[itf].w_ptr, buffer, bufsize);
+             hid_rx[itf].w_ptr += bufsize;
+             int proc_pkt = driver_process_usb_packet_hid(bufsize);
+@@ -311,9 +318,9 @@ void tud_hid_set_report_cb(uint8_t itf, uint8_t report_id, hid_report_type_t rep
+ }
+ 
+ uint32_t last_cmd_time = 0, last_packet_time = 0;
+-int ctap_error(uint8_t error) {
++static int ctap_error_cid(uint32_t cid, uint8_t error) {
+     memset((uint8_t *)ctap_resp, 0, sizeof(CTAPHID_FRAME));
+-    ctap_resp->cid = ctap_req->cid;
++    ctap_resp->cid = cid;
+     ctap_resp->init.cmd = CTAPHID_ERROR;
+     ctap_resp->init.bcntl = 1;
+     ctap_resp->init.data[0] = error;
+@@ -322,6 +329,10 @@ int ctap_error(uint8_t error) {
+     return 0;
+ }
+ 
++int ctap_error(uint8_t error) {
++    return ctap_error_cid(ctap_req->cid, error);
++}
++
+ uint8_t last_cmd = 0;
+ uint8_t last_seq = 0;
+ CTAPHID_FRAME last_req = { 0 };
+@@ -329,8 +340,15 @@ uint32_t lock = 0;
+ uint32_t lock_cid = 0;
+ static uint32_t next_cid = 1;
+ 
++/* MultiKeys: channel ids are random (a sequential counter lets any host guess the next channel of another
++ * application). 0 and the broadcast id are never handed out. */
+ static uint32_t allocate_cid(void) {
+-    uint32_t cid;
++    uint32_t cid = 0;
++    for (int attempt = 0; attempt < 16; attempt++) {
++        if (random_fill_buffer(BYTE_ARRAY((uint8_t *)&cid, sizeof(cid))) == 0 && cid != 0 && cid != CID_BROADCAST) {
++            return cid;
++        }
++    }
+     do {
+         cid = next_cid++;
+         if (next_cid == 0 || next_cid == CID_BROADCAST) {
+@@ -340,8 +358,54 @@ static uint32_t allocate_cid(void) {
+     return cid;
+ }
+ 
+-/* CID of the transaction whose job is (or was last) running in the card thread. */
++/* CID and command of the transaction whose job is (or was last) running in the card thread. */
+ static uint32_t job_cid = 0;
++static uint8_t job_cmd = 0;
++/* Channel and command the response being built belongs to (job, or PING/SYNC answered inline). The incoming
++ * packet buffer is reused by every packet, so it must never be consulted for this. */
++static uint32_t resp_cid = 0;
++static uint8_t resp_cmd = 0;
++
++/* MultiKeys: single-job channel isolation. While the card thread runs a job only the owning channel may talk:
++ * CTAPHID_CANCEL (acts on the job) and CTAPHID_INIT (aborts it, handled by the normal path). Every other packet
++ * is answered with CHANNEL_BUSY (initialisation packets) or dropped (continuations, other channels' CANCEL)
++ * without touching the receive/transmit buffers, msg_packet or the job's channel state. The busy error is built
++ * in a private frame for the same reason. Returns true when the packet was consumed. */
++static void hid_send_busy(uint32_t cid) {
++    static CTAPHID_FRAME busy_frame;
++    memset((uint8_t *)&busy_frame, 0, sizeof(busy_frame));
++    busy_frame.cid = cid;
++    busy_frame.init.cmd = CTAPHID_ERROR;
++    busy_frame.init.bcntl = 1;
++    busy_frame.init.data[0] = CTAP1_ERR_CHANNEL_BUSY;
++    driver_write_hid(ITF_HID_CTAP, CONST_BYTE_ARRAY((const uint8_t *)&busy_frame, 64));
++}
++
++static bool hid_busy_filter(const CTAPHID_FRAME *in) {
++    if (!is_busy()) {
++        return false;
++    }
++    if (FRAME_TYPE(in) != TYPE_INIT) {
++        return true;
++    }
++    if (in->init.cmd == CTAPHID_CANCEL) {
++        /* CTAPHID_CANCEL only concerns the transaction of its own channel. The job is marked abandoned and the
++         * card thread is told to stop waiting; the single KEEPALIVE_CANCEL answer is sent when the job has
++         * actually finished (hid_task), after which the channel is free again. */
++        if (in->cid == job_cid) {
++            cancel_button = true;
++            if (job_cmd == CTAPHID_CBOR) {
++                card_job_abandon();
++            }
++        }
++        return true;
++    }
++    if (in->cid == job_cid && in->init.cmd == CTAPHID_INIT) {
++        return false;
++    }
++    hid_send_busy(in->cid);
++    return true;
++}
+ 
+ /* Queue one CTAPHID_CBOR reply that carries just a status byte. Used for the KEEPALIVE_CANCEL answer. */
+ static void send_cbor_status(uint32_t cid, uint8_t status) {
+@@ -406,12 +470,7 @@ int driver_process_usb_packet_hid(uint16_t read) {
+              * no job is running. */
+             msg_packet.len = msg_packet.current_len = 0;
+             last_packet_time = 0;
+-            if (is_busy() && ctap_req->cid == job_cid) {
+-                cancel_button = true;
+-                if (last_cmd == CTAPHID_CBOR) {
+-                    card_job_abandon();
+-                }
+-            }
++            /* A busy device never gets here: hid_busy_filter() consumed the packet. Nothing to cancel. */
+             return 0;
+         }
+         if (FRAME_TYPE(ctap_req) == TYPE_INIT) {
+@@ -484,9 +543,7 @@ int driver_process_usb_packet_hid(uint16_t read) {
+             }
+             last_packet_time = 0;
+             memcpy(ctap_resp, ctap_req, sizeof(CTAPHID_FRAME));
+-#if defined(PICO_PLATFORM) || defined(ESP_PLATFORM)
+-            sleep_ms(1000); //For blinking the device during 1 seg
+-#endif
++            /* MultiKeys: no sleep here. Blocking the USB task for a second froze every other channel. */
+             driver_write_hid(ITF_HID_CTAP, CONST_BYTE_ARRAY((const uint8_t *)ctap_resp, 64));
+             msg_packet.len = msg_packet.current_len = 0;
+         }
+@@ -495,6 +552,8 @@ int driver_process_usb_packet_hid(uint16_t read) {
+                   (msg_packet.len == msg_packet.current_len && msg_packet.len > 0))) {
+             if (msg_packet.current_len == msg_packet.len && msg_packet.len > 0) {
+                 memcpy(ctap_resp->init.data, msg_packet.data, msg_packet.len);
++                resp_cid = ctap_req->cid;
++                resp_cmd = last_cmd;
+                 driver_exec_finished_hid(msg_packet.len);
+             }
+             else {
+@@ -570,7 +629,8 @@ int driver_process_usb_packet_hid(uint16_t read) {
+                 last_packet_time = 0;
+                 return ctap_error(CTAP1_ERR_CHANNEL_BUSY);
+             }
+-            job_cid = ctap_req->cid;
++            job_cid = resp_cid = ctap_req->cid;
++            job_cmd = resp_cmd = last_cmd;
+             cancel_button = false;
+             if (last_cmd == CTAPHID_OTP) {
+                 is_nk = true;
+@@ -601,7 +661,8 @@ int driver_process_usb_packet_hid(uint16_t read) {
+                 last_packet_time = 0;
+                 return ctap_error(CTAP1_ERR_CHANNEL_BUSY);
+             }
+-            job_cid = ctap_req->cid;
++            job_cid = resp_cid = ctap_req->cid;
++            job_cmd = resp_cmd = last_cmd;
+             thread_type = 2;
+             cancel_button = false;
+             select_app(CONST_BYTE_ARRAY(fido_aid + 1, fido_aid[0]));
+@@ -650,7 +711,7 @@ static void send_keepalive(void) {
+     }
+     CTAPHID_FRAME *resp = (CTAPHID_FRAME *) (hid_tx[ITF_HID_CTAP].buffer + sizeof(hid_tx[ITF_HID_CTAP].buffer) - 64);
+     //memset(ctap_resp, 0, sizeof(CTAPHID_FRAME));
+-    resp->cid = ctap_req->cid;
++    resp->cid = job_cid;
+     resp->init.cmd = CTAPHID_KEEPALIVE;
+     resp->init.bcntl = 1;
+     resp->init.data[0] = is_req_button_pending() ? 2 : 1;
+@@ -663,7 +724,7 @@ static void send_keepalive(void) {
+ void driver_exec_finished_hid(uint16_t size_next) {
+     if (size_next > 0) {
+         if (thread_type == 2 && apdu.sw != 0) {
+-            ctap_error(apdu.sw & 0xff);
++            ctap_error_cid(resp_cid, apdu.sw & 0xff);
+         }
+         else {
+             if (is_nk) {
+@@ -679,11 +740,11 @@ void driver_exec_finished_hid(uint16_t size_next) {
+ void driver_exec_finished_cont_hid(uint8_t itf, uint16_t size_next, uint16_t offset) {
+     offset -= 7;
+     ctap_resp = (CTAPHID_FRAME *) (hid_tx[itf].buffer + offset);
+-    ctap_resp->cid = ctap_req->cid;
++    ctap_resp->cid = resp_cid;
+     ctap_resp->init.bcnth = size_next >> 8;
+     ctap_resp->init.bcntl = size_next & 0xff;
+     send_buffer_size[itf] = size_next;
+-    ctap_resp->init.cmd = last_cmd;
++    ctap_resp->init.cmd = resp_cmd;
+     if (hid_write_offset(size_next+7, offset) > 0) {
+         //ctap_resp = (CTAPHID_FRAME *) ((uint8_t *) ctap_resp + 64 - 5);
+         //send_buffer_size[ITF_HID_CTAP] -= MIN(64 - 7, send_buffer_size[ITF_HID_CTAP]);

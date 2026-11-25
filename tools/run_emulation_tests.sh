@@ -49,7 +49,7 @@ fi
 log "building emulator"
 start=$(date +%s)
 cmake -S "$SRC" -B "$BUILD" -G Ninja -DENABLE_EMULATION=1 -DENABLE_EDDSA=1 \
-    "-DCMAKE_C_FLAGS=-DCONFIG_MULTIKEY_FIDO_MAKECRED_UV_NOT_REQUIRED=1 -DCONFIG_MULTIKEY_AAGUID=\\\"${AAGUID_HEX}\\\"" \
+    "-DCMAKE_C_FLAGS=-DUSB_BUFFER_SIZE=2048 -DCONFIG_MULTIKEY_FIDO_MAKECRED_UV_NOT_REQUIRED=1 -DCONFIG_MULTIKEY_AAGUID=\\\"${AAGUID_HEX}\\\"" \
     >"$WORK/cmake.log" 2>&1 || { tail -40 "$WORK/cmake.log"; exit 1; }
 ninja -C "$BUILD" >"$WORK/ninja.log" 2>&1 || { tail -60 "$WORK/ninja.log"; exit 1; }
 log "build done in $(( $(date +%s) - start )) s"

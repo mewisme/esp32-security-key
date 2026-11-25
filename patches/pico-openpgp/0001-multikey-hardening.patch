@@ -1,0 +1,488 @@
+diff --git a/src/openpgp/cmd_import_data.c b/src/openpgp/cmd_import_data.c
+index 71a7d22..b2f520e 100644
+--- a/src/openpgp/cmd_import_data.c
++++ b/src/openpgp/cmd_import_data.c
+@@ -41,6 +41,10 @@ static bool tag_len(uint8_t **data, const uint8_t *end, uint16_t *len_out) {
+         }
+         len = *(*data)++;
+     }
++    else if (len >= 0x80) {
++        /* 0x80 (indefinite) and 0x83..0xFF (more than two length octets) are not valid here. */
++        return false;
++    }
+     *len_out = (uint16_t) len;
+     return true;
+ }
+@@ -205,6 +209,9 @@ int cmd_import_data(void) {
+         if (gid == MBEDTLS_ECP_DP_NONE) {
+             return SW_FUNC_NOT_SUPPORTED();
+         }
++        if ((gid == MBEDTLS_ECP_DP_CURVE25519 || gid == MBEDTLS_ECP_DP_ED25519) && len[1] != 32) {
++            return SW_WRONG_DATA();
++        }
+         mbedtls_ecp_keypair_init(&ecdsa);
+         if (gid == MBEDTLS_ECP_DP_CURVE25519) {
+             mbedtls_ecp_group_load(&ecdsa.grp, gid);
+diff --git a/src/openpgp/cmd_mse.c b/src/openpgp/cmd_mse.c
+index cd8a407..e496da2 100644
+--- a/src/openpgp/cmd_mse.c
++++ b/src/openpgp/cmd_mse.c
+@@ -21,6 +21,9 @@ int cmd_mse(void) {
+     if (P1(apdu) != 0x41 || (P2(apdu) != 0xA4 && P2(apdu) != 0xB8)) {
+         return SW_WRONG_P1P2();
+     }
++    if (apdu.nc < 3) {
++        return SW_WRONG_LENGTH();
++    }
+     if (apdu.data[0] != 0x83 || apdu.data[1] != 0x1 ||
+         (apdu.data[2] != 0x2 && apdu.data[2] != 0x3)) {
+         return SW_WRONG_DATA();
+diff --git a/src/openpgp/cmd_pso.c b/src/openpgp/cmd_pso.c
+index 8adfba3..19c2223 100644
+--- a/src/openpgp/cmd_pso.c
++++ b/src/openpgp/cmd_pso.c
+@@ -144,8 +144,10 @@ int cmd_pso(void) {
+             inc_sig_count();
+         }
+         else if (P1(apdu) == 0x80 && P2(apdu) == 0x86) {
+-            if (apdu.nc < key_size) { //needs padding
+-                memset(apdu.data + apdu.nc, 0, key_size - apdu.nc);
++            /* Cryptogram is a padding indicator (0x00) followed by exactly one modulus. */
++            if (apdu.nc != key_size + 1 || apdu.data[0] != 0x00) {
++                mbedtls_rsa_free(&ctx);
++                return SW_WRONG_LENGTH();
+             }
+             size_t olen = 0;
+             r = mbedtls_rsa_pkcs1_decrypt(&ctx, random_fill_iterator, NULL, &olen, apdu.data + 1, res_APDU, key_size);
+@@ -182,7 +184,7 @@ int cmd_pso(void) {
+             if (mbedtls_asn1_get_tag(&data, end, &len, 0xA6) != 0) {
+                 return SW_WRONG_DATA();
+             }
+-            if (*data++ != 0x7f) {
++            if (data >= end || *data++ != 0x7f) {
+                 return SW_WRONG_DATA();
+             }
+             if (mbedtls_asn1_get_tag(&data, end, &len,
+diff --git a/src/openpgp/cmd_terminate_df.c b/src/openpgp/cmd_terminate_df.c
+index 9be591d..5c4156f 100644
+--- a/src/openpgp/cmd_terminate_df.c
++++ b/src/openpgp/cmd_terminate_df.c
+@@ -24,6 +24,10 @@ static bool pw3_verifier_unusable(void) {
+ }
+ 
+ static bool openpgp_terminate_preserve_fid(uint16_t fid) {
++    /* 0xBCxx belongs to the MultiKeys authorisation component (MKAUTH record and retry counter). */
++    if ((fid >> 8) == 0xBC) {
++        return true;
++    }
+     if (fid == EF_PW_PRIV || fid == EF_PW_RETRIES || fid == EF_DEK_PWPIV || fid == EF_META || fid == EF_VAULT_KEY) {
+         return true;
+     }
+diff --git a/src/openpgp/cmd_verify.c b/src/openpgp/cmd_verify.c
+index 69b8655..7f7b1ec 100644
+--- a/src/openpgp/cmd_verify.c
++++ b/src/openpgp/cmd_verify.c
+@@ -42,6 +42,12 @@ int cmd_verify(void) {
+         else {
+             return SW_WRONG_P1P2();
+         }
++        if (!has_pw1 && !has_pw2) {
++            mbedtls_platform_zeroize(session_pw1, sizeof(session_pw1));
++        }
++        if (!has_pw3) {
++            mbedtls_platform_zeroize(session_pw3, sizeof(session_pw3));
++        }
+         return SW_OK();
+     }
+     else if (p1 != 0x0 || (p2 & 0x60) != 0x0) {
+diff --git a/src/openpgp/openpgp.c b/src/openpgp/openpgp.c
+index 4eb7a58..aafe9da 100644
+--- a/src/openpgp/openpgp.c
++++ b/src/openpgp/openpgp.c
+@@ -448,7 +448,7 @@ void scan_files_openpgp(void) {
+     if ((ef = file_search_by_fid(EF_PW_PRIV, NULL, SPECIFY_ANY))) {
+         if (!ef->data) {
+             printf("PW status is empty. Initializing to default\r\n");
+-            const uint8_t def[] = { 0x1, 127, 127, 127, 3, 0, 3 };
++            const uint8_t def[] = { 0x0, 127, 127, 127, 3, 0, 3 };
+             file_put_data(ef, CONST_BYTE_ARRAY(def, sizeof(def)));
+         }
+ #ifdef ENABLE_ADMINLESS_MODE
+@@ -468,21 +468,21 @@ void scan_files_openpgp(void) {
+     if ((ef = file_search_by_fid(EF_UIF_SIG, NULL, SPECIFY_ANY))) {
+         if (!ef->data) {
+             printf("UIF SIG is empty. Initializing to default\r\n");
+-            const uint8_t def[] = { 0x0, 0x20 };
++            const uint8_t def[] = { 0x1, 0x20 };
+             file_put_data(ef, CONST_BYTE_ARRAY(def, sizeof(def)));
+         }
+     }
+     if ((ef = file_search_by_fid(EF_UIF_DEC, NULL, SPECIFY_ANY))) {
+         if (!ef->data) {
+             printf("UIF DEC is empty. Initializing to default\r\n");
+-            const uint8_t def[] = { 0x0, 0x20 };
++            const uint8_t def[] = { 0x1, 0x20 };
+             file_put_data(ef, CONST_BYTE_ARRAY(def, sizeof(def)));
+         }
+     }
+     if ((ef = file_search_by_fid(EF_UIF_AUT, NULL, SPECIFY_ANY))) {
+         if (!ef->data) {
+             printf("UIF AUT is empty. Initializing to default\r\n");
+-            const uint8_t def[] = { 0x0, 0x20 };
++            const uint8_t def[] = { 0x1, 0x20 };
+             file_put_data(ef, CONST_BYTE_ARRAY(def, sizeof(def)));
+         }
+     }
+@@ -1257,6 +1257,11 @@ static void init_openpgp(void) {
+ static int openpgp_unload(void) {
+     isUserAuthenticated = false;
+     has_pw1 = has_pw2 = has_pw3 = false;
++    has_rc = false;
++    mbedtls_platform_zeroize(session_pw1, sizeof(session_pw1));
++    mbedtls_platform_zeroize(session_rc, sizeof(session_rc));
++    mbedtls_platform_zeroize(session_pw3, sizeof(session_pw3));
++    release_dek();
+     algo_dec = EF_ALGO_PRIV2;
+     algo_aut = EF_ALGO_PRIV3;
+     pk_dec = EF_PK_DEC;
+@@ -1441,31 +1446,32 @@ int check_pin(const file_t *pin, const uint8_t *data, size_t len) {
+     }
+     if (off == 1) {
+         uint8_t pin_data[34], *pin_sp = NULL;
++        bool *legacy_flag = NULL;
+         pin_data[0] = len;
+         pin_data[1] = 0x1; // Format
+         pin_derive_verifier(CONST_BYTE_ARRAY(data, len), pin_data + 2);
+         file_put_data((file_t *)pin, CONST_BYTE_ARRAY(pin_data, sizeof(pin_data)));
+         if (pin->fid == EF_PW1) {
+-            if (P2(apdu) == 0x81) {
+-                has_pw1 = true;
+-            }
+-            else {
+-                has_pw2 = true;
+-            }
++            legacy_flag = P2(apdu) == 0x81 ? &has_pw1 : &has_pw2;
+             pin_sp = session_pw1;
+         }
+         else if (pin->fid == EF_PW3) {
+-            has_pw3 = true;
++            legacy_flag = &has_pw3;
+             pin_sp = session_pw3;
+         }
+         else if (pin->fid == EF_PIV_PIN) {
+-            has_pwpiv = true;
++            legacy_flag = &has_pwpiv;
+             pin_sp = session_pwpiv;
+         }
+         if (pin_sp) {
+             hash_multi(CONST_BYTE_ARRAY(data, len), pin_sp);
++            /* load_dek() picks the session from the has_* flags: raise the flag only for the
++             * migration and drop it again (together with the session) if the DEK cannot be loaded. */
++            *legacy_flag = true;
+             r = load_dek();
+             if (r != PICOKEYS_OK) {
++                *legacy_flag = false;
++                mbedtls_platform_zeroize(pin_sp, 32);
+                 return SW_EXEC_ERROR();
+             }
+             uint8_t old_data[DEK_FILE_SIZE_OLD], ef_data[DEK_FILE_SIZE];
+@@ -1984,11 +1990,17 @@ static const cmd_t cmds[] = {
+ };
+ 
+ int openpgp_process_apdu(void) {
+-    sm_unwrap();
++    if (sm_unwrap() != PICOKEYS_OK) {
++        res_APDU_size = 0;
++        return SW_SECURE_MESSAGE_EXEC_ERROR();
++    }
+     for (const cmd_t *cmd = cmds; cmd->ins != 0x00; cmd++) {
+         if (cmd->ins == INS(apdu)) {
+             int r = cmd->cmd_handler();
+-            sm_wrap();
++            if (sm_wrap() != PICOKEYS_OK) {
++                res_APDU_size = 0;
++                return SW_SECURE_MESSAGE_EXEC_ERROR();
++            }
+             return r;
+         }
+     }
+diff --git a/src/openpgp/piv.c b/src/openpgp/piv.c
+index 793ba60..0fb5df8 100644
+--- a/src/openpgp/piv.c
++++ b/src/openpgp/piv.c
+@@ -236,7 +236,7 @@ static void scan_files_piv(void) {
+     if ((ef = file_search_by_fid(EF_PW_PRIV, NULL, SPECIFY_ANY))) {
+         if (file_get_size(ef) == 0) {
+             printf("PW status is empty. Initializing to default\r\n");
+-            const uint8_t def[] = { 0x1, 127, 127, 127, 3, 3, 3, 3, 3 };
++            const uint8_t def[] = { 0x0, 127, 127, 127, 3, 3, 3, 3, 3 };
+             file_put_data(ef, CONST_BYTE_ARRAY(def, sizeof(def)));
+         }
+         else if (file_get_size(ef) == 7) {
+@@ -320,6 +320,28 @@ static void scan_files_piv(void) {
+     flash_commit();
+ }
+ 
++/* Re-wrap the PIV DEK from the session of the current PIN to the one of new_pin. new_session receives the
++ * session derived from new_pin. Nothing is written unless the DEK was unwrapped and re-wrapped. */
++int piv_rewrap_dek(const uint8_t old_session[32], const uint8_t *new_pin, size_t new_pin_len, uint8_t new_session[32]) {
++    file_t *ef = file_search_by_fid(EF_DEK_PWPIV, NULL, SPECIFY_EF);
++    if (!ef || !file_has_data(ef) || file_get_size(ef) != DEK_FILE_SIZE || file_get_data(ef)[0] != 0x3) {
++        return PICOKEYS_ERR_FILE_NOT_FOUND;
++    }
++    uint8_t plain[DEK_SIZE], def[DEK_FILE_SIZE];
++    int r = decrypt_with_aad(old_session, CONST_BYTE_ARRAY(file_get_data(ef) + 1, DEK_AAD_SIZE), PIN_KDF_DEFAULT_VERSION, plain);
++    if (r == PICOKEYS_OK) {
++        pin_derive_session(CONST_BYTE_ARRAY(new_pin, new_pin_len), new_session);
++        def[0] = 0x3; // Format
++        r = encrypt_with_aad(new_session, CONST_BYTE_ARRAY(plain, DEK_SIZE), PIN_KDF_DEFAULT_VERSION, def + 1);
++    }
++    if (r == PICOKEYS_OK) {
++        r = file_put_data(ef, CONST_BYTE_ARRAY(def, sizeof(def)));
++    }
++    mbedtls_platform_zeroize(plain, sizeof(plain));
++    mbedtls_platform_zeroize(def, sizeof(def));
++    return r;
++}
++
+ void init_piv(void) {
+     scan_files_piv();
+     has_pwpiv = false;
+@@ -330,6 +352,7 @@ void init_piv(void) {
+ 
+ static int piv_unload(void) {
+     has_pwpiv = false;
++    mbedtls_platform_zeroize(session_pwpiv, sizeof(session_pwpiv));
+     has_mgm = false;
+     clear_mgm_challenge();
+     return PICOKEYS_OK;
+diff --git a/src/piv/cmd_authenticate.c b/src/piv/cmd_authenticate.c
+index aa76d71..ffd24de 100644
+--- a/src/piv/cmd_authenticate.c
++++ b/src/piv/cmd_authenticate.c
+@@ -134,6 +134,10 @@ int cmd_piv_authenticate(void) {
+             return SW_EXEC_ERROR();
+         }
+         size_t olen = mbedtls_rsa_get_len(&ctx);
++        if (operation.len != olen) {
++            mbedtls_rsa_free(&ctx);
++            return SW_WRONG_LENGTH();
++        }
+         if (olen < 256) {
+             memcpy(res_APDU, "\x7C\x81\x00\x82\x81\x00", 6);
+             res_APDU_size = 6;
+diff --git a/src/piv/cmd_change_pin.c b/src/piv/cmd_change_pin.c
+index 2ce71f2..034959a 100644
+--- a/src/piv/cmd_change_pin.c
++++ b/src/piv/cmd_change_pin.c
+@@ -37,11 +37,32 @@ int cmd_piv_change_pin(void) {
+         return ret;
+     }
+ 
++    /* The DEK is wrapped by the PIN: re-wrap it before the verifier changes, otherwise the new PIN
++     * would verify but could never unwrap the DEK again. The PUK does not wrap anything. */
++    uint8_t new_session[32] = { 0 };
++    if (pin_ref == 0x80) {
++        uint8_t old_session[32];
++        pin_derive_session(CONST_BYTE_ARRAY(old_pin, PIV_PIN_WIRE_SIZE), old_session);
++        int rr = piv_rewrap_dek(old_session, new_pin, PIV_PIN_WIRE_SIZE, new_session);
++        mbedtls_platform_zeroize(old_session, sizeof(old_session));
++        if (rr != PICOKEYS_OK) {
++            mbedtls_platform_zeroize(new_session, sizeof(new_session));
++            return SW_EXEC_ERROR();
++        }
++    }
++
+     uint8_t dhash[34];
+     dhash[0] = PIV_PIN_WIRE_SIZE;
+     dhash[1] = 0x1; // Format
+     pin_derive_verifier(CONST_BYTE_ARRAY(new_pin, PIV_PIN_WIRE_SIZE), dhash + 2);
+-    file_put_data(ef, CONST_BYTE_ARRAY(dhash, sizeof(dhash)));
++    int pr = file_put_data(ef, CONST_BYTE_ARRAY(dhash, sizeof(dhash)));
++    if (pin_ref == 0x80 && has_pwpiv) {
++        memcpy(session_pwpiv, new_session, sizeof(session_pwpiv));
++    }
++    mbedtls_platform_zeroize(new_session, sizeof(new_session));
++    if (pr != PICOKEYS_OK) {
++        return SW_MEMORY_FAILURE();
++    }
+     flash_commit();
+     return SW_OK();
+ }
+diff --git a/src/piv/cmd_import_asym.c b/src/piv/cmd_import_asym.c
+index 442923a..59eb2d9 100644
+--- a/src/piv/cmd_import_asym.c
++++ b/src/piv/cmd_import_asym.c
+@@ -71,6 +71,10 @@ int cmd_import_asym(void) {
+             mbedtls_rsa_free(&rsa);
+             return SW_EXEC_ERROR();
+         }
++        if ((size_t)mbedtls_rsa_get_len(&rsa) != piv_rsa_modulus_size(algo)) {
++            mbedtls_rsa_free(&rsa);
++            return SW_WRONG_DATA();
++        }
+         if (meta_delete(key_ref) != PICOKEYS_OK) {
+             mbedtls_rsa_free(&rsa);
+             return SW_MEMORY_FAILURE();
+diff --git a/src/piv/cmd_reset.c b/src/piv/cmd_reset.c
+index fe9da9e..a945ea1 100644
+--- a/src/piv/cmd_reset.c
++++ b/src/piv/cmd_reset.c
+@@ -19,6 +19,69 @@
+ #include "piv.h"
+ 
+ 
++/* PIV reset must only remove PIV state: the data pool is shared with OpenPGP and with the MKAUTH records. */
++static bool piv_reset_target(const file_t *file) {
++    if (!file) {
++        return false;
++    }
++    uint16_t fid = file->fid;
++    if (openpgp_key_container_physical_fid(fid)) {
++        uint8_t id = fid & UINT8_MAX;
++        return openpgp_key_container_is_piv(id) && id != EF_PIV_KEY_ATTESTATION;
++    }
++    /* The attestation key and its certificate identify the device; they survive a reset. */
++    if (fid == EF_PIV_KEY_ATTESTATION || fid == EF_PIV_ATTESTATION) {
++        return false;
++    }
++    if (openpgp_key_container_is_piv(fid)) {
++        return true;
++    }
++    return fid == EF_PIV_PIN || fid == EF_PIV_PUK || fid == EF_DEK_PWPIV || fid == EF_PIV_DISCOVERY || fid == EF_PIV_BITGT ||
++           (fid >= EF_PIV_ADMIN_DATA && fid <= EF_PIV_MSROOTS5) || (fid >= EF_PIV_CARD_AUTH && fid <= EF_PIV_PC_REF_DATA);
++}
++
++static bool piv_reset_note(file_delete_result_t result, int *status) {
++    if (result.value != PICOKEYS_OK) {
++        *status = result.value;
++        return false;
++    }
++    if (*status == PICOKEYS_OK && result.metadata != PICOKEYS_OK) {
++        *status = result.metadata;
++    }
++    return true;
++}
++
++static bool piv_reset_clear_dynamic(file_t *file, void *ctx) {
++    if (!piv_reset_target(file)) {
++        return true;
++    }
++    return piv_reset_note(file_delete_no_commit_parts(file), (int *)ctx);
++}
++
++static int piv_reset_retry_defaults(void) {
++    file_t *status = file_search_by_fid(EF_PW_PRIV, NULL, SPECIFY_EF);
++    file_t *retries = file_search_by_fid(EF_PW_RETRIES, NULL, SPECIFY_EF);
++    if (!file_has_data(status) || !file_has_data(retries)) {
++        return PICOKEYS_ERR_FILE_NOT_FOUND;
++    }
++    uint16_t status_len = file_get_size(status), retries_len = file_get_size(retries);
++    if (status_len < 9 || status_len > 64 || retries_len < 6 || retries_len > 64) {
++        return PICOKEYS_ERR_MEMORY_FATAL;
++    }
++    uint8_t buf[64];
++    memcpy(buf, file_get_data(status), status_len);
++    buf[3 + (EF_PIV_PIN & 0xf)] = 3;
++    buf[3 + (EF_PIV_PUK & 0xf)] = 3;
++    int r = file_put_data(status, CONST_BYTE_ARRAY(buf, status_len));
++    if (r != PICOKEYS_OK) {
++        return r;
++    }
++    memcpy(buf, file_get_data(retries), retries_len);
++    buf[EF_PIV_PIN & 0xf] = 3;
++    buf[EF_PIV_PUK & 0xf] = 3;
++    return file_put_data(retries, CONST_BYTE_ARRAY(buf, retries_len));
++}
++
+ int cmd_reset(void) {
+     if (P1(apdu) != 0x0 || P2(apdu) != 0x0) {
+         return SW_INCORRECT_P1P2();
+@@ -32,8 +95,33 @@ int cmd_reset(void) {
+     if (retPIN != 0 || retPUK != 0) {
+         return SW_INCORRECT_PARAMS();
+     }
+-    file_initialize_flash(true);
++    int status = PICOKEYS_OK;
++    for (file_entry_t *entry = file_entries; entry != file_last && status == PICOKEYS_OK; entry++) {
++        file_t *file = &entry->file;
++        if (file->fid == 0 || !piv_reset_target(file) || !(file_get_type(file) & FILE_DATA_FLASH)) {
++            continue;
++        }
++        piv_reset_note(file_delete_no_commit_parts(file), &status);
++    }
++    if (status == PICOKEYS_OK) {
++        file_for_each_dynamic(piv_reset_clear_dynamic, &status);
++    }
++    /* Slot metadata is keyed by key reference (0x82..0x95, the 0x96 alias of 0x93, and 0x9a..0x9e). */
++    for (uint16_t slot = EF_PIV_KEY_RETIRED1; slot <= EF_PIV_KEY_CARDAUTH && status == PICOKEYS_OK; slot++) {
++        if (slot < 0x97 || slot > 0x99) {
++            status = meta_delete_no_commit(slot);
++        }
++    }
+     flash_commit();
++    file_initialize_flash(false);
++    has_pwpiv = false;
++    has_mgm = false;
++    mbedtls_platform_zeroize(session_pwpiv, sizeof(session_pwpiv));
++    release_dek();
+     init_piv();
+-    return SW_OK();
++    if (piv_reset_retry_defaults() != PICOKEYS_OK && status == PICOKEYS_OK) {
++        status = PICOKEYS_EXEC_ERROR;
++    }
++    flash_commit();
++    return status == PICOKEYS_OK ? SW_OK() : status == PICOKEYS_ERR_NO_MEMORY ? SW_MEMORY_FAILURE() : SW_EXEC_ERROR();
+ }
+diff --git a/src/piv/cmd_reset_retry.c b/src/piv/cmd_reset_retry.c
+index e0b770d..d8b566a 100644
+--- a/src/piv/cmd_reset_retry.c
++++ b/src/piv/cmd_reset_retry.c
+@@ -43,7 +43,25 @@ int cmd_piv_reset_retry(void) {
+     if (!ef) {
+         return SW_REFERENCE_NOT_FOUND();
+     }
+-    file_put_data(ef, CONST_BYTE_ARRAY(dhash, sizeof(dhash)));
++    /* The PUK does not wrap the DEK, so it can only be carried over to the new PIN while the old PIN
++     * is verified in this session (session_pwpiv). Without that session the DEK stays wrapped by the old PIN. */
++    uint8_t new_session[32] = { 0 };
++    bool rewrapped = false;
++    if (has_pwpiv) {
++        if (piv_rewrap_dek(session_pwpiv, new_pin, PIV_PIN_WIRE_SIZE, new_session) != PICOKEYS_OK) {
++            mbedtls_platform_zeroize(new_session, sizeof(new_session));
++            return SW_EXEC_ERROR();
++        }
++        rewrapped = true;
++    }
++    int pr = file_put_data(ef, CONST_BYTE_ARRAY(dhash, sizeof(dhash)));
++    if (rewrapped) {
++        memcpy(session_pwpiv, new_session, sizeof(session_pwpiv));
++    }
++    mbedtls_platform_zeroize(new_session, sizeof(new_session));
++    if (pr != PICOKEYS_OK) {
++        return SW_MEMORY_FAILURE();
++    }
+     pin_reset_retries(ef, true);
+     flash_commit();
+     return SW_OK();
+diff --git a/src/piv/piv.h b/src/piv/piv.h
+index d13cd67..26b14cb 100644
+--- a/src/piv/piv.h
++++ b/src/piv/piv.h
+@@ -63,7 +63,7 @@
+ #define TOUCHPOLICY_ALWAYS 2
+ #define TOUCHPOLICY_CACHED 3
+ #define TOUCHPOLICY_AUTO 0xFF
+-#define PIV_DEFAULT_TOUCH_POLICY TOUCHPOLICY_NEVER
++#define PIV_DEFAULT_TOUCH_POLICY TOUCHPOLICY_ALWAYS
+ 
+ #define ORIGIN_GENERATED 0x01
+ #define ORIGIN_IMPORTED 0x02
+@@ -116,6 +116,7 @@ size_t piv_rsa_modulus_size(uint8_t algo);
+ uint8_t piv_default_pin_policy(uint8_t key_ref);
+ bool piv_resolve_policies(uint8_t key_ref, bool has_pin, const tlv_ctx_t *pin, bool has_touch, const tlv_ctx_t *touch, uint8_t *pin_policy, uint8_t *touch_policy);
+ bool piv_reference_pair(const uint8_t **old_ref, const uint8_t **new_ref);
++int piv_rewrap_dek(const uint8_t old_session[32], const uint8_t *new_pin, size_t new_pin_len, uint8_t new_session[32]);
+ int get_serial(void);
+ int x509_create_cert(void *pk_ctx, uint8_t algo, uint8_t slot, bool attestation, uint8_t *buffer, size_t buffer_size);
+ bool piv_validate_certificate_object(uint8_t *data, uint16_t data_len);

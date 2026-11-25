@@ -29,6 +29,7 @@ FORBIDDEN_CONFIG = [
     "CONFIG_SECURE_BOOT_FLASH_BOOTLOADER_DEFAULT",
     "CONFIG_SECURE_ENABLE_SECURE_ROM_DL_MODE",
     "CONFIG_SECURE_DISABLE_ROM_DL_MODE",
+    "CONFIG_SECURE_UART_ROM_DL_MODE",
     "CONFIG_MULTIKEY_ALLOW_EFUSE_PROVISIONING",
     "CONFIG_MULTIKEY_ALLOW_UNSET_PINS_FOR_CI",
 ]
@@ -36,6 +37,11 @@ WRITE_API = re.compile(
     r"^esp_efuse_(write|batch_write|set_(key|keypurpose|digest|write|read|rom)|burn|disable|enable|"
     r"set_[a-z_]*protect)[a-z_0-9]*$"
 )
+# Low-level eFuse access that bypasses the esp_efuse_* API (ROM/HAL functions and raw register writes).
+LOWLEVEL_WRITE_API = re.compile(r"^(esp_rom_efuse_\w+|ets_efuse_\w+|efuse_hal_\w+_write\w*)$")
+# Source-level patterns (macros never reach the linker map): scanned in this project's own C sources.
+SOURCE_PATTERNS = [re.compile(p) for p in (r"REG_WRITE\(\s*EFUSE_", r"REG_SET_BIT\(\s*EFUSE_", r"\bWRITE_PERI_REG\(\s*EFUSE_")]
+SOURCE_DIRS = ("components", "pico-keys-sdk/src", "pico-fido/src", "pico-openpgp/src")
 PROJECT_OBJ = re.compile(r"(pico-keys-sdk|pico-fido|pico-openpgp|multikey_)")
 
 
@@ -46,6 +52,24 @@ def check_config(path: Path) -> list[str]:
     for opt in FORBIDDEN_CONFIG:
         if opt in enabled:
             findings.append(f"sdkconfig enables {opt}")
+    return findings
+
+
+def scan_sources() -> list[str]:
+    findings = []
+    for d in SOURCE_DIRS:
+        base = ROOT / d
+        if not base.is_dir():
+            continue
+        for f in sorted(base.rglob("*")):
+            if f.suffix not in (".c", ".h", ".cpp", ".cc") or not f.is_file():
+                continue
+            text = f.read_text(encoding="utf-8", errors="ignore")
+            for pat in SOURCE_PATTERNS:
+                m = pat.search(text)
+                if m:
+                    line = text.count("\n", 0, m.start()) + 1
+                    findings.append(f"{f.relative_to(ROOT).as_posix()}:{line} writes eFuse registers directly ({m.group(0)})")
     return findings
 
 
@@ -86,10 +110,10 @@ def main() -> int:
             print(f"missing {p}: build first (python tools/build.py ...)", file=sys.stderr)
             return 2
 
-    findings = check_config(cfg)
+    findings = check_config(cfg) + scan_sources()
     idf_refs = []
     for sym, objs in parse_cref(map_path):
-        if not WRITE_API.match(sym):
+        if not (WRITE_API.match(sym) or LOWLEVEL_WRITE_API.match(sym)):
             continue
         for obj in objs[1:]:  # objs[0] is the defining object
             if PROJECT_OBJ.search(obj):

@@ -1,0 +1,324 @@
+MultiKeys audit remediation phase 1 (pico-fido): length and bounds checks on host-controlled input.
+Ports of upstream fixes (polhenarejos/pico-fido): b1df38d (pinHashEnc length), db4e0e8 (PIN_AUTH_BLOCKED in
+getPinToken), 76e3333 (credential_verify length guard, extended to the old format), 8992174/7633fc8 (U2F
+key-handle length, calloc NULL). Not ported: 4ad31d1, d5c28ab.
+MultiKeys additions: decrypt() block-size checks, ecdh() error handling + pubkey check, credential_load calloc,
+credMgmt walk state copy, duplicate CBOR byte/text keys rejected, EA CSR free, management tlv zero-length,
+AUT_ENABLE/AUT_DISABLE removed.
+
+diff --git a/src/fido/cbor_client_pin.c b/src/fido/cbor_client_pin.c
+index c26f392..7a1cfe0 100644
+--- a/src/fido/cbor_client_pin.c
++++ b/src/fido/cbor_client_pin.c
+@@ -214,7 +214,16 @@ static int kdf(uint8_t protocol, const mbedtls_mpi *z, uint8_t *sharedSecret) {
+ int ecdh(uint8_t protocol, const mbedtls_ecp_point *Q, uint8_t *sharedSecret) {
+     mbedtls_mpi z;
+     mbedtls_mpi_init(&z);
+-    int ret = mbedtls_ecdh_compute_shared(&hkey.ctx.mbed_ecdh.grp, &z, Q, &hkey.ctx.mbed_ecdh.d, random_fill_iterator, NULL);
++    int ret = mbedtls_ecp_check_pubkey(&hkey.ctx.mbed_ecdh.grp, Q);
++    if (ret != 0) {
++        mbedtls_mpi_free(&z);
++        return ret;
++    }
++    ret = mbedtls_ecdh_compute_shared(&hkey.ctx.mbed_ecdh.grp, &z, Q, &hkey.ctx.mbed_ecdh.d, random_fill_iterator, NULL);
++    if (ret != 0) {
++        mbedtls_mpi_free(&z);
++        return ret;
++    }
+     ret = kdf(protocol, &z, sharedSecret);
+     mbedtls_mpi_free(&z);
+     return ret;
+@@ -266,6 +275,18 @@ int encrypt(uint8_t protocol, const uint8_t *key, const uint8_t *in, uint16_t in
+ }
+ 
+ int decrypt(uint8_t protocol, const uint8_t *key, const uint8_t *in, uint16_t in_len, uint8_t *out) {
++    // The input comes straight from the host: reject anything that is not whole AES blocks
++    // (protocol 2 additionally carries a 16 byte IV in front) before touching the buffers.
++    if (protocol == 1) {
++        if (in_len == 0 || (in_len % 16) != 0) {
++            return -1;
++        }
++    }
++    else if (protocol == 2) {
++        if (in_len < IV_SIZE + 16 || ((in_len - IV_SIZE) % 16) != 0) {
++            return -1;
++        }
++    }
+     if (protocol == 1) {
+         memcpy(out, in, in_len);
+         return aes_decrypt(CONST_BYTE_ARRAY(key, 32), NULL, PICOKEYS_AES_MODE_CBC, BYTE_ARRAY(out, in_len));
+@@ -798,6 +819,12 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
+         if ((*file_get_data(ef_pin) & PIN_RETRY_COUNT_MASK) == 0) {
+             CBOR_ERROR(CTAP2_ERR_PIN_BLOCKED);
+         }
++        if (needs_power_cycle) {
++            CBOR_ERROR(CTAP2_ERR_PIN_AUTH_BLOCKED);
++        }
++        if (pinHashEnc.len != (pinUvAuthProtocol == 1 ? 16u : 16u + IV_SIZE)) {
++            CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
++        }
+         if (mbedtls_mpi_read_binary(&hkey.ctx.mbed_ecdh.Qp.X, kax.data, kax.len) != 0) {
+             CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+         }
+diff --git a/src/fido/cbor_config.c b/src/fido/cbor_config.c
+index 3e727f3..a6b3b17 100644
+--- a/src/fido/cbor_config.c
++++ b/src/fido/cbor_config.c
+@@ -190,50 +190,10 @@ int cbor_config(const uint8_t *data, size_t len) {
+     }
+ 
+     if (subcommand == 0xFF) {
+-        if (vendorCommandId == CTAP_CONFIG_AUT_DISABLE){
+-            if (!file_has_data(ef_keydev_enc)) {
+-                CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
+-            }
+-            if (has_keydev_dec == false) {
+-                CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
+-            }
+-            file_put_data(ef_keydev, CONST_BYTE_ARRAY(keydev_dec, sizeof(keydev_dec)));
+-            mbedtls_platform_zeroize(keydev_dec, sizeof(keydev_dec));
+-            file_put_data(ef_keydev_enc, CONST_BYTE_ARRAY(NULL, 0)); // Set ef to 0 bytes
+-            flash_commit();
+-        }
+-        else if (vendorCommandId == CTAP_CONFIG_AUT_ENABLE) {
+-            if (!file_has_data(ef_keydev)) {
+-                CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
+-            }
+-            if (mse.init == false) {
+-                CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
+-            }
+-            if (vendorParamByteString.present == false || vendorParamByteString.len != 32 + 16) {
+-                CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+-            }
+-
+-            mbedtls_chachapoly_context chatx;
+-            int ret = mse_decrypt_ct(vendorParamByteString.data, vendorParamByteString.len);
+-            if (ret != PICOKEYS_OK) {
+-                CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+-            }
+-
+-            uint8_t key_dev_enc[12 + 32 + 16];
+-            random_fill_buffer(BYTE_ARRAY(key_dev_enc, 12));
+-            mbedtls_chachapoly_init(&chatx);
+-            mbedtls_chachapoly_setkey(&chatx, vendorParamByteString.data);
+-            ret = mbedtls_chachapoly_encrypt_and_tag(&chatx, file_get_size(ef_keydev), key_dev_enc, NULL, 0, file_get_data(ef_keydev), key_dev_enc + 12, key_dev_enc + 12 + file_get_size(ef_keydev));
+-            mbedtls_chachapoly_free(&chatx);
+-            if (ret != 0) {
+-                CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+-            }
+-
+-            file_put_data(ef_keydev_enc, CONST_BYTE_ARRAY(key_dev_enc, sizeof(key_dev_enc)));
+-            mbedtls_platform_zeroize(key_dev_enc, sizeof(key_dev_enc));
+-            file_put_data(ef_keydev, CONST_BYTE_ARRAY(key_dev_enc, file_get_size(ef_keydev))); // Overwrite ef with 0
+-            file_put_data(ef_keydev, CONST_BYTE_ARRAY(NULL, 0)); // Set ef to 0 bytes
+-            flash_commit();
++        if (vendorCommandId == CTAP_CONFIG_AUT_DISABLE || vendorCommandId == CTAP_CONFIG_AUT_ENABLE) {
++            // MultiKeys: the MSE/AUT device-key encryption flow is removed (it depended on the
++            // disabled vendor MSE/UNLOCK commands).
++            CBOR_ERROR(CTAP2_ERR_UNSUPPORTED_OPTION);
+         }
+         else if (vendorCommandId == CTAP_CONFIG_EA_UPLOAD) {
+             if (vendorParamByteString.present == false) {
+diff --git a/src/fido/cbor_cred_mgmt.c b/src/fido/cbor_cred_mgmt.c
+index fe69806..fbedef8 100644
+--- a/src/fido/cbor_cred_mgmt.c
++++ b/src/fido/cbor_cred_mgmt.c
+@@ -42,6 +42,21 @@ bool rp_walk_active = false;
+ bool cred_walk_active = false;
+ CborByteString rpIdHashx = { 0 };
+ 
++// The enumeration walk keeps its own heap copy of the RP ID hash so that the per-request
++// rpIdHash (freed on every exit path) never aliases it.
++static bool rp_walk_store(const uint8_t *hash) {
++    uint8_t *copy = (uint8_t *) malloc(RP_ID_HASH_LEN);
++    if (copy == NULL) {
++        return false;
++    }
++    memcpy(copy, hash, RP_ID_HASH_LEN);
++    free(rpIdHashx.data);
++    rpIdHashx.data = copy;
++    rpIdHashx.len = RP_ID_HASH_LEN;
++    rpIdHashx.present = true;
++    return true;
++}
++
+ void cbor_cred_mgmt_tick(void) {
+     uint32_t now = board_millis();
+     if (rp_walk_active && now - rp_timer >= STATEFUL_WALK_IDLE_MS) {
+@@ -70,7 +85,7 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
+     CborEncoder encoder, mapEncoder, mapEncoder2;
+     uint8_t *raw_subpara = NULL;
+     size_t raw_subpara_len = 0;
+-    bool asserted = false, is_preview = *(data - 1) == 0x41, pinUvAuthProtocol_present = false; // Backwards compatibility
++    bool is_preview = *(data - 1) == 0x41, pinUvAuthProtocol_present = false; // Backwards compatibility
+ 
+     CBOR_CHECK(cbor_parser_init(data, len, 0, &parser, &map));
+     uint64_t val_c = 1;
+@@ -274,10 +289,17 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
+         }
+         else {
+             uint32_t channel = ctap_req ? ctap_req->cid : 0;
+-            if (cred_channel != channel || cred_counter > cred_total) {
++            if (cred_channel != channel || cred_counter > cred_total || rpIdHashx.data == NULL || rpIdHashx.len != RP_ID_HASH_LEN) {
+                 CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
+             }
+-            rpIdHash = rpIdHashx;
++            CBOR_FREE_BYTE_STRING(rpIdHash);
++            rpIdHash.data = (uint8_t *) malloc(RP_ID_HASH_LEN);
++            if (rpIdHash.data == NULL) {
++                CBOR_ERROR(CTAP2_ERR_PROCESSING);
++            }
++            memcpy(rpIdHash.data, rpIdHashx.data, RP_ID_HASH_LEN);
++            rpIdHash.len = RP_ID_HASH_LEN;
++            rpIdHash.present = true;
+         }
+         file_t *cred_ef = NULL;
+         Credential cred = { 0 };
+@@ -417,8 +439,9 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
+             CBOR_CHECK(cbor_encode_uint(&mapEncoder, cred_total));
+         }
+         if (cred_counter <= cred_total) {
+-            asserted = true;
+-            rpIdHashx = rpIdHash;
++            if (!rp_walk_store(rpIdHash.data)) {
++                CBOR_ERROR(CTAP2_ERR_PROCESSING);
++            }
+             cred_timer = board_millis();
+             cred_walk_active = true;
+         }
+@@ -543,9 +566,7 @@ err:
+     credential_rp_free(&rp_record);
+     CBOR_FREE_BYTE_STRING(pinUvAuthParam);
+ 
+-    if (asserted == false) {
+-        CBOR_FREE_BYTE_STRING(rpIdHash);
+-    }
++    CBOR_FREE_BYTE_STRING(rpIdHash);
+     CBOR_FREE_BYTE_STRING(user.id);
+     CBOR_FREE_BYTE_STRING(user.displayName);
+     CBOR_FREE_BYTE_STRING(user.parent.name);
+diff --git a/src/fido/cbor_vendor.c b/src/fido/cbor_vendor.c
+index e0261f4..6195bfb 100644
+--- a/src/fido/cbor_vendor.c
++++ b/src/fido/cbor_vendor.c
+@@ -282,8 +282,8 @@ static int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
+             mbedtls_x509write_csr_set_extension(&ctx, "\x2B\x06\x01\x04\x01\x82\xE5\x1C\x01\x01\x04", 0xB, 0, aaguid, sizeof(aaguid));
+             ret = mbedtls_x509write_csr_der(&ctx, buffer, sizeof(buffer), random_fill_iterator, NULL);
+             mbedtls_ecdsa_free(&ekey);
++            mbedtls_x509write_csr_free(&ctx);
+             if (ret <= 0) {
+-                mbedtls_x509write_csr_free(&ctx);
+                 CBOR_ERROR(CTAP2_ERR_PROCESSING);
+             }
+             CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 1));
+diff --git a/src/fido/cmd_authenticate.c b/src/fido/cmd_authenticate.c
+index a3253e8..6ae0f0e 100644
+--- a/src/fido/cmd_authenticate.c
++++ b/src/fido/cmd_authenticate.c
+@@ -28,12 +28,21 @@ int cmd_authenticate(void) {
+     CTAP_AUTHENTICATE_RESP *resp = (CTAP_AUTHENTICATE_RESP *) res_APDU;
+     //if (scan_files_fido(true) != PICOKEYS_OK)
+     //    return SW_EXEC_ERROR();
+-    if (apdu.nc < CTAP_CHAL_SIZE + CTAP_APPID_SIZE + 1 + 1) {
++    const size_t key_handle_offset = offsetof(CTAP_AUTHENTICATE_REQ, keyHandle);
++
++    if ((get_opts() & FIDO2_OPT_AUV) || (file_has_data(ef_pin) && !keydev_unlocked)) {
++        return SW_CONDITIONS_NOT_SATISFIED(); // alwaysUv / locked: refuse before parsing the key handle
++    }
++    if (apdu.nc < key_handle_offset) {
+         return SW_WRONG_DATA();
+     }
+-    if (req->keyHandleLen < KEY_HANDLE_LEN) {
++    if (req->keyHandleLen < KEY_HANDLE_LEN ||
++        req->keyHandleLen > CTAP_MAX_KH_SIZE) {
+         return SW_INCORRECT_PARAMS();
+     }
++    if ((size_t)apdu.nc < key_handle_offset + req->keyHandleLen) {
++        return SW_WRONG_DATA();
++    }
+     if (P1(apdu) != CTAP_AUTH_ENFORCE && P1(apdu) != CTAP_AUTH_CHECK_ONLY) {
+         return SW_INCORRECT_P1P2();
+     }
+@@ -48,6 +54,10 @@ int cmd_authenticate(void) {
+     mbedtls_ecp_keypair_init(&key);
+     int ret = 0;
+     uint8_t *tmp_kh = (uint8_t *) calloc(1, req->keyHandleLen);
++    if (tmp_kh == NULL) {
++        mbedtls_ecp_keypair_free(&key);
++        return SW_MEMORY_FAILURE();
++    }
+     memcpy(tmp_kh, req->keyHandle, req->keyHandleLen);
+     if (credential_verify(tmp_kh, req->keyHandleLen, req->appId, false) == 0) {
+         Credential cred;
+diff --git a/src/fido/credential.c b/src/fido/credential.c
+index 33b31d7..65113a0 100644
+--- a/src/fido/credential.c
++++ b/src/fido/credential.c
+@@ -341,6 +341,9 @@ int credential_verify(uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id
+             *tag = cred_id + cred_id_len - CRED_TAG_LEN;
+     cred_proto_t proto = CRED_PROTO_21;
+     if (memcmp(cred_id, CRED_PROTO_22_S, CRED_PROTO_LEN) == 0 || memcmp(cred_id, CRED_PROTO_25_S, CRED_PROTO_LEN) == 0) { // New format
++        if (cred_id_len < CRED_SILENT_ENVELOPE_OVERHEAD) {
++            return -1;
++        }
+         tag = cred_id + cred_id_len - CRED_SILENT_TAG_LEN - CRED_TAG_LEN;
+         proto = CRED_PROTO_25;
+     }
+@@ -350,6 +353,9 @@ int credential_verify(uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id
+         if (proto == CRED_PROTO_22 || proto == CRED_PROTO_25) {
+             hdr_len += CRED_SILENT_TAG_LEN;
+         }
++        if (cred_id_len < (size_t) hdr_len + 16) {
++            return -1;
++        }
+         if (credential_derive_chacha_key(key, cred_id) != 0) {
+             return -1;
+         }
+@@ -465,6 +471,9 @@ int credential_load(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *r
+     int ret = 0;
+     CborError error = CborNoError;
+     uint8_t *copy_cred_id = (uint8_t *) calloc(1, cred_id_len);
++    if (copy_cred_id == NULL) {
++        return -1;
++    }
+     if (!cred) {
+         CBOR_ERROR(CTAP2_ERR_INVALID_CREDENTIAL);
+     }
+diff --git a/src/fido/ctap2_cbor.h b/src/fido/ctap2_cbor.h
+index 691d797..15071a8 100644
+--- a/src/fido/ctap2_cbor.h
++++ b/src/fido/ctap2_cbor.h
+@@ -147,6 +147,9 @@ typedef struct CborCharString {
+ #define CBOR_FIELD_GET_BYTES(v, _n) \
+     do { \
+         CBOR_ASSERT(cbor_value_is_byte_string(&(_f##_n)) == true); \
++        if ((v).data != NULL) { \
++            CBOR_ERROR(CTAP2_ERR_INVALID_CBOR); \
++        } \
+         CBOR_CHECK(cbor_value_dup_byte_string(&(_f##_n), &(v).data, &(v).len, &(_f##_n))); \
+         (v).present = true; \
+     } while (0)
+@@ -154,6 +157,9 @@ typedef struct CborCharString {
+ #define CBOR_FIELD_GET_TEXT(v, _n) \
+     do { \
+         CBOR_ASSERT(cbor_value_is_text_string(&(_f##_n)) == true); \
++        if ((v).data != NULL) { \
++            CBOR_ERROR(CTAP2_ERR_INVALID_CBOR); \
++        } \
+         CBOR_CHECK(cbor_value_dup_text_string(&(_f##_n), &(v).data, &(v).len, &(_f##_n))); \
+         (v).present = true; \
+     } while (0)
+diff --git a/src/fido/management.c b/src/fido/management.c
+index b64ebc6..ff9ad98 100644
+--- a/src/fido/management.c
++++ b/src/fido/management.c
+@@ -67,6 +67,9 @@ bool cap_supported(uint16_t cap) {
+         tlv_ctx_init(BYTE_ARRAY(file_get_data(ef), file_get_size(ef)), &ctxi);
+         while (tlv_walk(&ctxi, &p, &item)) {
+             if (item.tag == TAG_USB_ENABLED) {
++                if (item.value.len == 0) {
++                    continue;
++                }
+                 uint16_t ecaps = item.value.data[0];
+                 if (item.value.len == 2) {
+                     ecaps = get_uint16_be(item.value.data);

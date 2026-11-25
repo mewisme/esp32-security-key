@@ -121,6 +121,11 @@ describe("validateManifest (schema 2)", () => {
     expect(await rejects((_m, b) => b.repurpose_fill.push("factory"))).toMatch(/repurpose_fill/);
   });
 
+  it("rejects a USB vid/pid that is not the policy's application identity", async () => {
+    expect(await rejects((_m, b) => (b.usb.vid = 0x1234))).toMatch(/usb is 1234:/);
+    expect(await rejects((_m, b) => (b.usb.pid = 0x1))).toMatch(/policy requires/);
+  });
+
   it("accepts tag local only on the dev server", async () => {
     const { manifest } = await makeFirmware({ version: "0.2.0-dev", tag: "local" });
     expect(() => validateManifest(manifest, "local", false)).toThrow(FirmwareError);
@@ -177,5 +182,17 @@ describe("validateManifest (schema 1, the published v0.2.0 shape)", () => {
 
   it("only accepts the n16r8 asset name", async () => {
     expect(await legacy((_m, b) => (b.package.name = "multikey-firmware-v0.2.0-esp32s3-16mb-fido-dev.zip"))).toMatch(/not allowed/);
+  });
+});
+
+describe("protected partition ranges in the policy", () => {
+  it("rejects a build whose protected partition is not where the policy says", async () => {
+    const { policy } = await import("@/lib/firmware/policy");
+    const strict = { ...policy, protected_partitions: [{ name: "nvs", offset: 0x11000, size: 0x6000 }, "phy_init", { name: "part0", offset: 0x200000, size: 0x100000 }] };
+    const { manifest } = await makeFirmware();
+    expect(validateManifest(manifest, "v0.2.0", false, strict).builds.length).toBeGreaterThan(0);
+    const moved = structuredClone(manifest);
+    moved.builds[0]!.partitions.find((q) => q.name === "part0")!.offset = 0x300000;
+    expect(() => validateManifest(moved, "v0.2.0", false, strict)).toThrow(/policy requires/);
   });
 });

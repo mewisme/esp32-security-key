@@ -58,9 +58,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # Full history of main is needed to prove that a tag points into it.
+          fetch-depth: 0
       - name: Release script tests
         run: |
-          pip install pyyaml==6.0.2
+          pip install pyyaml==6.0.4
           python3 -m unittest discover tests/release
       - name: Version, tag and notes consistency
         id: v
@@ -95,6 +97,11 @@ jobs:
             fi
             if [[ ! -f "docs/releases/v$version.md" ]]; then
               echo "docs/releases/v$version.md (release notes) is missing"; exit 1
+            fi
+            # Only commits that are on main can be released: a v* tag on a side branch must not publish.
+            git fetch --no-tags origin main:refs/remotes/origin/main
+            if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+              echo "tagged commit $GITHUB_SHA is not an ancestor of origin/main; refusing to release"; exit 1
             fi
             if gh release view "$REF_NAME" >/dev/null 2>&1; then
               echo "a release for $REF_NAME already exists; refusing to touch it"; exit 1
@@ -138,7 +145,7 @@ jobs:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
-          toolchain: stable
+          toolchain: 1.89.0
           targets: ${{ matrix.target }}
           components: clippy, rustfmt
       # Restored on pull requests and main only; a tagged release compiles from scratch.
@@ -401,6 +408,8 @@ jobs:
     needs: [meta, assemble]
     if: needs.meta.outputs.is_release == 'true' && needs.assemble.result == 'success'
     runs-on: ubuntu-22.04
+    # Protected environment: configure required reviewers and the RELEASE_SIGNING_KEY secret there.
+    environment: release
     permissions:
       contents: write
     env:
@@ -422,6 +431,21 @@ jobs:
           cd dist
           test "$(ls -1 | wc -l)" -eq 11
           sha256sum -c SHA256SUMS
+      # Ed25519 signature over the exact manifest bytes (docs/RELEASE_SIGNING.md). The seed lives only in the `release`
+      # environment secret. Without it the release is published UNSIGNED and the site shows it as not authenticated.
+      - name: Sign the firmware manifest
+        env:
+          MULTIKEYS_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+          KEY_ID: ${{ vars.RELEASE_SIGNING_KEY_ID }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$MULTIKEYS_SIGNING_KEY" || -z "$KEY_ID" ]]; then
+            echo "::warning::RELEASE_SIGNING_KEY secret or RELEASE_SIGNING_KEY_ID variable is not set: this release is UNSIGNED"
+            exit 0
+          fi
+          python3 -m pip install cryptography==50.0.2
+          python3 tools/sign_manifest.py sign dist/firmware-manifest.json --key-id "$KEY_ID"
+          test -s dist/firmware-manifest.json.sig
       - name: Create the GitHub Release
         run: |
           set -euo pipefail

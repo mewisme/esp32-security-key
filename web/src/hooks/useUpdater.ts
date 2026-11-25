@@ -336,6 +336,7 @@ export function useUpdater(): Updater {
         chipMac: chipMac.current,
         baseline: baselineOf(state.baseline),
         untestedHardware: !BOARD_IDENTITY_VERIFIED,
+        unsignedRelease: target.release.authentication.status !== "signed",
       });
       patch({ phase: "reviewed", stage: null, decision, log: d.log() });
       if (!decision.allowed) await closeDriver();
@@ -366,6 +367,7 @@ export function useUpdater(): Updater {
           chipMac: chipMac.current,
           baseline: baselineOf(state.baseline),
           untestedHardware: !BOARD_IDENTITY_VERIFIED,
+        unsignedRelease: target.release.authentication.status !== "signed",
         });
         if (!again.allowed || again.outcome !== decision.outcome) {
           patch({ phase: "reviewed", decision: again });

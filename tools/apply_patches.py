@@ -25,6 +25,17 @@ def git(repo: Path, *args: str) -> int:
     return subprocess.call(["git", "-C", str(repo), *args], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
+def out(repo: Path, *args: str) -> str | None:
+    r = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True)
+    return r.stdout.strip() if r.returncode == 0 else None
+
+
+def pinned_sha(name: str) -> str | None:
+    """The commit recorded for submodule `name` in the superproject's HEAD (gitlink)."""
+    line = out(ROOT, "ls-tree", "HEAD", name)
+    return line.split()[2] if line and len(line.split()) >= 3 and line.split()[1] == "commit" else None
+
+
 def touched_files(patches: list[Path]) -> list[str]:
     files: list[str] = []
     for p in patches:
@@ -64,6 +75,12 @@ def main() -> int:
         if not (repo / ".git").exists():
             print(f"missing submodule {sub.name}: run git submodule update --init", file=sys.stderr)
             return 2
+        pinned, head = pinned_sha(sub.name), out(repo, "rev-parse", "HEAD")
+        if pinned is None or head != pinned:
+            print(f"CONFLICT: {sub.name} HEAD {head} is not the commit recorded in the superproject ({pinned}); "
+                  f"run git submodule update --init {sub.name}", file=sys.stderr)
+            rc = 1
+            continue
         patches = sorted(sub.glob("*.patch"))
         done = applied_count(repo, patches)
         if done is None:
@@ -77,7 +94,10 @@ def main() -> int:
                 print(f"NOT applied: {sub.name}/{patch.name}", file=sys.stderr)
                 rc = 1
             elif git(repo, "apply", "--check", str(patch)) == 0:
-                git(repo, "apply", str(patch))
+                if git(repo, "apply", str(patch)) != 0:
+                    print(f"CONFLICT: {sub.name}/{patch.name} failed to apply", file=sys.stderr)
+                    rc = 1
+                    break
                 print(f"applied: {sub.name}/{patch.name}")
             else:
                 print(f"CONFLICT: {sub.name}/{patch.name} does not apply to the pinned submodule", file=sys.stderr)

@@ -4,7 +4,7 @@
 // unbootable until the app is written again from download mode). It is allowed only when the release declares
 // `update.app_only`, the device layout equals the release layout, and the installed image is the same MultiKeys family
 // at a version whose stored data the release declares compatible. Anything not shown compatible is refused.
-import { type FlashPolicy, policy as defaultPolicy } from "../firmware/policy";
+import { type FlashPolicy, policy as defaultPolicy, protectedNames } from "../firmware/policy";
 import type { Build } from "../firmware/types";
 import { compareSemver } from "../firmware/version";
 import { parseAppDescriptor } from "./app-descriptor";
@@ -42,7 +42,7 @@ export type AppUpdateReason =
   | "recovery-unverified"
   | "unparsable-version";
 
-export type UpdateAckId = "update-confirm" | "untested-hardware" | "experimental-image" | "repair-typed";
+export type UpdateAckId = "update-confirm" | "untested-hardware" | "experimental-image" | "unsigned-release" | "repair-typed";
 
 /** Acknowledgements given by typing a word, with the word to type. */
 export const UPDATE_TYPED_ACKS = { "repair-typed": "REPAIR" } as const;
@@ -145,6 +145,8 @@ export interface AppUpdateInput {
   baseline?: UpdateBaseline | null;
   /** The board's flash size is not hardware verified (4 and 8 MB): the person must acknowledge it first. */
   untestedHardware?: boolean;
+  /** True when the release manifest carries no valid signature: the person must acknowledge that first. */
+  unsignedRelease?: boolean;
   policy?: FlashPolicy;
 }
 
@@ -157,7 +159,7 @@ function overlaps(aStart: number, aEnd: number, bStart: number, bEnd: number): b
 }
 
 export function decideAppUpdate(input: AppUpdateInput): AppUpdateDecision {
-  const { build, pending = null, baseline = null, untestedHardware = false } = input;
+  const { build, pending = null, baseline = null, untestedHardware = false, unsignedRelease = false } = input;
   const p = input.policy ?? defaultPolicy;
   const appImage = build.images.find((i) => i.role === "app");
   const rule = p.allowed_writes.find((w) => w.role === "app");
@@ -207,7 +209,7 @@ export function decideAppUpdate(input: AppUpdateInput): AppUpdateDecision {
   if (start < p.partition_table.offset + TABLE_SECTOR) {
     return refuse("incompatible", "protected-overlap", "the write would reach the bootloader or the partition table");
   }
-  for (const name of p.protected_partitions) {
+  for (const name of protectedNames(p)) {
     const e = table.entries.get(name);
     if (!e || overlaps(start, end, e.offset, e.offset + e.size)) {
       return refuse("incompatible", "protected-overlap", `the write would reach ${name}`);
@@ -236,7 +238,7 @@ export function decideAppUpdate(input: AppUpdateInput): AppUpdateDecision {
       allowed: true,
       reason: "interrupted-write",
       detail: "an earlier application write of this release did not finish on this chip",
-      acks: acksFor("repair", build, untestedHardware),
+      acks: acksFor("repair", build, untestedHardware, unsignedRelease),
       writes: [appWrite(appImage)],
       installed,
       target,
@@ -269,7 +271,7 @@ export function decideAppUpdate(input: AppUpdateInput): AppUpdateDecision {
       allowed: true,
       reason: "same-version-different-image",
       detail: `installed ${inst} has the same version as this build but different content`,
-      acks: acksFor("repair", build, untestedHardware),
+      acks: acksFor("repair", build, untestedHardware, unsignedRelease),
       writes: [appWrite(appImage)],
       installed,
       target,
@@ -287,7 +289,7 @@ export function decideAppUpdate(input: AppUpdateInput): AppUpdateDecision {
     allowed: true,
     reason: "ok",
     detail: `${inst} to ${build.version}`,
-    acks: acksFor("safe-update", build, untestedHardware),
+    acks: acksFor("safe-update", build, untestedHardware, unsignedRelease),
     writes: [appWrite(appImage)],
     installed,
     target,
@@ -298,10 +300,11 @@ function appWrite(image: { offset: number; size: number }): Write {
   return { offset: image.offset, length: image.size, kind: "image", role: "app" };
 }
 
-function acksFor(outcome: "safe-update" | "repair", build: Build, untestedHardware: boolean): UpdateAckId[] {
+function acksFor(outcome: "safe-update" | "repair", build: Build, untestedHardware: boolean, unsignedRelease: boolean): UpdateAckId[] {
   const acks: UpdateAckId[] = ["update-confirm"];
   if (untestedHardware) acks.push("untested-hardware");
   if (build.image === "openpgp") acks.push("experimental-image");
+  if (unsignedRelease) acks.push("unsigned-release");
   if (outcome === "repair") acks.push("repair-typed");
   return acks;
 }

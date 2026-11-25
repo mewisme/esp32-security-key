@@ -8,7 +8,7 @@ export default defineConfig({
   plugins: [react()],
   resolve: { alias: [{ find: "@", replacement: resolve(here, "src") }] },
   test: {
-    include: ["tests/unit/**/*.test.{ts,tsx}"],
+    include: ["tests/unit/**/*.test.{ts,tsx}", "worker/**/*.test.ts"],
     environment: "jsdom",
   },
 });

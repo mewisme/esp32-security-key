@@ -5,7 +5,7 @@
 import { ASSET_RE } from "../../../worker/routes";
 import { validateDeviceName } from "../device/device-name";
 import { FirmwareError } from "../errors/firmware-error";
-import { type FlashPolicy, policy as defaultPolicy, profileById } from "./policy";
+import { type FlashPolicy, policy as defaultPolicy, profileById, protectedNames, protectedRanges } from "./policy";
 import type { Build, Manifest, Verification } from "./types";
 import { parseSemver } from "./version";
 
@@ -130,8 +130,11 @@ function validateBuild(raw: unknown, i: number, version: string, tag: string, sc
   str(b, "flash_freq", where);
   if (b.security_profile !== "development") fail(`${where}.security_profile must be development`);
   const usb = obj(b.usb, `${where}.usb`);
-  int(usb, "vid", `${where}.usb`);
-  int(usb, "pid", `${where}.usb`);
+  const vid = int(usb, "vid", `${where}.usb`);
+  const pid = int(usb, "pid", `${where}.usb`);
+  if (vid !== p.native_usb.app[0] || pid !== p.native_usb.app[1]) {
+    fail(`${where}.usb is ${vid.toString(16)}:${pid.toString(16)}, the policy requires ${p.native_usb.app[0].toString(16)}:${p.native_usb.app[1].toString(16)}`);
+  }
   const up = obj(b.user_presence, `${where}.user_presence`);
   int(up, "gpio", `${where}.user_presence`);
   const hw = schema === 1 ? profileFieldsV1(b, where, p) : profileFieldsV2(b, usb, where, p);
@@ -151,8 +154,14 @@ function validateBuild(raw: unknown, i: number, version: string, tag: string, sc
     return { name: str(q, "name", w), type: str(q, "type", w), subtype: str(q, "subtype", w), offset: int(q, "offset", w), size: int(q, "size", w) };
   });
   const byName = new Map(partitions.map((q) => [q.name, q]));
-  for (const name of p.protected_partitions) {
+  for (const name of protectedNames(p)) {
     if (!byName.has(name)) fail(`${where}.partitions has no ${name}`);
+  }
+  for (const r of protectedRanges(p)) {
+    const q = byName.get(r.name)!;
+    if (q.offset !== r.offset || q.size !== r.size) {
+      fail(`${where}.partitions ${r.name} is at 0x${q.offset.toString(16)}+0x${q.size.toString(16)}, the policy requires 0x${r.offset.toString(16)}+0x${r.size.toString(16)}`);
+    }
   }
 
   const images = arr(b, "images", where).map((x, j) => {
@@ -175,7 +184,7 @@ function validateBuild(raw: unknown, i: number, version: string, tag: string, sc
       if (img.size > part.size) fail(`${where}: ${img.file} is larger than the ${rule.partition} partition`);
     }
     const end = img.offset + img.size;
-    for (const name of p.protected_partitions) {
+    for (const name of protectedNames(p)) {
       const q = byName.get(name)!;
       if (img.offset < q.offset + q.size && end > q.offset) fail(`${where}: ${img.file} overlaps protected partition ${name}`);
     }
@@ -183,7 +192,7 @@ function validateBuild(raw: unknown, i: number, version: string, tag: string, sc
 
   const fill = strings(b, "repurpose_fill", where);
   for (const name of fill) {
-    if (!p.protected_partitions.includes(name) || !byName.has(name)) fail(`${where}.repurpose_fill ${name} is not a protected partition`);
+    if (!protectedNames(p).includes(name) || !byName.has(name)) fail(`${where}.repurpose_fill ${name} is not a protected partition`);
   }
   strings(b, "protected_partitions", where);
   const update = obj(b.update, `${where}.update`);

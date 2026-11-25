@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { FirmwareError } from "@/lib/errors/firmware-error";
-import { downloadBuild, verifyPackage } from "@/lib/firmware/download";
+import { unzipSync, zipSync } from "fflate";
+import { downloadBuild, MAX_MEMBER_BYTES, sha256Hex, verifyPackage } from "@/lib/firmware/download";
 import { makeFirmware, makeLegacyFirmware } from "../fixtures/firmware";
 
 async function code(p: Promise<unknown>) {
@@ -64,6 +65,39 @@ describe("download + integrity", () => {
     const build = structuredClone(f.build);
     build.images[2]!.sha256 = "0".repeat(64);
     expect(await code(verifyPackage(f.zip, build))).toBe("checksum-mismatch");
+  });
+
+  it("a partition table that moves part0 -> manifest-invalid", async () => {
+    const f = await makeFirmware({ tableOpts: { part0Offset: 0x300000 } });
+    expect(await code(verifyPackage(f.zip, f.build))).toBe("manifest-invalid");
+  });
+
+  it("a partition table that differs from the manifest layout -> manifest-invalid", async () => {
+    const f = await makeFirmware({ tableOpts: { factorySize: 0x100000 } });
+    expect(await code(verifyPackage(f.zip, f.build))).toBe("manifest-invalid");
+  });
+
+  it("a bootloader or app image with a bad header (magic, chip id, flash size) -> manifest-invalid", async () => {
+    for (const [at, value] of [[0, 0x00], [12, 5], [3, 0x2f]] as const) {
+      const f = await makeFirmware();
+      const files = unzipSync(f.zip);
+      const name = Object.keys(files).find((n) => n.endsWith("bootloader.bin"))!;
+      const bad = files[name]!.slice();
+      bad[at] = value;
+      files[name] = bad;
+      const zip = zipSync(files, { mtime: new Date("1980-01-01T00:00:00Z") });
+      const build = structuredClone(f.build);
+      build.images[0]!.sha256 = await sha256Hex(bad);
+      build.package = { ...build.package, size: zip.length, sha256: await sha256Hex(zip) };
+      expect(await code(verifyPackage(zip, build))).toBe("manifest-invalid");
+    }
+  });
+
+  it("a zip member larger than 4 MiB is refused", async () => {
+    const f = await makeFirmware({ licenseBytes: MAX_MEMBER_BYTES + 1 });
+    expect(await code(verifyPackage(f.zip, f.build))).toBe("manifest-invalid");
+    const ok = await makeFirmware({ licenseBytes: MAX_MEMBER_BYTES });
+    expect(await verifyPackage(ok.zip, ok.build)).toHaveLength(3);
   });
 
   it("streams through fetch with progress", async () => {

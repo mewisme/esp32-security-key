@@ -24,6 +24,7 @@
 #include "mbedtls/constant_time.h"
 #include "mbedtls/ecdsa.h"
 #include "mbedtls/ecp.h"
+#include "mbedtls/md.h"
 #include "mbedtls/pkcs5.h"
 #include "mbedtls/platform_util.h"
 #include "mbedtls/sha256.h"
@@ -40,8 +41,10 @@
 #include "esp_timer.h"
 
 #define MKA_EF_RECORD 0xBC00 /* free in pico-fido's fid map (see pico-fido/src/fido/files.h) */
+#define MKA_EF_RETRY 0xBC02  /* 1 byte: PIN tries left (0xBC01 is the device name) */
 
-#define MKA_VERSION 1
+#define MKA_PROTOCOL_VERSION 1 /* GET_INFO version byte; the wire protocol is unchanged */
+#define MKA_VERSION 2          /* record format: 1 = PBKDF2 verifier, 2 = HMAC(kbase, PBKDF2) verifier */
 #define MKA_POLICY 0x01 /* bit0: user presence required. Always set, not changeable. */
 #define MKA_PIN_MIN 6
 #define MKA_PIN_MAX 63
@@ -70,6 +73,8 @@ typedef struct mka_record mka_record_t;
 
 static const uint8_t mka_magic[4] = { 'M', 'K', 'A', '1' };
 
+static int mka_wrap_key(const uint8_t priv[32], uint8_t out[MKA_WRAPPED_LEN]);
+
 static int mka_process_apdu(void);
 static int mka_unload(void);
 
@@ -95,17 +100,30 @@ static int mka_sw_tries(uint8_t tries) {
     return set_res_sw(0x63, (uint8_t)(0xC0 | (tries & 0x0F)));
 }
 
-/* Returns the stored record or NULL if unenrolled or malformed. */
-static const mka_record_t *mka_load(void) {
+/*
+ * Returns 0 and the stored record when enrolled, 1 when unenrolled (no record file at all) and -1 when a record
+ * with the MKAUTH magic is present but short, truncated or of an unknown version: such a record is never
+ * reported as "unenrolled" (that would let ENROLL overwrite it).
+ */
+static int mka_load(mka_record_t **out) {
     file_t *ef = file_search(MKA_EF_RECORD);
-    if (!file_has_data(ef) || file_get_size(ef) != sizeof(mka_record_t)) {
-        return NULL;
+    if (!file_has_data(ef)) {
+        return 1;
     }
-    const mka_record_t *rec = (const mka_record_t *)file_get_data(ef);
-    if (memcmp(rec->magic, mka_magic, sizeof(mka_magic)) != 0 || rec->version != MKA_VERSION) {
-        return NULL;
+    uint16_t size = file_get_size(ef);
+    if (size == 0) {
+        return 1;
     }
-    return rec;
+    mka_record_t *rec = (mka_record_t *)file_get_data(ef);
+    if (size < sizeof(mka_magic) || memcmp(rec->magic, mka_magic, sizeof(mka_magic)) != 0) {
+        /* Not an MKAUTH record at all (no magic). */
+        return 1;
+    }
+    if (size != sizeof(mka_record_t) || (rec->version != 1 && rec->version != MKA_VERSION)) {
+        return -1;
+    }
+    *out = rec;
+    return 0;
 }
 
 static int mka_store(const mka_record_t *rec) {
@@ -121,65 +139,124 @@ static int mka_store(const mka_record_t *rec) {
     return PICOKEYS_OK;
 }
 
+/*
+ * PIN retry counter, kept in its own one-byte file so that a PIN attempt rewrites 1 byte instead of the whole
+ * record. Created from the record's counter when it does not exist yet (records written before this file existed).
+ */
+static int mka_retry_set(uint8_t tries) {
+    file_t *ef = file_new(MKA_EF_RETRY);
+    if (ef == NULL) {
+        return PICOKEYS_ERR_FILE_NOT_FOUND;
+    }
+    int rc = file_put_data(ef, CONST_BYTE_ARRAY(&tries, 1));
+    if (rc != PICOKEYS_OK) {
+        return rc;
+    }
+    flash_commit();
+    return PICOKEYS_OK;
+}
+
+static int mka_retry_get(const mka_record_t *rec, uint8_t *tries) {
+    file_t *ef = file_search(MKA_EF_RETRY);
+    if (file_has_data(ef) && file_get_size(ef) == 1) {
+        uint8_t t = file_get_data(ef)[0];
+        *tries = t > MKA_PIN_TRIES ? MKA_PIN_TRIES : t;
+        return PICOKEYS_OK;
+    }
+    uint8_t t = rec->tries_left > MKA_PIN_TRIES ? MKA_PIN_TRIES : rec->tries_left;
+    int rc = mka_retry_set(t);
+    if (rc == PICOKEYS_OK) {
+        *tries = t;
+    }
+    return rc;
+}
+
 /* Waits for the user-presence button. 0 on press, nonzero on timeout/cancel. */
 static int mka_wait_button(void) {
     uint32_t seconds = (CONFIG_MULTIKEY_UP_TIMEOUT_MS + 999u) / 1000u;
     return wait_button_pressed_timeout(seconds);
 }
 
-static void mka_pin_hash(const uint8_t *pin, size_t pin_len, const uint8_t salt[16], uint8_t out[32]) {
-    mbedtls_pkcs5_pbkdf2_hmac_ext(MBEDTLS_MD_SHA256, pin, pin_len, salt, 16, MKA_PIN_PBKDF2_ITERS, 32, out);
+/*
+ * PIN verifier. version 1: PBKDF2-HMAC-SHA256(pin, salt, 10000). version 2: HMAC-SHA256(kbase, that value), so a
+ * flash dump alone no longer allows an offline PIN search once kbase is device-bound. Returns 0 on success.
+ */
+static int mka_pin_verifier(uint8_t version, const uint8_t *pin, size_t pin_len, const uint8_t salt[16],
+                            uint8_t out[32]) {
+    int rc = mbedtls_pkcs5_pbkdf2_hmac_ext(MBEDTLS_MD_SHA256, pin, pin_len, salt, 16, MKA_PIN_PBKDF2_ITERS, 32, out);
+    if (rc != 0 || version < 2) {
+        return rc;
+    }
+    uint8_t kbase[32];
+    uint8_t inner[32];
+    memcpy(inner, out, sizeof(inner));
+    derive_kbase(kbase);
+    rc = mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), kbase, sizeof(kbase), inner, sizeof(inner),
+                         out);
+    mbedtls_platform_zeroize(kbase, sizeof(kbase));
+    mbedtls_platform_zeroize(inner, sizeof(inner));
+    return rc;
 }
 
 /*
  * Verifies the PIN with a persisted retry counter that is decremented BEFORE the comparison, so a
- * power cut during the attempt cannot be used to get free guesses. Returns SW_OK() style value:
- * 0 means verified (counter restored); otherwise the status word to return.
+ * power cut during the attempt cannot be used to get free guesses. The caller has already obtained a button press.
+ * Returns the status word to return when *ok is false; the counter is restored on success. A version 1 record is
+ * accepted once and rewritten as version 2.
  */
 static int mka_verify_pin(const mka_record_t *rec_in, const uint8_t *pin, size_t pin_len, bool *ok) {
     *ok = false;
     if (pin_len < MKA_PIN_MIN || pin_len > MKA_PIN_MAX) {
         return SW_WRONG_LENGTH();
     }
-    mka_record_t rec;
-    memcpy(&rec, rec_in, sizeof(rec));
-    if (rec.tries_left == 0) {
-        mbedtls_platform_zeroize(&rec, sizeof(rec));
+    uint8_t tries = 0;
+    if (mka_retry_get(rec_in, &tries) != PICOKEYS_OK) {
+        return set_res_sw(0x6F, 0x00);
+    }
+    if (tries == 0) {
         return SW_PIN_BLOCKED();
     }
-    rec.tries_left--;
-    if (mka_store(&rec) != PICOKEYS_OK) {
-        mbedtls_platform_zeroize(&rec, sizeof(rec));
+    tries--;
+    if (mka_retry_set(tries) != PICOKEYS_OK) {
         return set_res_sw(0x6F, 0x00);
     }
     uint8_t hash[32];
-    mka_pin_hash(pin, pin_len, rec.pin_salt, hash);
-    int diff = mbedtls_ct_memcmp(hash, rec.pin_hash, sizeof(hash));
+    if (mka_pin_verifier(rec_in->version, pin, pin_len, rec_in->pin_salt, hash) != 0) {
+        mbedtls_platform_zeroize(hash, sizeof(hash));
+        return set_res_sw(0x6F, 0x00);
+    }
+    int diff = mbedtls_ct_memcmp(hash, rec_in->pin_hash, sizeof(hash));
     mbedtls_platform_zeroize(hash, sizeof(hash));
-    int sw = 0;
     if (diff != 0) {
-        sw = mka_sw_tries(rec.tries_left);
-        if (rec.tries_left == 0) {
-            sw = SW_PIN_BLOCKED();
-        }
+        return tries == 0 ? SW_PIN_BLOCKED() : mka_sw_tries(tries);
     }
-    else {
-        rec.tries_left = MKA_PIN_TRIES;
-        if (mka_store(&rec) != PICOKEYS_OK) {
-            sw = set_res_sw(0x6F, 0x00);
-        }
-        else {
-            *ok = true;
-        }
+    if (mka_retry_set(MKA_PIN_TRIES) != PICOKEYS_OK) {
+        return set_res_sw(0x6F, 0x00);
     }
-    mbedtls_platform_zeroize(&rec, sizeof(rec));
-    return sw;
+    if (rec_in->version < MKA_VERSION) {
+        mka_record_t up;
+        memcpy(&up, rec_in, sizeof(up));
+        up.version = MKA_VERSION;
+        if (mka_pin_verifier(up.version, pin, pin_len, up.pin_salt, up.pin_hash) == 0) {
+            (void)mka_store(&up); /* on failure the record stays version 1 and is upgraded on the next success */
+        }
+        mbedtls_platform_zeroize(&up, sizeof(up));
+    }
+    *ok = true;
+    return 0;
 }
 
 static int cmd_get_info(void) {
-    const mka_record_t *rec = mka_load();
+    mka_record_t *rec = NULL;
+    int lr = mka_load(&rec);
+    if (lr < 0) {
+        return set_res_sw(0x6F, 0x00);
+    }
+    if (lr > 0) {
+        rec = NULL;
+    }
     uint8_t *p = res_APDU;
-    *p++ = MKA_VERSION;
+    *p++ = MKA_PROTOCOL_VERSION;
     *p++ = rec ? 1 : 0;
     *p++ = MKA_POLICY;
     if (rec) {
@@ -198,11 +275,12 @@ static int cmd_get_info(void) {
     return SW_OK();
 }
 
-static void mka_wrap_key(const uint8_t priv[32], uint8_t out[MKA_WRAPPED_LEN]) {
+static int mka_wrap_key(const uint8_t priv[32], uint8_t out[MKA_WRAPPED_LEN]) {
     uint8_t kbase[32];
     derive_kbase(kbase);
-    encrypt_with_aad(kbase, CONST_BYTE_ARRAY(priv, 32), PIN_KDF_DEFAULT_VERSION, out);
+    int rc = encrypt_with_aad(kbase, CONST_BYTE_ARRAY(priv, 32), PIN_KDF_DEFAULT_VERSION, out);
     mbedtls_platform_zeroize(kbase, sizeof(kbase));
+    return rc;
 }
 
 static int mka_unwrap_key(const uint8_t wrapped[MKA_WRAPPED_LEN], uint8_t priv[32]) {
@@ -214,13 +292,19 @@ static int mka_unwrap_key(const uint8_t wrapped[MKA_WRAPPED_LEN], uint8_t priv[3
 }
 
 static int cmd_enroll(void) {
-    if (mka_load() != NULL) {
+    mka_record_t *existing = NULL;
+    int lr = mka_load(&existing);
+    if (lr < 0) {
+        return set_res_sw(0x6F, 0x00);
+    }
+    if (lr == 0) {
         return SW_CONDITIONS_NOT_SATISFIED();
     }
     if (apdu.nc < MKA_PIN_MIN || apdu.nc > MKA_PIN_MAX) {
         return SW_WRONG_LENGTH();
     }
     if (mka_wait_button() != 0) {
+        mbedtls_platform_zeroize(apdu.data, apdu.nc);
         return SW_WARNING_NOINFO();
     }
 
@@ -228,17 +312,21 @@ static int cmd_enroll(void) {
     memset(&rec, 0, sizeof(rec));
     memcpy(rec.magic, mka_magic, sizeof(mka_magic));
     rec.version = MKA_VERSION;
-    rec.tries_left = MKA_PIN_TRIES;
+    rec.tries_left = MKA_PIN_TRIES; /* informational: the live counter is MKA_EF_RETRY */
     random_fill_buffer(BYTE_ARRAY(rec.device_id, sizeof(rec.device_id)));
     random_fill_buffer(BYTE_ARRAY(rec.pin_salt, sizeof(rec.pin_salt)));
-    mka_pin_hash(apdu.data, apdu.nc, rec.pin_salt, rec.pin_hash);
+    int vrc = mka_pin_verifier(rec.version, apdu.data, apdu.nc, rec.pin_salt, rec.pin_hash);
+    mbedtls_platform_zeroize(apdu.data, apdu.nc);
 
     mbedtls_ecp_keypair key;
     mbedtls_ecp_keypair_init(&key);
     uint8_t priv[32];
     size_t olen = 0;
     int sw = 0;
-    int ret = mbedtls_ecp_gen_key(MBEDTLS_ECP_DP_SECP256R1, &key, random_fill_iterator, NULL);
+    int ret = vrc;
+    if (ret == 0) {
+        ret = mbedtls_ecp_gen_key(MBEDTLS_ECP_DP_SECP256R1, &key, random_fill_iterator, NULL);
+    }
     if (ret == 0) {
         ret = mbedtls_ecp_write_key_ext(&key, &olen, priv, sizeof(priv));
     }
@@ -248,11 +336,11 @@ static int cmd_enroll(void) {
     if (ret != 0 || olen != MKA_PUBKEY_LEN) {
         sw = set_res_sw(0x6F, 0x00);
     }
-    else {
-        mka_wrap_key(priv, rec.wrapped_priv);
-        if (mka_store(&rec) != PICOKEYS_OK) {
-            sw = set_res_sw(0x6F, 0x00);
-        }
+    else if (mka_wrap_key(priv, rec.wrapped_priv) != 0) {
+        sw = set_res_sw(0x6F, 0x00); /* nothing is stored: the device stays unenrolled */
+    }
+    else if (mka_retry_set(MKA_PIN_TRIES) != PICOKEYS_OK || mka_store(&rec) != PICOKEYS_OK) {
+        sw = set_res_sw(0x6F, 0x00);
     }
     mbedtls_platform_zeroize(priv, sizeof(priv));
     mbedtls_ecp_keypair_free(&key);
@@ -269,8 +357,12 @@ static int cmd_enroll(void) {
 }
 
 static int cmd_challenge(void) {
-    const mka_record_t *rec = mka_load();
-    if (rec == NULL) {
+    mka_record_t *rec = NULL;
+    int lr = mka_load(&rec);
+    if (lr < 0) {
+        return set_res_sw(0x6F, 0x00);
+    }
+    if (lr > 0) {
         return SW_CONDITIONS_NOT_SATISFIED();
     }
     if (apdu.nc != MKA_NONCE_LEN) {
@@ -329,21 +421,38 @@ static int cmd_challenge(void) {
 }
 
 static int cmd_revoke(void) {
-    const mka_record_t *rec = mka_load();
-    if (rec == NULL) {
+    mka_record_t *rec = NULL;
+    int lr = mka_load(&rec);
+    if (lr < 0) {
+        return set_res_sw(0x6F, 0x00);
+    }
+    if (lr > 0) {
         return SW_CONDITIONS_NOT_SATISFIED();
     }
+    if (apdu.nc < MKA_PIN_MIN || apdu.nc > MKA_PIN_MAX) {
+        return SW_WRONG_LENGTH();
+    }
+    mka_record_t copy;
+    memcpy(&copy, rec, sizeof(copy));
+    if (mka_wait_button() != 0) { /* before the PIN: no retry is spent without a press */
+        mbedtls_platform_zeroize(&copy, sizeof(copy));
+        mbedtls_platform_zeroize(apdu.data, apdu.nc);
+        return SW_WARNING_NOINFO();
+    }
     bool ok = false;
-    int sw = mka_verify_pin(rec, apdu.data, apdu.nc, &ok);
+    int sw = mka_verify_pin(&copy, apdu.data, apdu.nc, &ok);
+    mbedtls_platform_zeroize(&copy, sizeof(copy));
+    mbedtls_platform_zeroize(apdu.data, apdu.nc);
     if (!ok) {
         return sw;
-    }
-    if (mka_wait_button() != 0) {
-        return SW_WARNING_NOINFO();
     }
     file_t *ef = file_search(MKA_EF_RECORD);
     if (ef == NULL || file_delete(ef) != PICOKEYS_OK) {
         return set_res_sw(0x6F, 0x00);
+    }
+    file_t *rf = file_search(MKA_EF_RETRY);
+    if (rf != NULL && file_has_data(rf)) {
+        (void)file_delete(rf);
     }
     flash_commit();
     return SW_OK();
@@ -401,21 +510,36 @@ static int mka_manage_auth(const uint8_t **rest, size_t *rest_len) {
     }
     *rest = apdu.data + 1 + pin_len;
     *rest_len = apdu.nc - 1 - pin_len;
-    const mka_record_t *rec = mka_load();
-    if (rec == NULL) {
+    mka_record_t *rec = NULL;
+    mka_record_t rec_copy = { 0 };
+    int lr = mka_load(&rec);
+    if (lr < 0) {
+        return set_res_sw(0x6F, 0x00);
+    }
+    if (lr > 0) { /* unenrolled */
         if (pin_len != 0) {
             return SW_INCORRECT_PARAMS(); /* 6A80: an unenrolled device has no PIN to verify */
         }
     }
     else {
+        if (pin_len < MKA_PIN_MIN || pin_len > MKA_PIN_MAX) {
+            return SW_WRONG_LENGTH();
+        }
+        memcpy(&rec_copy, rec, sizeof(rec_copy));
+    }
+    /* The button comes first: a PIN attempt is only spent by someone who is physically at the key. */
+    if (mka_wait_button() != 0) {
+        mbedtls_platform_zeroize(apdu.data + 1, pin_len);
+        return SW_WARNING_NOINFO();
+    }
+    if (lr == 0) {
         bool ok = false;
-        int sw = mka_verify_pin(rec, apdu.data + 1, pin_len, &ok);
+        int sw = mka_verify_pin(&rec_copy, apdu.data + 1, pin_len, &ok);
+        mbedtls_platform_zeroize(&rec_copy, sizeof(rec_copy));
+        mbedtls_platform_zeroize(apdu.data + 1, pin_len);
         if (!ok) {
             return sw;
         }
-    }
-    if (mka_wait_button() != 0) {
-        return SW_WARNING_NOINFO();
     }
     return PICOKEYS_OK;
 }
@@ -590,20 +714,7 @@ static int cmd_build_info(void) {
     const esp_app_desc_t *desc = esp_app_get_description();
     size_t len = 0;
     res_APDU[len++] = MKA_BUILD_FMT;
-    bool ok = bi_put_str(&len, BI_PROJECT, desc->project_name, sizeof(desc->project_name)) &&
-              bi_put_str(&len, BI_VERSION, desc->version, sizeof(desc->version)) &&
-              bi_put_str(&len, BI_IDF, desc->idf_ver, sizeof(desc->idf_ver)) &&
-              bi_put_str(&len, BI_COMMIT, MULTIKEY_BUILD_COMMIT, 24);
-    uint8_t image_sha[32];
-    if (ok && bi_image_sha256(image_sha)) {
-        ok = bi_put(&len, BI_IMAGE_SHA256, image_sha, sizeof(image_sha));
-    }
-    ok = ok && bi_put(&len, BI_ELF_SHA256, desc->app_elf_sha256, sizeof(desc->app_elf_sha256)) &&
-         bi_put_str(&len, BI_FLASH_BUILT, CONFIG_ESPTOOLPY_FLASHSIZE, 8);
-    uint32_t chip_flash = 0;
-    if (ok && esp_flash_get_physical_size(esp_flash_default_chip, &chip_flash) == ESP_OK) {
-        ok = bi_put_u32(&len, BI_FLASH_CHIP, chip_flash);
-    }
+    /* Required entries first, so that optional ones can never push them out of the 255-byte response. */
     const uint8_t security = (uint8_t)((esp_flash_encryption_enabled() ? 0x01 : 0x00) |
                                        (esp_secure_boot_enabled() ? 0x02 : 0x00));
     esp_chip_info_t chip;
@@ -611,10 +722,29 @@ static int cmd_build_info(void) {
     const uint8_t chip_bytes[4] = { (uint8_t)chip.model, (uint8_t)(chip.revision >> 8), (uint8_t)chip.revision,
                                     (uint8_t)chip.cores };
     const uint8_t reset = (uint8_t)esp_reset_reason();
-    ok = ok && bi_put(&len, BI_SECURITY, &security, 1) && bi_put(&len, BI_CHIP, chip_bytes, sizeof(chip_bytes)) &&
-         bi_put(&len, BI_RESET, &reset, 1) && bi_put_u32(&len, BI_UPTIME, (uint32_t)(esp_timer_get_time() / 1000000));
+    bool ok = bi_put_str(&len, BI_PROJECT, desc->project_name, sizeof(desc->project_name)) &&
+              bi_put_str(&len, BI_VERSION, desc->version, sizeof(desc->version)) &&
+              bi_put_str(&len, BI_IDF, desc->idf_ver, sizeof(desc->idf_ver)) &&
+              bi_put(&len, BI_ELF_SHA256, desc->app_elf_sha256, sizeof(desc->app_elf_sha256)) &&
+              bi_put_str(&len, BI_FLASH_BUILT, CONFIG_ESPTOOLPY_FLASHSIZE, 8) &&
+              bi_put(&len, BI_SECURITY, &security, 1) && bi_put(&len, BI_CHIP, chip_bytes, sizeof(chip_bytes)) &&
+              bi_put(&len, BI_RESET, &reset, 1) &&
+              bi_put_u32(&len, BI_UPTIME, (uint32_t)(esp_timer_get_time() / 1000000));
+    if (!ok) {
+        return set_res_sw(0x6F, 0x00);
+    }
+    /* Optional entries: each one is skipped when it does not fit (bi_put leaves the buffer untouched on failure). */
+    uint8_t image_sha[32];
+    if (bi_image_sha256(image_sha)) {
+        (void)bi_put(&len, BI_IMAGE_SHA256, image_sha, sizeof(image_sha));
+    }
+    (void)bi_put_str(&len, BI_COMMIT, MULTIKEY_BUILD_COMMIT, 24);
+    uint32_t chip_flash = 0;
+    if (esp_flash_get_physical_size(esp_flash_default_chip, &chip_flash) == ESP_OK) {
+        (void)bi_put_u32(&len, BI_FLASH_CHIP, chip_flash);
+    }
     const esp_partition_t *running = esp_ota_get_running_partition();
-    if (ok && running != NULL) {
+    if (running != NULL) {
         uint8_t part_entry[4 + 16];
         const size_t label_len = strnlen(running->label, 16);
         part_entry[0] = (uint8_t)(running->address >> 24);
@@ -622,10 +752,7 @@ static int cmd_build_info(void) {
         part_entry[2] = (uint8_t)(running->address >> 8);
         part_entry[3] = (uint8_t)running->address;
         memcpy(part_entry + 4, running->label, label_len);
-        ok = bi_put(&len, BI_PARTITION, part_entry, 4 + label_len);
-    }
-    if (!ok) {
-        return set_res_sw(0x6F, 0x00);
+        (void)bi_put(&len, BI_PARTITION, part_entry, 4 + label_len);
     }
     res_APDU_size = (uint16_t)len;
     apdu.ne = res_APDU_size;

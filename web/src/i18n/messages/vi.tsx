@@ -579,6 +579,7 @@ export const vi: Messages = {
             "Tôi hiểu firmware OpenPGP còn thử nghiệm, chưa được thử trên phần cứng và không phù hợp cho các khóa tôi tin cậy.",
           "replace-layout": "Tôi hiểu firmware hiện có trên bo mạch này sẽ bị thay thế.",
           "untested-hardware": "Tôi hiểu chính bo mạch này chưa được thử với MultiKeys",
+          "unsigned-release": "Tôi hiểu bản phát hành này không có chữ ký nên không có gì chứng minh ai là người phát hành.",
           "force-storage":
             "Tôi hiểu bản phát hành này không được chứng minh là đọc được các khóa đang lưu trên bo mạch. Trình cài đặt không xóa các khóa, nhưng chúng có thể không dùng được hoặc bị mất, và firmware cũ có thể không trả lại. Tôi đã sao lưu những gì cần.",
         },
@@ -784,6 +785,7 @@ export const vi: Messages = {
           "update-confirm":
             "Tôi hiểu rằng chỉ ứng dụng MultiKeys bị thay thế, việc ghi không nguyên tử và nếu bị gián đoạn thì phải chạy lại bản cập nhật này.",
           "untested-hardware": "Tôi hiểu chính bo mạch này chưa được thử với MultiKeys",
+          "unsigned-release": "Tôi hiểu bản phát hành này không có chữ ký nên không có gì chứng minh ai là người phát hành.",
           "experimental-image":
             "Tôi hiểu firmware OpenPGP còn thử nghiệm, chưa được thử trên phần cứng và không phù hợp cho các khóa tôi tin cậy.",
         },

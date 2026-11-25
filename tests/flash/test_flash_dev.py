@@ -76,6 +76,22 @@ class FlashArgs(unittest.TestCase):
         with self.assertRaises(ValueError):
             fd.parse_flash_args("erase everything\n")
 
+    def test_injected_options_rejected(self):
+        for line in ("--erase-all\n", "--flash_mode dio --erase-all\n", "--flash_size --erase-all\n",
+                     "--force\n", "--flash_mode\n"):
+            with self.assertRaises(ValueError, msg=line):
+                fd.parse_flash_args(line)
+
+    def test_dash_prefixed_image_path_rejected(self):
+        with self.assertRaises(ValueError):
+            fd.parse_flash_args("0x0 --erase-all\n")
+
+    def test_forbidden_tokens_in_argv(self):
+        for tok in ("--erase-all", "erase_flash", "espefuse.py", "--burn", "x-Efuse-y"):
+            with self.assertRaises(fd.Stop, msg=tok):
+                fd.assert_safe_argv(["python", tok])
+        fd.assert_safe_argv(fd.build_flash_cmd("python", "COM6"))
+
 
 class DeviceTable(unittest.TestCase):
     def test_blank(self):
@@ -274,6 +290,15 @@ class Policy(unittest.TestCase):
         for name in fd.POLICY["repurpose_fill"]:
             self.assertIn(name, fd.PROTECTED)
             self.assertIn(name, PARTS)
+
+    def test_protected_partitions_have_exact_ranges_from_csv(self):
+        self.assertEqual(set(fd.PROTECTED_RANGES), {"nvs", "phy_init", "part0"})
+        for name, (off, size) in fd.PROTECTED_RANGES.items():
+            self.assertEqual((PARTS[name]["offset"], PARTS[name]["size"]), (off, size), name)
+
+    def test_moved_protected_partition_rejected(self):
+        moved = {**PARTS, "part0": {**PARTS["part0"], "offset": 0x210000}}
+        self.assertTrue(any("flash policy" in p for p in fd.check_images(GOOD_IMAGES, GOOD_SIZES, moved)))
 
 
 if __name__ == "__main__":

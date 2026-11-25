@@ -51,6 +51,8 @@ pub enum StatusWord {
     PinBlocked,
     /// 6985
     WrongState,
+    /// 6A80: invalid data (e.g. an invalid device name, or a PIN sent to an unenrolled device).
+    WrongData,
     /// 6A86
     BadP1P2,
     /// 6D00
@@ -73,6 +75,7 @@ impl From<u16> for StatusWord {
             0x6983 => Self::PinBlocked,
             0x6985 => Self::WrongState,
             0x6A86 => Self::BadP1P2,
+            0x6A80 => Self::WrongData,
             0x6D00 => Self::UnknownIns,
             0x6E00 => Self::UnknownCla,
             0x6F00 => Self::Internal,
@@ -92,6 +95,7 @@ impl From<StatusWord> for u16 {
             StatusWord::PinBlocked => 0x6983,
             StatusWord::WrongState => 0x6985,
             StatusWord::BadP1P2 => 0x6A86,
+            StatusWord::WrongData => 0x6A80,
             StatusWord::UnknownIns => 0x6D00,
             StatusWord::UnknownCla => 0x6E00,
             StatusWord::Internal => 0x6F00,
@@ -114,6 +118,8 @@ pub enum ProtoError {
     BadState(u8),
     #[error("invalid device name: {0}")]
     Name(#[from] NameError),
+    #[error("policy {0:#04x} does not require user presence (bit0 must be set)")]
+    PolicyNoPresence(u8),
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -298,6 +304,9 @@ pub fn parse_device_name(data: &[u8]) -> Result<DeviceName, ProtoError> {
         return Err(bad());
     }
     let name = std::str::from_utf8(&data[1..]).map_err(|_| bad())?;
+    if !name.bytes().all(|b| (0x20..=0x7E).contains(&b)) {
+        return Err(bad());
+    }
     Ok(DeviceName {
         custom: data[0] & 0x01 != 0,
         reenumeration_pending: data[0] & 0x02 != 0,
@@ -526,6 +535,9 @@ pub fn parse_info(data: &[u8]) -> Result<Info, ProtoError> {
     let expected = 3 + DEVICE_ID_LEN + if enrolled { PUBKEY_LEN } else { 0 };
     if data.len() != expected {
         return Err(bad());
+    }
+    if data[2] & 0x01 == 0 {
+        return Err(ProtoError::PolicyNoPresence(data[2]));
     }
     Ok(Info {
         version,

@@ -36,7 +36,9 @@ POLICY = json.loads((Path(__file__).resolve().parent / "flash_policy.json").read
 ALLOWED_WRITES = {w["offset"]: w["role"] for w in POLICY["allowed_writes"]}
 MAX_IMAGE_SIZE = {w["offset"]: w["max_size"] for w in POLICY["allowed_writes"] if "max_size" in w}
 APP_OFFSET = next(w["offset"] for w in POLICY["allowed_writes"] if w["role"] == "app")
-PROTECTED = tuple(POLICY["protected_partitions"])  # partitions whose range no image may touch
+# Partitions whose range no image may touch: exact {name: (offset, size)} from the policy (not read from the build).
+PROTECTED_RANGES = {p["name"]: (p["offset"], p["size"]) for p in POLICY["protected_partitions"]}
+PROTECTED = tuple(PROTECTED_RANGES)
 PARTITION_TABLE_OFFSET = POLICY["partition_table"]["offset"]
 PARTITION_TABLE_LEN = POLICY["partition_table"]["read_length"]
 CREDENTIAL_PARTITION = POLICY["credential_partition"]
@@ -58,6 +60,9 @@ APP_DESC_IMAGE_OFFSET = 0x20  # esp_app_desc_t follows the 24-byte image header 
 # Argument tokens that must never appear in any command this tool runs.
 FORBIDDEN_TOKENS = ("erase_flash", "erase-flash", "erase_region", "erase-region", "--erase-all", "-e",
                     "espefuse", "espsecure", "burn", "burn_efuse", "burn-efuse", "write_flash_status")
+# Options a build's flash_args file may carry (esptool image header settings); nothing else is accepted.
+FLASH_ARGS_OPTIONS = ("--flash_mode", "--flash_freq", "--flash_size")
+FORBIDDEN_RE = re.compile(r"(erase|efuse|burn|espsecure)", re.I)
 
 
 IDF_MISSING = ("ESP-IDF v5.5.x not found. One-time setup: install ESP-IDF v5.5.6 "
@@ -151,8 +156,14 @@ def parse_flash_args(text: str) -> tuple[list, list]:
         if not toks:
             continue
         if toks[0].startswith("--"):
-            opts += toks
-        elif len(toks) == 2 and re.fullmatch(r"0x[0-9a-fA-F]+", toks[0]):
+            # Only the image-header options idf.py writes; anything else (--erase-all, --force, ...) is an injection.
+            i = 0
+            while i < len(toks):
+                if toks[i] not in FLASH_ARGS_OPTIONS or i + 1 >= len(toks) or toks[i + 1].startswith("-"):
+                    raise ValueError(f"unexpected option in flash_args: {line!r}")
+                opts += toks[i:i + 2]
+                i += 2
+        elif len(toks) == 2 and re.fullmatch(r"0x[0-9a-fA-F]+", toks[0]) and not toks[1].startswith("-"):
             images.append((int(toks[0], 16), toks[1]))
         else:
             raise ValueError(f"unexpected line in flash_args: {line!r}")
@@ -178,6 +189,10 @@ def check_images(images: list, sizes: dict, parts: dict) -> list:
             p = parts.get(name)
             if p is None:
                 problems.append(f"partitions.csv has no {name} partition")
+                continue
+            if (p["offset"], p["size"]) != PROTECTED_RANGES[name]:
+                problems.append(f"partition {name} is [{p['offset']:#x}, size {p['size']:#x}) but the flash policy "
+                                f"protects offset {PROTECTED_RANGES[name][0]:#x} size {PROTECTED_RANGES[name][1]:#x}")
                 continue
             if off < p["offset"] + p["size"] and end > p["offset"]:
                 problems.append(f"{path} [{off:#x},{end:#x}) overlaps protected partition {name} "
@@ -398,7 +413,7 @@ def build_flash_cmd(python: str, port: str, flash_args: str = "@flash_args") -> 
 
 def assert_safe_argv(argv: list) -> None:
     for tok in argv:
-        if tok in FORBIDDEN_TOKENS or tok.startswith("--erase"):
+        if tok in FORBIDDEN_TOKENS or FORBIDDEN_RE.search(tok):
             raise Stop(EXIT_STORAGE, f"refusing to run a command containing {tok!r}")
 
 
@@ -560,7 +575,8 @@ def run_flash(args: argparse.Namespace) -> int:
     sizes = {p: (build_dir / p).stat().st_size for _, p in images if (build_dir / p).is_file()}
     stop_on(check_images(images, sizes, parts), EXIT_STORAGE, "image layout")
     app_image = next(p for o, p in images if o == APP_OFFSET)
-    sha = hashlib.sha256((build_dir / app_image).read_bytes()).hexdigest()
+    image_hashes = {p: hashlib.sha256((build_dir / p).read_bytes()).hexdigest() for _, p in images}
+    sha = image_hashes[app_image]
     if app == "openpgp":
         print("  The OpenPGP image uses the same part0 file system with different applets. Credentials, PINs and keys\n"
               "  from the FIDO image are not usable and may be lost or mis-read. Back up first; this script does not.")
@@ -609,6 +625,10 @@ def run_flash(args: argparse.Namespace) -> int:
         raise Stop(EXIT_DECLINED, "not confirmed; nothing written")
 
     step(8, total, "flash")
+    # The images were hashed when they were checked; re-hash right before the write so a swapped file is caught.
+    changed = [p for p, h in image_hashes.items() if hashlib.sha256((build_dir / p).read_bytes()).hexdigest() != h]
+    if changed:
+        raise Stop(EXIT_STORAGE, f"image changed after it was checked: {', '.join(changed)}; nothing written")
     r = run(cmd, cwd=build_dir)
     if r.returncode != 0:
         raise Stop(EXIT_FAIL, f"esptool failed with exit code {r.returncode}")

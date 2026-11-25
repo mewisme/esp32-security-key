@@ -5,10 +5,12 @@ This script only builds. It never flashes, never touches eFuses and never enable
 Requires an activated ESP-IDF v5.5.x environment (idf.py on PATH).
 
   python tools/build.py dev                       # FIDO2 image, dev profile, 16 MB flash, needs sdkconfig.board
+  python tools/build.py prod --board esp32s3-boot-button   # prod/release/hardened builds never use the implicit sdkconfig.board
   python tools/build.py dev --hw esp32s3-4mb --board esp32s3-boot-button --clean   # 4 MB flash profile
   python tools/build.py prod --app openpgp
   python tools/build.py dev --ci-pins             # compile check without pins; image is unusable
-  python tools/build.py dev --release             # firmware version without the -dev suffix (release packaging)
+  python tools/build.py dev --release --board esp32s3-boot-button   # version without the -dev suffix (release packaging)
+  python tools/build.py prod --harden --release --board B --signing-key K.pem --i-understand-irreversible
 
 Every (app, security profile, hardware profile) gets its own build-<tag>/ directory and sdkconfig.<tag>.generated: the
 tag is e.g. fido-dev for the default 16 MB profile and fido-dev-4mb / fido-dev-8mb for the others (flash_dev.build_tag).
@@ -60,6 +62,21 @@ def main() -> int:
     if args.release and args.ci_pins:
         print("--release cannot be combined with --ci-pins", file=sys.stderr)
         return 2
+    if args.release and not args.board:
+        print("--release requires --board NAME (a release image never takes the implicit root sdkconfig.board)",
+              file=sys.stderr)
+        return 2
+    if args.harden and args.ci_pins:
+        print("--harden cannot be combined with --ci-pins (a hardened image with unset pins is unusable and burns eFuses)",
+              file=sys.stderr)
+        return 2
+    if args.harden and not (args.release and args.board):
+        print("--harden requires --release and --board NAME", file=sys.stderr)
+        return 2
+    if args.profile == "prod" and not (args.board or args.ci_pins):
+        print("prod needs --board NAME (real pins) or --ci-pins (compile check); the implicit sdkconfig.board is dev only",
+              file=sys.stderr)
+        return 2
     if args.board and args.ci_pins:
         print("--board cannot be combined with --ci-pins", file=sys.stderr)
         return 2
@@ -95,6 +112,8 @@ def main() -> int:
     flash_defaults = ROOT / f"build-{tag}-flash.defaults"
     flash_defaults.write_text(fd.flash_fragment(args.hw))
     defaults = ["sdkconfig.defaults", f"sdkconfig.{args.profile}", flash_defaults.name]
+    if args.profile == "prod":
+        defaults.append("sdkconfig.release-hardening")
     if args.harden:
         defaults.append("sdkconfig.hardening")
         key = ROOT / f"build-{tag}-signing.defaults"
@@ -106,7 +125,8 @@ def main() -> int:
         defaults.append(ci.name)
     elif args.board:
         defaults.append(f"boards/{args.board}.board")
-    elif (ROOT / "sdkconfig.board").exists():
+    elif args.profile == "dev" and (ROOT / "sdkconfig.board").exists():
+        # Implicit local board file: development builds only (never prod, release or hardened images).
         defaults.append("sdkconfig.board")
 
     env = os.environ.copy()

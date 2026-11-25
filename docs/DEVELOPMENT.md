@@ -27,9 +27,9 @@
 ```
 python tools/build.py dev --ci-pins                       # compile check, pins unset, image unusable
 python tools/build.py dev                                 # needs sdkconfig.board; app version "<host version>-dev"
-python tools/build.py dev --release                       # app version = host/Cargo.toml version (release packaging)
-python tools/build.py prod --app openpgp
-python tools/build.py prod --harden --signing-key K.pem --i-understand-irreversible   # see PROVISIONING.md
+python tools/build.py dev --release --board esp32s3-boot-button   # app version = host/Cargo.toml version (release packaging)
+python tools/build.py prod --app openpgp --board esp32s3-boot-button   # or --ci-pins; prod never takes the implicit sdkconfig.board
+python tools/build.py prod --harden --release --board esp32s3-boot-button --signing-key K.pem --i-understand-irreversible   # see PROVISIONING.md
 ```
 
 Build directories: `build-<app>-<profile>[-hardened]/`, with a `-4mb` or `-8mb` suffix after the profile for those flash sizes

@@ -1,0 +1,428 @@
+MultiKeys 0007: APDU chaining overflow, flash error handling, GCM leak, pinned-dependency cache check.
+- src/apdu.c, apdu.h, ccid.c, emulation.c: ported from upstream pico-keys-sdk 325c0a9 ('Fix chaining overflow'):
+  chained commands are reassembled in chain_buf instead of memmoving into the transport buffer.
+- src/fs/low_flash.c: ESP partition erase/program errors are reported (callers keep the data pending).
+- src/crypto_utils.c: encrypt_with_aad/decrypt_with_aad free the GCM context when setkey fails; RNG failure checked.
+- cmake/deps.cmake: a cached third-party clone must match the pinned commit and be clean.
+- src/usb/emulation/emulation.h: USB_BUFFER_SIZE overridable so emulation can use the device value.
+
+diff --git a/cmake/deps.cmake b/cmake/deps.cmake
+index 7e8bbbf..19ffec0 100644
+--- a/cmake/deps.cmake
++++ b/cmake/deps.cmake
+@@ -60,6 +60,28 @@ function(picokeys_sync_dep name repo ref dest)
+         endif()
+         if(NOT _repo_ok OR NOT _ref_ok)
+             set(_need_fetch ON)
++        elseif(EXISTS "${dest}/.git")
++            # MultiKeys: a marker file alone proves nothing (it survives a manual checkout or local edits).
++            # When the cache is a real clone, HEAD must equal the pinned commit and the tracked files must be
++            # clean; otherwise it is fetched again. Copies without .git (rsync'd build trees) keep trusting the
++            # marker.
++            execute_process(
++                COMMAND git -C ${dest} rev-parse HEAD
++                RESULT_VARIABLE _cache_head_rc
++                OUTPUT_VARIABLE _cache_head
++                OUTPUT_STRIP_TRAILING_WHITESPACE
++            )
++            execute_process(
++                COMMAND git -C ${dest} status --porcelain --untracked-files=no --ignore-submodules=all
++                RESULT_VARIABLE _cache_status_rc
++                OUTPUT_VARIABLE _cache_status
++                OUTPUT_STRIP_TRAILING_WHITESPACE
++            )
++            if(NOT _cache_head_rc EQUAL 0 OR NOT _cache_head STREQUAL "${ref}"
++               OR NOT _cache_status_rc EQUAL 0 OR NOT "${_cache_status}" STREQUAL "")
++                message(STATUS "[deps] ${name}: cached checkout does not match ${ref} or is modified")
++                set(_need_fetch ON)
++            endif()
+         endif()
+     endif()
+ 
+diff --git a/src/apdu.c b/src/apdu.c
+index fa07993..08290e9 100644
+--- a/src/apdu.c
++++ b/src/apdu.c
+@@ -32,19 +32,28 @@ uint16_t rdata_bk = 0x0;
+ static bool response_pending = false;
+ extern uint32_t timeout;
+ bool is_chaining = false;
+-uint8_t chain_buf[2038];
++#define APDU_CHAIN_DATA_SIZE 2038u
++#define APDU_CHAIN_HEADER_SIZE 7u
++#define APDU_STAGING_DATA_SIZE (USB_BUFFER_SIZE > APDU_CHAIN_DATA_SIZE ? USB_BUFFER_SIZE : APDU_CHAIN_DATA_SIZE)
++uint8_t chain_buf[APDU_CHAIN_HEADER_SIZE + APDU_STAGING_DATA_SIZE];
+ uint8_t *chain_ptr = NULL;
+ static uint8_t chain_header[4];
++static bool apdu_data_staged = false;
++
++#define APDU_CHAIN_DATA (chain_buf + APDU_CHAIN_HEADER_SIZE)
+ 
+ struct apdu apdu;
+ 
+ int process_apdu(void) {
+     bool is_select = INS(apdu) == 0xA4 && P1(apdu) == 0x04 && (P2(apdu) == 0x00 || P2(apdu) == 0x04);
++    bool chain_assembled = false;
++    int result;
++
+     led_set_mode(MODE_PROCESSING);
+     if (CLA(apdu) & 0x10) {
+         size_t chain_used = 0;
+         if (!is_chaining) {
+-            chain_ptr = chain_buf;
++            chain_ptr = APDU_CHAIN_DATA;
+             chain_header[0] = CLA(apdu) & (uint8_t)~0x10;
+             chain_header[1] = INS(apdu);
+             chain_header[2] = P1(apdu);
+@@ -56,14 +65,16 @@ int process_apdu(void) {
+             is_chaining = false;
+             return SW_LAST_CHAIN_EXPECTED();
+         }
+-        chain_used = (size_t)(chain_ptr - chain_buf);
+-        if (chain_used + apdu.nc >= sizeof(chain_buf)) {
++        chain_used = (size_t)(chain_ptr - APDU_CHAIN_DATA);
++        if (chain_used + apdu.nc >= APDU_CHAIN_DATA_SIZE) {
+             memset(chain_buf, 0, sizeof(chain_buf));
+             chain_ptr = NULL;
+             is_chaining = false;
+             return SW_WRONG_LENGTH();
+         }
+-        memcpy(chain_ptr, apdu.data, apdu.nc);
++        if (apdu.nc > 0) {
++            memcpy(chain_ptr, apdu.data, apdu.nc);
++        }
+         chain_ptr += apdu.nc;
+         is_chaining = true;
+         return SW_OK();
+@@ -80,40 +91,63 @@ int process_apdu(void) {
+             }
+         }
+         if (is_chaining) {
+-            size_t chain_used = (size_t)(chain_ptr - chain_buf);
+-            if (chain_used + apdu.nc >= sizeof(chain_buf)) {
++            size_t chain_used = (size_t)(chain_ptr - APDU_CHAIN_DATA);
++            if (chain_used + apdu.nc >= APDU_CHAIN_DATA_SIZE) {
+                 memset(chain_buf, 0, sizeof(chain_buf));
+                 chain_ptr = NULL;
+                 is_chaining = false;
+                 return SW_WRONG_LENGTH();
+             }
+-            memmove(apdu.data + chain_used, apdu.data, apdu.nc);
+-            memcpy(apdu.data, chain_buf, chain_used);
+-            apdu.nc += (uint16_t)chain_used;
+-            memset(chain_buf, 0, sizeof(chain_buf));
++
++            size_t header_size = (size_t)(apdu.data - apdu.header);
++            if (header_size > APDU_CHAIN_HEADER_SIZE) {
++                memset(chain_buf, 0, sizeof(chain_buf));
++                chain_ptr = NULL;
++                is_chaining = false;
++                return SW_WRONG_LENGTH();
++            }
++            memcpy(APDU_CHAIN_DATA - header_size, apdu.header, header_size);
++            if (apdu.nc > 0) {
++                memcpy(chain_ptr, apdu.data, apdu.nc);
++            }
++            apdu.header = APDU_CHAIN_DATA - header_size;
++            apdu.data = APDU_CHAIN_DATA;
++            apdu.nc += (uint32_t)chain_used;
+             chain_ptr = NULL;
+             is_chaining = false;
++            chain_assembled = true;
+         }
+     }
+     if (!(CLA(apdu) & 0x10) && (CLA(apdu) & 0x0C) && (!current_app || !current_app->supports_secure_messaging)) {
+-        return SW_CLA_NOT_SUPPORTED();
++        result = SW_CLA_NOT_SUPPORTED();
+     }
+-    if (INS(apdu) == 0xA4 && P1(apdu) == 0x04 && (P2(apdu) == 0x00 || P2(apdu) == 0x4)) { //select by AID
++    else if (INS(apdu) == 0xA4 && P1(apdu) == 0x04 && (P2(apdu) == 0x00 || P2(apdu) == 0x4)) { //select by AID
+         if (select_app(CONST_BYTE_ARRAY(apdu.data, apdu.nc)) == PICOKEYS_OK) {
+-            return SW_OK();
++            result = SW_OK();
++        }
++        else {
++            result = SW_FILE_NOT_FOUND();
+         }
+-        return SW_FILE_NOT_FOUND();
+     }
+-    if (current_app && current_app->process_apdu) {
+-        return current_app->process_apdu();
++    else if (current_app && current_app->process_apdu) {
++        result = current_app->process_apdu();
++    }
++    else {
++        result = SW_FILE_NOT_FOUND();
++    }
++
++    if (chain_assembled || apdu_data_staged) {
++        memset(chain_buf, 0, sizeof(chain_buf));
++        apdu_data_staged = false;
+     }
+-    return SW_FILE_NOT_FOUND();
++    return result;
+ }
+ 
+-uint16_t apdu_process(uint8_t itf, const_byte_array_t buffer) {
++static uint16_t apdu_process_internal(uint8_t itf, const_byte_array_t buffer, bool stage_data) {
+     uint32_t expected_size;
+     uint16_t buffer_size = 0;
+ 
++    apdu_data_staged = false;
+     if (buffer.len < 4 || buffer.len > UINT16_MAX || buffer.data == NULL) {
+         return 0;
+     }
+@@ -122,12 +156,14 @@ uint16_t apdu_process(uint8_t itf, const_byte_array_t buffer) {
+     apdu.nc = apdu.ne = 0;
+     if (buffer_size == 4) {
+         apdu.nc = apdu.ne = 0;
++        apdu.data = apdu.header + 4;
+         if (apdu.ne == 0) {
+             apdu.ne = 256;
+         }
+     }
+     else if (buffer_size == 5) {
+         apdu.nc = 0;
++        apdu.data = apdu.header + 5;
+         apdu.ne = apdu.header[4];
+         if (apdu.ne == 0) {
+             apdu.ne = 256;
+@@ -135,6 +171,7 @@ uint16_t apdu_process(uint8_t itf, const_byte_array_t buffer) {
+     }
+     else if (apdu.header[4] == 0x0 && buffer_size >= 7) {
+         if (buffer_size == 7) {
++            apdu.data = apdu.header + 7;
+             apdu.ne = get_uint16_be(apdu.header + 5);
+             if (apdu.ne == 0) {
+                 apdu.ne = 65536;
+@@ -171,6 +208,22 @@ uint16_t apdu_process(uint8_t itf, const_byte_array_t buffer) {
+             }
+         }
+     }
++    if (stage_data && !(CLA(apdu) & 0x10) && !is_chaining) {
++        if (apdu.nc > APDU_STAGING_DATA_SIZE) {
++            return 0;
++        }
++        size_t header_size = (size_t)(apdu.data - apdu.header);
++        if (header_size > APDU_CHAIN_HEADER_SIZE) {
++            return 0;
++        }
++        memcpy(APDU_CHAIN_DATA - header_size, apdu.header, header_size);
++        if (apdu.nc > 0) {
++            memcpy(APDU_CHAIN_DATA, apdu.data, apdu.nc);
++        }
++        apdu.header = APDU_CHAIN_DATA - header_size;
++        apdu.data = APDU_CHAIN_DATA;
++        apdu_data_staged = true;
++    }
+     //printf("apdu.nc %u, apdu.ne %u\n",apdu.nc,apdu.ne);
+     if (apdu.header[1] == 0xc0) {
+         //printf("apdu.ne %u, apdu.rlen %d, bk %x\n",apdu.ne,apdu.rlen,rdata_bk);
+@@ -237,9 +290,21 @@ uint16_t apdu_process(uint8_t itf, const_byte_array_t buffer) {
+         response_pending = false;
+         return 1;
+     }
++    if (apdu_data_staged) {
++        memset(chain_buf, 0, sizeof(chain_buf));
++        apdu_data_staged = false;
++    }
+     return 0;
+ }
+ 
++uint16_t apdu_process(uint8_t itf, const_byte_array_t buffer) {
++    return apdu_process_internal(itf, buffer, false);
++}
++
++uint16_t apdu_process_ccid(uint8_t itf, const_byte_array_t buffer) {
++    return apdu_process_internal(itf, buffer, true);
++}
++
+ uint16_t set_res_sw(uint8_t sw1, uint8_t sw2) {
+     apdu.sw = make_uint16_be(sw1, sw2);
+     if (sw1 != 0x90 && sw1 != 0x61) {
+diff --git a/src/apdu.h b/src/apdu.h
+index 4fe8139..ac07d4a 100644
+--- a/src/apdu.h
++++ b/src/apdu.h
+@@ -70,6 +70,7 @@ extern struct apdu apdu;
+ extern uint16_t set_res_sw(uint8_t sw1, uint8_t sw2);
+ extern int process_apdu(void);
+ extern uint16_t apdu_process(uint8_t itf, const_byte_array_t buffer);
++extern uint16_t apdu_process_ccid(uint8_t itf, const_byte_array_t buffer);
+ extern void apdu_finish(void);
+ extern uint16_t apdu_next(void);
+ extern uint16_t apdu_limit_response(uint16_t size_next, uint16_t max_size);
+diff --git a/src/crypto_utils.c b/src/crypto_utils.c
+index 3850b1a..d0b7541 100644
+--- a/src/crypto_utils.c
++++ b/src/crypto_utils.c
+@@ -83,7 +83,9 @@ int encrypt_with_aad(const uint8_t key[32], const_byte_array_t input, pin_kdf_ve
+     uint8_t *ct    = out_buf + 12;
+     uint8_t *tag   = out_buf + 12 + input.len;
+ 
+-    random_fill_buffer(BYTE_ARRAY(nonce, 12));
++    if (random_fill_buffer(BYTE_ARRAY(nonce, 12)) != 0) {
++        return PICOKEYS_EXEC_ERROR;
++    }
+ 
+     mbedtls_gcm_context gcm;
+     mbedtls_gcm_init(&gcm);
+@@ -101,6 +103,7 @@ int encrypt_with_aad(const uint8_t key[32], const_byte_array_t input, pin_kdf_ve
+     int rc = mbedtls_gcm_setkey(&gcm, MBEDTLS_CIPHER_ID_AES, kenc, 256);
+     mbedtls_platform_zeroize(kenc, sizeof(kenc));
+     if (rc != 0) {
++        mbedtls_gcm_free(&gcm);
+         return rc;
+     }
+ 
+@@ -138,6 +141,7 @@ int decrypt_with_aad(const uint8_t key[32], const_byte_array_t input, pin_kdf_ve
+     int ret = mbedtls_gcm_setkey(&gcm, MBEDTLS_CIPHER_ID_AES, kenc, 256);
+     mbedtls_platform_zeroize(kenc, sizeof(kenc));
+     if (ret != 0) {
++        mbedtls_gcm_free(&gcm);
+         return ret;
+     }
+ 
+diff --git a/src/fs/low_flash.c b/src/fs/low_flash.c
+index 5ac7185..8b14909 100644
+--- a/src/fs/low_flash.c
++++ b/src/fs/low_flash.c
+@@ -34,9 +34,25 @@
+   #include "esp_partition.h"
+   const esp_partition_t *part0;
+   #define save_and_disable_interrupts() 1
+-  #define flash_range_erase(a,b) esp_partition_erase_range(part0, a, b)
+-  #define flash_range_program(a,b,c) esp_partition_write(part0, a, b, c);
+   #define restore_interrupts(a) (void)a
++  /* MultiKeys: the partition API results used to be dropped, so a failed erase/program was treated as done and
++   * the journal was marked complete over half-written data. The wrappers record the first failure of an
++   * operation; do_flash_op_*() reads it with FLASH_OP_FAILED() and reports the operation as not performed. */
++  static esp_err_t flash_op_err = ESP_OK;
++  static inline void flash_range_erase(uintptr_t addr, size_t size) {
++      esp_err_t err = esp_partition_erase_range(part0, addr, size);
++      if (err != ESP_OK && flash_op_err == ESP_OK) {
++          flash_op_err = err;
++      }
++  }
++  static inline void flash_range_program(uintptr_t addr, const uint8_t *data, size_t size) {
++      esp_err_t err = esp_partition_write(part0, addr, data, size);
++      if (err != ESP_OK && flash_op_err == ESP_OK) {
++          flash_op_err = err;
++      }
++  }
++  #define FLASH_OP_BEGIN() (flash_op_err = ESP_OK)
++  #define FLASH_OP_FAILED() (flash_op_err != ESP_OK)
+  #else
+   #ifdef _MSC_VER
+    #include <windows.h>
+@@ -66,6 +82,10 @@
+  uint8_t *map = NULL;
+  #include <fcntl.h>
+ #endif
++#ifndef FLASH_OP_BEGIN
++#define FLASH_OP_BEGIN() ((void)0)
++#define FLASH_OP_FAILED() false
++#endif
+ #if defined(PICO_PLATFORM) || defined(ESP_PLATFORM)
+ extern uint32_t FLASH_SIZE_BYTES;
+ #else
+@@ -140,10 +160,16 @@ static int do_flash_op_erase(uintptr_t addr) {
+         printf("WARN: FLASH LOCKOUT START TIMEOUT\n");
+         return PICOKEYS_ERR_NO_MEMORY;
+     }
++    FLASH_OP_BEGIN();
+     uint32_t ints = save_and_disable_interrupts();
+     flash_range_erase(addr - XIP_BASE, FLASH_SECTOR_SIZE);
+     restore_interrupts(ints);
+-    if (multicore_lockout_end_timeout_us(1000) == false) {
++    bool lockout_end_ok = multicore_lockout_end_timeout_us(1000);
++    if (FLASH_OP_FAILED()) {
++        printf("WARN: FLASH ERASE FAILED\n");
++        return PICOKEYS_ERR_NO_MEMORY; /* not performed: callers keep the data pending and retry */
++    }
++    if (lockout_end_ok == false) {
+         printf("WARN: FLASH LOCKOUT END TIMEOUT\n");
+         return PICOKEYS_EXEC_ERROR;
+     }
+@@ -155,10 +181,16 @@ static int do_flash_op_program(uintptr_t addr, const uint8_t *data, size_t size)
+         printf("WARN: FLASH LOCKOUT START TIMEOUT\n");
+         return PICOKEYS_ERR_NO_MEMORY;
+     }
++    FLASH_OP_BEGIN();
+     uint32_t ints = save_and_disable_interrupts();
+     flash_range_program(addr - XIP_BASE, data, size);
+     restore_interrupts(ints);
+-    if (multicore_lockout_end_timeout_us(1000) == false) {
++    bool lockout_end_ok = multicore_lockout_end_timeout_us(1000);
++    if (FLASH_OP_FAILED()) {
++        printf("WARN: FLASH PROGRAM FAILED\n");
++        return PICOKEYS_ERR_NO_MEMORY;
++    }
++    if (lockout_end_ok == false) {
+         printf("WARN: FLASH LOCKOUT END TIMEOUT\n");
+         return PICOKEYS_EXEC_ERROR;
+     }
+@@ -170,11 +202,19 @@ static int do_flash_op_erase_program(uintptr_t addr, const uint8_t *data, size_t
+         printf("WARN: FLASH LOCKOUT START TIMEOUT\n");
+         return PICOKEYS_ERR_NO_MEMORY;
+     }
++    FLASH_OP_BEGIN();
+     uint32_t ints = save_and_disable_interrupts();
+     flash_range_erase(addr - XIP_BASE, FLASH_SECTOR_SIZE);
+-    flash_range_program(addr - XIP_BASE, data, size);
++    if (!FLASH_OP_FAILED()) {
++        flash_range_program(addr - XIP_BASE, data, size);
++    }
+     restore_interrupts(ints);
+-    if (multicore_lockout_end_timeout_us(1000) == false) {
++    bool lockout_end_ok = multicore_lockout_end_timeout_us(1000);
++    if (FLASH_OP_FAILED()) {
++        printf("WARN: FLASH ERASE/PROGRAM FAILED\n");
++        return PICOKEYS_ERR_NO_MEMORY;
++    }
++    if (lockout_end_ok == false) {
+         printf("WARN: FLASH LOCKOUT END TIMEOUT\n");
+         return PICOKEYS_EXEC_ERROR;
+     }
+diff --git a/src/usb/ccid/ccid.c b/src/usb/ccid/ccid.c
+index d3a248e..fa25a0a 100644
+--- a/src/usb/ccid/ccid.c
++++ b/src/usb/ccid/ccid.c
+@@ -344,7 +344,7 @@ int driver_process_usb_packet_ccid(uint8_t itf, uint16_t rx_read) {
+             }
+             else if (ccid_header[itf]->bMessageType == CCID_XFR_BLOCK) {
+                 apdu.rdata = &ccid_response[itf]->apdu;
+-                apdu_sent = apdu_process(itf, CONST_BYTE_ARRAY(&ccid_header[itf]->apdu, (uint16_t)ccid_header[itf]->dwLength));
++                apdu_sent = apdu_process_ccid(itf, CONST_BYTE_ARRAY(&ccid_header[itf]->apdu, (uint16_t)ccid_header[itf]->dwLength));
+ #ifndef ENABLE_EMULATION
+                 if (apdu_sent > 0) {
+                     card_start(sc_itf_to_usb_itf(itf), apdu_thread);
+diff --git a/src/usb/emulation/emulation.c b/src/usb/emulation/emulation.c
+index 14f2205..534bb3e 100644
+--- a/src/usb/emulation/emulation.c
++++ b/src/usb/emulation/emulation.c
+@@ -357,7 +357,7 @@ uint16_t emul_read(uint8_t itf) {
+                         uint16_t sent = 0;
+                         DEBUG_PAYLOAD(emul_rx, len);
+                         apdu.rdata = emul_tx;
+-                        if ((sent = apdu_process(itf, CONST_BYTE_ARRAY(emul_rx, len))) > 0) {
++                        if ((sent = apdu_process_ccid(itf, CONST_BYTE_ARRAY(emul_rx, len))) > 0) {
+                             process_apdu();
+                             apdu_finish();
+                         }
+diff --git a/src/usb/emulation/emulation.h b/src/usb/emulation/emulation.h
+index 13a43c9..babeb07 100644
+--- a/src/usb/emulation/emulation.h
++++ b/src/usb/emulation/emulation.h
+@@ -25,7 +25,11 @@
+ #include <stdbool.h>
+ #include "byte_array.h"
+ 
++/* MultiKeys: overridable (-DUSB_BUFFER_SIZE=2048) so the emulation build can use the device's buffer size and
++ * tests catch overflows that a 4096-byte buffer hides. */
++#ifndef USB_BUFFER_SIZE
+ #define USB_BUFFER_SIZE 4096
++#endif
+ extern int emul_init(const char *host, uint16_t port);
+ extern uint8_t emul_rx[USB_BUFFER_SIZE];
+ extern uint16_t emul_rx_size, emul_tx_size;

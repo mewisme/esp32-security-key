@@ -3,7 +3,7 @@
 # from 1 MB to 0x1E0000 (ends exactly at the unchanged fs partition offset).
 # 16 MB flash (N16R8). The 0x40/0x1 data partition ("part0") holds the pico-keys file system
 # (credentials, PINs, key material encrypted by the device key).
-# Production images with Secure Boot v2 / flash encryption use partitions.prod.csv (Phase 7):
+# Production images with Secure Boot v2 / flash encryption use partitions.hardened.csv (sdkconfig.hardening):
 # the larger bootloader does not fit before 0x11000.
 nvs,      data, nvs,      0x11000,  0x6000
 phy_init, data, phy,      0x17000,  0x1000

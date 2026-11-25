@@ -176,8 +176,8 @@ Prerequisite: ESP-IDF v5.5.6 activated (`idf.py` on PATH), see [docs/DEVELOPMENT
 python tools/build.py dev --ci-pins          # compile check; the image refuses to be usable
 python tools/build.py dev                    # real build (16 MB flash), needs sdkconfig.board with your GPIOs
 python tools/build.py dev --hw esp32s3-4mb --board esp32s3-boot-button --clean   # 4 MB flash (also esp32s3-8mb)
-python tools/build.py dev --release          # firmware version without the -dev suffix (release packaging)
-python tools/build.py prod --app openpgp
+python tools/build.py dev --release --board esp32s3-boot-button   # version without the -dev suffix (release packaging)
+python tools/build.py prod --app openpgp --board esp32s3-boot-button   # prod/release/hardened builds need --board (or --ci-pins for prod)
 cd host && cargo test --locked
 cd web && pnpm install && pnpm dev           # web installer (web/README.md)
 ```

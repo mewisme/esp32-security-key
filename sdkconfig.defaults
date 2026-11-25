@@ -11,6 +11,10 @@ CONFIG_PARTITION_TABLE_FILENAME="partitions.csv"
 CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
 CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
 CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+# Stack canaries in every build (the release overlay raises this to STRONG).
+CONFIG_COMPILER_STACK_CHECK_MODE_NORM=y
+# Read back every flash write (the pico-keys flash driver journals sector programs).
+CONFIG_SPI_FLASH_VERIFY_WRITE=y
 CONFIG_WL_SECTOR_SIZE_512=y
 CONFIG_WL_SECTOR_MODE_PERF=y
 
@@ -19,6 +23,10 @@ CONFIG_WL_SECTOR_MODE_PERF=y
 
 # Wi-Fi/BT/TLS are not used.
 CONFIG_MBEDTLS_TLS_DISABLED=y
+# No TLS, so no certificate bundle (saves flash and an attack surface).
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=n
+# NOTE: the mbedTLS feature set that is really compiled in comes from pico-keys-sdk/config/mbedtls_config.h
+# (authoritative); the CONFIG_MBEDTLS_* lines here only keep the IDF component consistent with it.
 # CONFIG_ESP_WIFI_ENABLED is not set
 
 CONFIG_MBEDTLS_CMAC_C=y

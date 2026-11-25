@@ -11,7 +11,7 @@
 //     switch between the two images also needs SWITCH typed (the FIDO2 / OpenPGP data areas are not interchangeable)
 // Outside repurpose no write ever touches a protected partition. A table that cannot be read never gets here: the
 // caller fails with `unsafe-layout`.
-import { type FlashPolicy, policy as defaultPolicy } from "../firmware/policy";
+import { type FlashPolicy, policy as defaultPolicy, protectedNames, protectedRanges } from "../firmware/policy";
 import type { Build } from "../firmware/types";
 import { compareSemver } from "../firmware/version";
 import type { AppDescriptor } from "./app-descriptor";
@@ -35,7 +35,8 @@ export type AckId =
   | "repurpose-typed"
   | "force-storage"
   | "force-typed"
-  | "untested-hardware";
+  | "untested-hardware"
+  | "unsigned-release";
 
 /** Acknowledgements the person gives by typing a word instead of ticking a box, with the word to type. */
 export const TYPED_ACKS = { "repurpose-typed": "REPURPOSE", "switch-image-typed": "SWITCH", "force-typed": "FORCE" } as const;
@@ -62,6 +63,8 @@ export function decideInstallMode(input: {
   build: Build;
   /** True unless the board is positively identified as the tested unit (see BOARD_IDENTITY_VERIFIED in compatibility/profiles.ts). */
   untestedHardware: boolean;
+  /** True when the release manifest carries no valid signature: the person must acknowledge that first. */
+  unsignedRelease?: boolean;
   policy?: FlashPolicy;
 }): InstallDecision {
   const { table, app, build } = input;
@@ -70,6 +73,7 @@ export function decideInstallMode(input: {
     ...needed,
     ...(input.build.image === "openpgp" ? (["experimental-image"] as const) : []),
     ...(input.untestedHardware ? (["untested-hardware"] as const) : []),
+    ...(input.unsignedRelease ? (["unsigned-release"] as const) : []),
   ];
   const images: Write[] = [...build.images]
     .sort((a, b) => a.offset - b.offset)
@@ -125,8 +129,16 @@ export function decideInstallMode(input: {
     return { mode: "blocked", allowed: false, acks: [], writes: [], reason: "storage-incompatible" };
   }
   const fills: Write[] = build.partitions
-    .filter((q) => build.repurpose_fill.includes(q.name) && p.protected_partitions.includes(q.name))
+    .filter((q) => build.repurpose_fill.includes(q.name) && protectedNames(p).includes(q.name))
     .map((q) => ({ offset: q.offset, length: q.size, kind: "fill" as const, role: q.name }));
+  // A fill erases data: its range must be exactly the policy's range for that protected partition, never the manifest's word.
+  const ranges = protectedRanges(p);
+  for (const f of fills) {
+    const r = ranges.find((x) => x.name === f.role);
+    if (ranges.length && (!r || r.offset !== f.offset || r.size !== f.length)) {
+      return { mode: "blocked", allowed: false, acks: [], writes: [], reason: `the manifest's ${f.role} range differs from the policy` };
+    }
+  }
   return {
     mode: "repurpose",
     allowed: true,

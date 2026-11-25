@@ -3,7 +3,8 @@
 
   .\\tools\\run_elevated.ps1 tools\\ctap_reset.py --yes-wipe-device
 
-The firmware only accepts a reset within 10 seconds of power-up and needs a button press, so the script asks you to
+The firmware is built with ENABLE_POWER_ON_RESET=1 (CTAP 2.1): it only accepts a reset within 10 seconds of power-up
+and needs a button press, so the script asks you to
 unplug and re-plug the key, waits for it to reappear and sends the reset immediately; then press BOOT when told.
 It prints the GetInfo options before and after (clientPin / makeCredUvNotRqd / alwaysUv). Nothing else is changed.
 """

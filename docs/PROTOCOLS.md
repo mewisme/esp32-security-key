@@ -20,7 +20,7 @@ All commands use `CLA=0x80`. `P1=P2=0x00` except INS `06` (P1 = operation, P2 = 
 | `01` | GET_INFO | none | `ver(1)=0x01` ‖ `state(1)` ‖ `policy(1)=0x01` ‖ `device_id(16)` ‖ `pubkey(65)` if `state=1` | state 0 = unenrolled, 1 = enrolled. policy bit0 = user presence required (always set, not changeable). |
 | `02` | ENROLL | `PIN` (6..63 bytes) | `pubkey(65)` ‖ `device_id(16)` | Only when unenrolled (else `6985`). Sets the PIN, generates a P-256 key, requires a button press. |
 | `03` | CHALLENGE | `host_nonce(32)` | `device_nonce(32)` ‖ `signature(DER ECDSA, ≤72)` | Only when enrolled (else `6985`). Requires a button press. No PIN needed (the signature proves possession; the physical press proves presence). |
-| `04` | REVOKE | `PIN` | none | Requires PIN and a button press. Deletes the key and PIN, state returns to 0. |
+| `04` | REVOKE | `PIN` | none | Requires a button press, then the PIN. Deletes the key, PIN and retry counter, state returns to 0. |
 | `06` | DEVICE_NAME | by P1, see below | `flags(1)` ‖ `name` (GET, SET, CLEAR) | Read or change the name the key reports over USB. |
 | `07` | BUILD_INFO | none | `fmt(1)=01` ‖ `tag ‖ len ‖ value`... | What is running on the key: version, source commit, image SHA-256, chip. Read-only, no button, no PIN. See below. |
 
@@ -31,13 +31,34 @@ All commands use `CLA=0x80`. `P1=P2=0x00` except INS `06` (P1 = operation, P2 = 
   `"MKAUTH-v1\0" (10 bytes) ‖ host_nonce(32) ‖ device_nonce(32) ‖ device_id(16)`.
   Host nonce must be fresh random bytes chosen by the verifier for every attempt; the device keeps no replay state.
 - PIN: 8 attempts, counter persisted and decremented before the comparison (a power cut cannot give free guesses). Wrong PIN → `63Cx` (x = remaining tries); 0 left → `6983`. A blocked applet is **not recoverable** except by erasing the device's key-storage partition (full re-provisioning); the FIDO `authenticatorReset` does not clear MKAUTH state.
-- PIN storage: PBKDF2-HMAC-SHA256, 10000 iterations, 16-byte random salt. The private key is wrapped with the pico-keys device key (`derive_kbase`) so CHALLENGE needs no PIN. On a build without OTP/Secure-Lock the device key is derived from the chip serial hash only, so at-rest protection depends on flash encryption (see SECURITY.md).
+- PIN storage: 16-byte random salt, `PBKDF2-HMAC-SHA256(pin, salt, 10000)`, and (record version 2) the stored verifier is
+  `HMAC-SHA256(kbase, PBKDF2 output)` with `kbase` = the pico-keys device key (`derive_kbase`). A record of version 1 (verifier = PBKDF2
+  output only) is accepted once on a correct PIN and rewritten as version 2. The private key is wrapped with the pico-keys device key
+  (`derive_kbase`) so CHALLENGE needs no PIN. On a build without OTP/Secure-Lock the device key is derived from the chip serial hash only, so
+  at-rest protection depends on flash encryption (see SECURITY.md). Enrollment fails with `6F00`, storing nothing, if wrapping the key fails.
+- Files: `0xBC00` = record (magic `MKA1`, record version byte: 1 or 2, device_id, salt, verifier, pubkey, wrapped key; written at enrollment and
+  when a version 1 record is upgraded, never per PIN attempt); `0xBC02` = PIN tries left (1 byte, rewritten on every attempt); `0xBC01` = device name.
+  When `0xBC02` is missing it is created from the record's counter. A record that carries the `MKA1` magic but has the wrong size or an unknown
+  version answers `6F00` to every command (it is not treated as "unenrolled", so ENROLL cannot overwrite it).
+- **Button before PIN:** REVOKE and the PIN-protected INS 06 operations wait for the button first; only after a press is the PIN checked and an attempt
+  spent. With no press the answer is `6300` and the retry counter is unchanged. Malformed lengths (`6700`) and names (`6A80`) are still rejected
+  before the button is awaited. The PIN bytes in the APDU buffer are zeroized after use.
 - RNG: the pico-keys SDK RNG (`random_fill_iterator`), the same source upstream uses for FIDO.
 - Status words: `9000` ok · `6300` no button press within `CONFIG_MULTIKEY_UP_TIMEOUT_MS` (default 15000 ms) ·
   `6700` wrong length · `6983` PIN blocked · `6985` wrong state (INS 06: renaming compiled out) · `6A80` incorrect data
   (INS 06: invalid name, or a PIN supplied while none exists) · `6A86` bad P1/P2 · `6D00` unknown INS · `6E00` unknown CLA · `6F00` internal error.
 - Verification by the host: check `signature` against the **trusted** public key for the user (trust store), using the
   transcript built from the host's own nonce and the returned device nonce and the trusted `device_id`.
+
+### Known limitations (MKAUTH v1)
+
+- The CHALLENGE transcript (`"MKAUTH-v1\0" ‖ host_nonce ‖ device_nonce ‖ device_id`) is not bound to a verifier context (relying-party
+  name, host, transport, session). A signature obtained from the key for one verifier's nonce is only useless to another verifier because
+  nonces are fresh and verifiers choose them; there is no protection against a malicious host that relays a nonce chosen by a third party
+  while the user presses the button. Adding a context string to the transcript changes the wire format (firmware, `multikey-proto`, web)
+  and therefore needs a protocol v2; it is **not** part of this version. The v1 identifier in GET_INFO (`ver = 0x01`) and in the transcript
+  prefix stays `MKAUTH-v1`; a v2 transcript must use a different prefix and a different `ver`, so v1 and v2 signatures can never be confused.
+- The record format version (below) is independent of this protocol version.
 
 ### INS 06 DEVICE_NAME (USB product name)
 
@@ -51,7 +72,7 @@ All commands use `CLA=0x80`. `P1=P2=0x00` except INS `06` (P1 = operation, P2 = 
 - P2 bit0 = 1 on SET/CLEAR: also re-enumerate afterwards (same as a following REENUM without a second press). P2 > 1 → `6A86`.
 - The name is stored in its own file `0xBC01`: keys, credentials, PINs, VID/PID and the FIDO AAGUID are never touched. It survived
   reboot and a firmware update on hardware; that it also survives MKAUTH REVOKE and FIDO `authenticatorReset` follows from the code
-  (`cmd_revoke` deletes only `0xBC00`; `fido_reset_should_clear` does not list prefix `0xBC`) and was not run. Details: `docs/USB_IDENTITY.md`.
+  (`cmd_revoke` deletes only `0xBC00` and `0xBC02`; `fido_reset_should_clear` does not list prefix `0xBC`) and was not run. Details: `docs/USB_IDENTITY.md`.
 - Short APDU, Lc ≤ 1+63+31 = 95. Hosts send Le=0x00 on GET/SET/CLEAR and no Le on REENUM.
 - The web installer sends the same APDUs (SELECT, GET_INFO, INS 06 GET/SET/CLEAR with P2 = 1) over the WebCCID interface: the second, vendor-class (0xFF, two bulk endpoints, WinUSB-bound) interface runs the same CCID parser as the smart-card interface, which Chrome's WebUSB refuses to claim (`web/src/lib/device/{mkauth,webccid}.ts`).
 - **Timing on the WebCCID interface (observed, Windows 11, Chrome, one board):** after the key restarts its USB connection the first command can go
@@ -69,6 +90,8 @@ All commands use `CLA=0x80`. `P1=P2=0x00` except INS `06` (P1 = operation, P2 = 
 and the web page then say the firmware cannot report its build. Response: `fmt(1) = 01`, then entries `tag(1) ‖ len(1) ‖ value(len)`
 (at most 255 bytes in all). A reader skips tags it does not know and rejects a repeated tag, a truncated entry, or a text entry that is
 not printable ASCII (nothing a device sends can inject control characters into a terminal or a page).
+Tags `01`-`03`, `06`, `07`, `09`-`0C` are always present; tags `04`, `05`, `08` and `0D` are optional and are left out when they do not fit in
+the 255-byte response (or, for `05`/`08`, cannot be computed). Readers must not require them.
 
 | Tag | Value | Source |
 |---|---|---|

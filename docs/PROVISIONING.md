@@ -29,7 +29,7 @@ State after this: eFuses untouched (patch 0002), secrets obfuscated only, JTAG/d
 ## 3. Build the hardened image (build only)
 
 ```
-python tools/build.py prod --harden --signing-key sb_key.pem --i-understand-irreversible
+python tools/build.py prod --harden --release --board esp32s3-boot-button --signing-key sb_key.pem --i-understand-irreversible
 ```
 
 Output directory `build-fido-prod-hardened/`. Verified to build with a throwaway key; never booted on hardware.

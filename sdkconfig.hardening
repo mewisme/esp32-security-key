@@ -15,9 +15,11 @@ CONFIG_SECURE_BOOT_BUILD_SIGNED_BINARIES=y
 # CONFIG_SECURE_BOOT_FLASH_BOOTLOADER_DEFAULT is not set
 
 CONFIG_SECURE_FLASH_ENC_ENABLED=y
+CONFIG_SECURE_FLASH_ENCRYPTION_AES256=y
 CONFIG_SECURE_FLASH_ENCRYPTION_MODE_RELEASE=y
-# Keep a restricted ROM download mode (needs the flash-encryption key to be useful) for recovery of
-# a bricked app; fully disabling it removes the last in-field recovery path.
+# Secure download mode: the ROM loader still allows erasing and plain (unencrypted) writes, so an attacker with USB
+# access can DESTROY the device (denial of service) but cannot read flash or run unsigned code. Fully disabling the
+# ROM download mode would remove the last in-field recovery path, so it is kept.
 CONFIG_SECURE_ENABLE_SECURE_ROM_DL_MODE=y
 
 # The Secure Boot v2 bootloader is larger than 32 KB: move the partition table (same layout as partitions.csv).

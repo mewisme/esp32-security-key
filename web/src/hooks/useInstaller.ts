@@ -207,6 +207,7 @@ export function useInstaller(): Installer {
         app: parseAppDescriptor(appBlob),
         build: b,
         untestedHardware: !BOARD_IDENTITY_VERIFIED,
+        unsignedRelease: release.authentication.status !== "signed",
       });
       setLog(d.log());
       dispatch({ type: "SAFETY_DECIDED", decision });

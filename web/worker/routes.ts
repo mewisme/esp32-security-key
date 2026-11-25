@@ -81,3 +81,28 @@ export function parseReleasesAtom(xml: string): ReleaseSummary[] {
   }
   return out;
 }
+
+/** Reads a body into one buffer, giving up (null) the moment more than `cap` bytes have arrived. */
+export async function readCapped(body: ReadableStream<Uint8Array> | null, cap: number): Promise<Uint8Array | null> {
+  if (!body) return new Uint8Array(0);
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > cap) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  const out = new Uint8Array(total);
+  let pos = 0;
+  for (const c of chunks) {
+    out.set(c, pos);
+    pos += c.byteLength;
+  }
+  return out;
+}

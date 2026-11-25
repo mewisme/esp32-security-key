@@ -1,0 +1,10 @@
+# RELEASE HARDENING overlay: layered by tools/build.py after sdkconfig.prod for every prod build.
+# Build-only options (no eFuse is touched). Not hardware-verified: a prod image must be tested on a sacrificial board.
+CONFIG_ESP_SYSTEM_PANIC_SILENT_REBOOT=y
+CONFIG_ESP_CONSOLE_NONE=y
+CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
+CONFIG_BOOTLOADER_LOG_LEVEL_ERROR=y
+CONFIG_COMPILER_STACK_CHECK_MODE_STRONG=y
+CONFIG_HEAP_POISONING_LIGHT=y
+CONFIG_ESP_DEBUG_OCDAWARE=n
+CONFIG_ESP_TASK_WDT_PANIC=y

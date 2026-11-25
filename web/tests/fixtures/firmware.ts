@@ -56,6 +56,7 @@ export function appImage(version: string, project = "multikey-fido", size = 0x40
   const out = new Uint8Array(size).fill(0x5a);
   out.fill(0, 0, 0x120);
   out[0] = 0xe9;
+  out[12] = 9; // chip id: ESP32-S3
   const d = 0x20;
   new DataView(out.buffer).setUint32(d, 0xabcd5432, true);
   const put = (s: string, at: number) => out.set(new TextEncoder().encode(s), d + at);
@@ -104,6 +105,10 @@ interface Options {
   version?: string;
   tag?: string;
   extraMember?: boolean;
+  /** Pack a partition table built with these options (default: the standard layout). */
+  tableOpts?: Parameters<typeof partitionTable>[0];
+  /** Make the LICENSE member this many bytes long (the zip stays small: it is all zeros). */
+  licenseBytes?: number;
   /** Declare `update.app_only` (published by releases after v0.3.2). Default: absent, like v0.3.0 to v0.3.2. */
   appOnly?: boolean;
 }
@@ -151,7 +156,8 @@ async function pack(
   const header = [0x02, (SIZE_CODE[flashSize]! << 4) | 0xf]; // image header bytes 2-3: dio, flash size | 80 MHz
   const bootloader = new Uint8Array(0x5000).fill(0x11);
   bootloader.set([0xe9, 0x03, ...header]);
-  const table = partitionTable();
+  bootloader.set([9, 0], 12); // chip id: ESP32-S3
+  const table = partitionTable(opts.tableOpts);
   const image = opts.image ?? "fido";
   const app = appImage(opts.version, `multikey-${image}`);
   app.set(header, 2);
@@ -171,7 +177,7 @@ async function pack(
     [`${root}/multikey-${image}.bin`]: app,
     [`${root}/firmware.json`]: enc.encode(canonicalJson(withImages) + "\n"),
     [`${root}/SHA256SUMS`]: enc.encode("sums\n"),
-    [`${root}/LICENSE`]: enc.encode("AGPL\n"),
+    [`${root}/LICENSE`]: opts.licenseBytes ? new Uint8Array(opts.licenseBytes) : enc.encode("AGPL\n"),
     [`${root}/NOTICE.txt`]: enc.encode("notice\n"),
     [`${root}/README.txt`]: enc.encode("readme\n"),
   };

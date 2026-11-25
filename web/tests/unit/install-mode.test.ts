@@ -126,3 +126,32 @@ describe("decideInstallMode on hardware that is not verified", () => {
     expect(d).toMatchObject({ mode: "blocked", allowed: false, acks: [] });
   });
 });
+
+describe("unsigned releases and fill ranges", () => {
+  it("an unsigned release adds the unsigned-release acknowledgement in every installing mode", () => {
+    const d = decideInstallMode({ build, untestedHardware: false, unsignedRelease: true, table: T("blank"), app: null });
+    expect(d.acks).toEqual(["dev-firmware", "unsigned-release"]);
+    expect(decideInstallMode({ build, untestedHardware: false, table: T("blank"), app: null }).acks).not.toContain("unsigned-release");
+    const repurpose = decideInstallMode({ build, untestedHardware: false, unsignedRelease: true, table: T("garbage"), app: null });
+    expect(repurpose.acks).toContain("unsigned-release");
+  });
+
+  it("repurpose fills must equal the policy's protected ranges; a manifest that moves one is blocked", async () => {
+    const policy = (await import("@/lib/firmware/policy")).policy;
+    const strict = {
+      ...policy,
+      protected_partitions: PARTITIONS.filter((p) => ["nvs", "phy_init", "part0"].includes(p.name)).map(({ name, offset, size }) => ({ name, offset, size })),
+    };
+    const ok = decideInstallMode({ build, untestedHardware: false, table: T("garbage"), app: null, policy: strict });
+    expect(ok.mode).toBe("repurpose");
+    expect(ok.writes.filter((w) => w.kind === "fill").map((w) => [w.role, w.offset, w.length])).toEqual([
+      ["nvs", 0x11000, 0x6000],
+      ["part0", 0x200000, 0x100000],
+    ]);
+    const moved = structuredClone(build);
+    moved.partitions.find((q) => q.name === "part0")!.size = 0x400000;
+    const bad = decideInstallMode({ build: moved, untestedHardware: false, table: T("garbage"), app: null, policy: strict });
+    expect(bad).toMatchObject({ mode: "blocked", allowed: false });
+    expect(bad.writes).toEqual([]);
+  });
+});

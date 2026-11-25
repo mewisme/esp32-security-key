@@ -22,7 +22,11 @@
   ],
   "partition_table": {"offset": 32768, "read_length": 3072},
   "app_descriptor": {"offset": 131104, "read_length": 256},
-  "protected_partitions": ["nvs", "phy_init", "part0"],
+  "protected_partitions": [
+    {"name": "nvs", "offset": 69632, "size": 24576},
+    {"name": "phy_init", "offset": 94208, "size": 4096},
+    {"name": "part0", "offset": 2097152, "size": 1048576}
+  ],
   "repurpose_fill": ["nvs", "part0"],
   "credential_partition": {"name": "part0", "type": 64, "subtype": 1},
   "native_usb": {"download": [12346, 4097], "app": [12346, 16386]},

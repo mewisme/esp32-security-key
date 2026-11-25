@@ -193,6 +193,10 @@ fn parsers() {
     bad = e.clone();
     bad[1] = 2;
     assert_eq!(parse_info(&bad), Err(ProtoError::BadState(2)));
+    // policy must require user presence
+    let mut nopol = u.clone();
+    nopol[2] = 0;
+    assert_eq!(parse_info(&nopol), Err(ProtoError::PolicyNoPresence(0)));
     // enroll
     let mut en = v.pubkey.to_vec();
     en.extend_from_slice(&v.device_id);
@@ -220,10 +224,11 @@ fn status_words() {
     assert_eq!(StatusWord::from(0x63C3), StatusWord::RetriesLeft(3));
     assert_eq!(StatusWord::from(0x63C0), StatusWord::RetriesLeft(0));
     assert_eq!(StatusWord::from(0x6985), StatusWord::WrongState);
+    assert_eq!(StatusWord::from(0x6A80), StatusWord::WrongData);
     assert_eq!(StatusWord::from(0x1234), StatusWord::Other(0x1234));
     for sw in [
-        0x9000u16, 0x6300, 0x63C8, 0x6700, 0x6982, 0x6983, 0x6985, 0x6A86, 0x6D00, 0x6E00, 0x6F00,
-        0x1234,
+        0x9000u16, 0x6300, 0x63C8, 0x6700, 0x6982, 0x6983, 0x6985, 0x6A80, 0x6A86, 0x6D00, 0x6E00,
+        0x6F00, 0x1234,
     ] {
         assert_eq!(u16::from(StatusWord::from(sw)), sw);
     }
@@ -324,4 +329,16 @@ fn device_name_response_parsing() {
     assert!(parse_device_name(&[[0x04].as_slice(), &[b'x'; 32]].concat()).is_err());
     assert!(parse_device_name(&[0x04, 0xFF, 0xFE]).is_err());
     assert!(parse_device_name(&[]).is_err());
+}
+
+#[test]
+fn device_name_response_rejects_control_characters() {
+    use multikey_proto::parse_device_name;
+    assert_eq!(
+        parse_device_name(b"\x04Plain Name").unwrap().name,
+        "Plain Name"
+    );
+    assert!(parse_device_name(b"\x04a\x1b[31m").is_err());
+    assert!(parse_device_name(b"\x04a\x7f").is_err());
+    assert!(parse_device_name(b"\x04caf\xc3\xa9").is_err());
 }

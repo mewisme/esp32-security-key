@@ -3,8 +3,9 @@
   "name": "multikeys-web",
   "main": "./worker/index.ts",
   "compatibility_date": "2026-11-23",
-  "workers_dev": true,
-  "preview_urls": true,
+  // Production is reachable only through its custom domain: no *.workers.dev URL and no per-version preview URLs.
+  "workers_dev": false,
+  "preview_urls": false,
   "assets": {
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*"]
@@ -14,6 +15,6 @@
   // the same account). Staging sets its own empty routes so that it can never take the domain over.
   "routes": [{ "pattern": "multikeys.mewis.me", "custom_domain": true }],
   "env": {
-    "staging": { "name": "multikeys-web-staging", "workers_dev": true, "routes": [] }
+    "staging": { "name": "multikeys-web-staging", "workers_dev": true, "preview_urls": true, "routes": [] }
   }
 }

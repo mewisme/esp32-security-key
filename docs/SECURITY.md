@@ -39,6 +39,12 @@ README makes the same distinction for chips without OTP secrets.
   eFuse block is never used as an all-zero key).
 - The hardened image burns fuses by design when booted on a blank chip: `tools/build.py` refuses to build it without
   `--signing-key` and `--i-understand-irreversible`, and PROVISIONING.md spells out the consequences.
+  It also requires `--release` and `--board`, and refuses `--ci-pins`. Every `prod` build layers
+  `sdkconfig.release-hardening` (silent panic reboot, no console, stack protector STRONG, heap poisoning, no OCD-aware
+  debug, task watchdog panic; build-only, not hardware-verified). `DEBUG_APDU` (logs PINs) is a configure error in `prod`.
+- In the hardened layout `part0` is **not** flash-encrypted (`partitions.hardened.csv`): the pico-keys flash journal
+  programs a page twice, which a flash-encrypted page cannot do safely. Its secrets stay wrapped by the device key.
+  Secure download mode still allows erase and plain writes (denial of service only). Unverified on hardware.
 
 ## Threats and posture
 

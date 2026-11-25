@@ -112,6 +112,9 @@ test("H: a 4 MB board gets the 4 MB build, labelled build-verified, and needs th
   await page.getByLabel(/experimental development firmware/).check();
   await expect(install).toBeDisabled();
   await page.getByLabel(/hasn't been tested with MultiKeys/).check();
+  // The test release is unsigned: that needs its own acknowledgement.
+  await expect(install).toBeDisabled();
+  await page.getByLabel(/release is not signed/).check();
   await expect(install).toBeEnabled();
   await install.click();
   await page.getByRole("button", { name: "Check my key" }).click();
@@ -398,6 +401,8 @@ test("OpenPGP: a blank board needs the experimental acknowledgement, not the SWI
   // OpenPGP is only build-verified, even on the board the FIDO2 image was tested on.
   await expect(install).toBeDisabled();
   await page.getByLabel(/hasn't been tested with MultiKeys/).check();
+  await expect(install).toBeDisabled();
+  await page.getByLabel(/release is not signed/).check();
   await expect(install).toBeEnabled();
 });
 

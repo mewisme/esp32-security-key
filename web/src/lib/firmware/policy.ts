@@ -30,6 +30,12 @@ export interface HardwareProfile {
   release: boolean;
 }
 
+export interface ProtectedPartition {
+  name: string;
+  offset: number;
+  size: number;
+}
+
 export interface FlashPolicy {
   schema_version: 2;
   chip: string;
@@ -40,7 +46,8 @@ export interface FlashPolicy {
   allowed_writes: AllowedWrite[];
   partition_table: { offset: number; read_length: number };
   app_descriptor: { offset: number; read_length: number };
-  protected_partitions: string[];
+  /** Partition names; once tools/flash_policy.json carries {name, offset, size} entries, those are accepted too. */
+  protected_partitions: (string | ProtectedPartition)[];
   repurpose_fill: string[];
   credential_partition: { name: string; type: number; subtype: number };
   native_usb: { download: [number, number]; app: [number, number] };
@@ -51,6 +58,16 @@ export const policy = raw as unknown as FlashPolicy;
 
 /** Offset of esp_app_desc_t inside an app image (after the image header and first segment header). */
 export const APP_DESC_IMAGE_OFFSET = 0x20;
+
+/** Names of the protected partitions, whichever form the policy file uses. */
+export function protectedNames(p: FlashPolicy = policy): string[] {
+  return p.protected_partitions.map((x) => (typeof x === "string" ? x : x.name));
+}
+
+/** The protected partitions that carry an exact offset and size in the policy (none while the file lists names only). */
+export function protectedRanges(p: FlashPolicy = policy): ProtectedPartition[] {
+  return p.protected_partitions.filter((x): x is ProtectedPartition => typeof x !== "string");
+}
 
 export function appOffset(p: FlashPolicy = policy): number {
   const w = p.allowed_writes.find((x) => x.role === "app");

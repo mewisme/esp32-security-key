@@ -594,6 +594,7 @@ export const en = {
             "I understand the OpenPGP firmware is experimental, has not been tested on hardware, and is not suitable for keys I rely on.",
           "replace-layout": "I understand the firmware currently on this board will be replaced.",
           "untested-hardware": "I understand this exact board hasn't been tested with MultiKeys",
+          "unsigned-release": "I understand this release is not signed, so nothing proves who published it.",
           "force-storage":
             "I understand this release is not shown to read the keys stored on this board. The keys are not erased by the installer, but they may become unusable or be lost, and the old firmware may not return them. I have backed up what I need.",
         } satisfies Record<Exclude<AckId, TypedAckId>, string>,
@@ -799,6 +800,7 @@ export const en = {
           "update-confirm":
             "I understand that only the MultiKeys application is replaced, that the write is not atomic, and that an interrupted write means running this update again.",
           "untested-hardware": "I understand this exact board hasn't been tested with MultiKeys",
+          "unsigned-release": "I understand this release is not signed, so nothing proves who published it.",
           "experimental-image":
             "I understand the OpenPGP firmware is experimental, has not been tested on hardware, and is not suitable for keys I rely on.",
         } satisfies Record<Exclude<UpdateAckId, TypedUpdateAckId>, string>,

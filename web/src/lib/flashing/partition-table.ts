@@ -9,7 +9,7 @@
 // A table that is not well formed (bad entry, wrong checksum, duplicate names, overlaps, entries outside the flash,
 // data after the end marker) is "garbage": nothing is decided from it.
 import { md5Hex } from "./md5";
-import { type FlashPolicy, policy as defaultPolicy } from "../firmware/policy";
+import { type FlashPolicy, policy as defaultPolicy, protectedNames } from "../firmware/policy";
 import type { ManifestPartition } from "../firmware/types";
 
 export type TableStatus = "blank" | "match" | "mismatch" | "garbage";
@@ -83,7 +83,7 @@ export function matchesLayoutExactly(entries: ReadonlyMap<string, TableEntry>, p
 /** Null when every protected partition is where this firmware expects it (and part0 has its type), otherwise a mismatch detail. */
 export function protectedCompatible(entries: ReadonlyMap<string, TableEntry>, partitions: ManifestPartition[], p: FlashPolicy): string | null {
   const want = new Map(partitions.map((x) => [x.name, x]));
-  for (const name of p.protected_partitions) {
+  for (const name of protectedNames(p)) {
     const w = want.get(name);
     const g = entries.get(name);
     if (!w) return `the firmware layout has no ${name}`;
