@@ -1,6 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
 import { ackAll, flashWrites, HARDWARE_CHECK, keyWrites, setup, toChooser, type ExtraRelease } from "./helpers";
-import { running, setupUpdate, toReview, ackAll as ackUpdate, APP } from "./update-helpers";
 import type { Scenario } from "./scenario";
 
 /**
@@ -122,20 +121,6 @@ test.describe("D: running operations are not repeated or cancelled", () => {
     await expect(page.getByRole("button", { name: "Check my key" })).toBeVisible({ timeout: 30_000 });
     expect(await flashWrites(page)).toEqual([0, 0x8000, 0x20000]);
     expect(await counter(page, "__portRequests")).toBe(1);
-  });
-
-  test("an update in progress finishes once, writing only the app image", async ({ page }) => {
-    await setupUpdate(page, running({ writeDelayMs: 200 }));
-    await toReview(page);
-    await ackUpdate(page);
-    await page.getByRole("button", { name: "Update application" }).click();
-    await expect(page.getByText(MIDWAY)).toBeVisible();
-    await switchLang(page, "vi");
-    await switchLang(page, "en");
-    await expect(page.getByRole("button", { name: "Check my key" })).toBeVisible({ timeout: 30_000 });
-    expect(await flashWrites(page)).toEqual([APP]);
-    expect(await counter(page, "__portRequests")).toBe(1);
-    expect(await counter(page, "__keyConnects")).toBe(1);
   });
 
   test("a watched key keeps its connection and its activity list", async ({ page }) => {

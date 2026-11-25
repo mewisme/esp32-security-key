@@ -31,6 +31,9 @@ export const PHASES = [
 
 export type Phase = (typeof PHASES)[number];
 
+/** "auto" follows the MultiKeys image already on the board (FIDO2 when there is none); the others are an explicit choice. */
+export type FlashImageChoice = "auto" | "fido" | "openpgp";
+
 export interface Milestones {
   downloaded: boolean;
   integrityVerified: boolean;
@@ -55,7 +58,7 @@ export interface FlashState {
   phase: Phase;
   milestones: Milestones;
   tag: string | null;
-  image: "fido" | "openpgp" | null;
+  image: FlashImageChoice | null;
   /** Set once the connected board has been matched to a hardware profile (COMPATIBLE). */
   buildId: string | null;
   profileId: string | null;
@@ -74,7 +77,9 @@ export type FlashEvent =
   | { type: "BROWSER_OK" }
   | { type: "BROWSER_UNSUPPORTED"; code: ErrorCode }
   | { type: "HARDWARE_CONFIRMED" }
-  | { type: "FIRMWARE_SELECTED"; tag: string; image: "fido" | "openpgp" }
+  | { type: "FIRMWARE_SELECTED"; tag: string; image: FlashImageChoice }
+  | { type: "CHANGE_FIRMWARE" }
+  | { type: "DECISION_CHANGED"; decision: InstallDecision }
   | { type: "BACK" }
   | { type: "PORT_GRANTED"; info: PortInfo }
   | { type: "CONNECTED" }
@@ -198,11 +203,21 @@ export function flashReducer(s: FlashState, e: FlashEvent): FlashState {
     case "checking-flash-safety":
       if (e.type !== "SAFETY_DECIDED") return s;
       if (!e.decision.allowed) {
-        const code = "storage-incompatible";
+        const code = e.decision.reason === "different-key" ? "different-key" : "storage-incompatible";
         return { ...s, phase: "failed", decision: e.decision, error: { code, message: e.decision.reason, phase: s.phase } };
       }
       return { ...s, phase: "awaiting-confirmation", decision: e.decision };
     case "awaiting-confirmation":
+      // The person went back to pick another release or family: nothing was written, the connection is closed by the hook.
+      if (e.type === "CHANGE_FIRMWARE") return freshAttempt(s, "firmware-selection");
+      // The re-read just before the write decided differently: show that decision instead of writing the reviewed one.
+      if (e.type === "DECISION_CHANGED") {
+        if (!e.decision.allowed) {
+          const code = e.decision.reason === "different-key" ? "different-key" : "storage-incompatible";
+          return { ...s, phase: "failed", decision: e.decision, error: { code, message: e.decision.reason, phase: s.phase } };
+        }
+        return { ...s, decision: e.decision };
+      }
       if (e.type !== "CONFIRMED" || !s.decision) return s;
       return s.decision.acks.every((a) => e.acks.includes(a)) ? { ...s, phase: "flashing", progress: { written: 0, total: 0 } } : s;
     case "flashing":

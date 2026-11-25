@@ -1,6 +1,5 @@
 import { Info, ShieldAlert, TriangleAlert } from "lucide-react";
 import { useState } from "react";
-import { Link } from "react-router";
 import { ReleaseAuthentication } from "@/components/common/ReleaseAuthentication";
 import { Alert, AlertDescription, AlertTitle } from "@/components/reui/alert";
 import { Button } from "@/components/ui/button";
@@ -35,6 +34,8 @@ export function ReviewStage({ inst, headingRef }: { inst: Installer; headingRef:
   const nameWords =
     req.mode === "keep" ? t.install.review.keepName : req.mode === "default" ? t.install.review.resetName(build.usb.product_name) : req.name;
   const untested = decision.acks.includes("untested-hardware");
+  const appMode = decision.mode.startsWith("app-");
+  const refusal = decision.appOnlyRefusal;
 
   return (
     <StageCard
@@ -42,9 +43,14 @@ export function ReviewStage({ inst, headingRef }: { inst: Installer; headingRef:
       description={t.install.review.description}
       headingRef={headingRef}
       secondary={
-        <Button type="button" variant="outline" onClick={() => void actions.cancel()}>
-          {t.common.cancel}
-        </Button>
+        <>
+          <Button type="button" variant="outline" onClick={() => void actions.cancel()}>
+            {t.common.cancel}
+          </Button>
+          <Button type="button" variant="outline" onClick={() => void actions.changeFirmware()}>
+            {t.install.review.changeFirmware}
+          </Button>
+        </>
       }
       primary={
         <Button type="button" disabled={!ready} onClick={() => void actions.confirm(given)}>
@@ -121,7 +127,7 @@ export function ReviewStage({ inst, headingRef }: { inst: Installer; headingRef:
             ))}
           </TableBody>
         </Table>
-        <p className="text-sm text-muted-foreground">{t.install.review.writes.neverTouched(untouched)}</p>
+        <p className="text-sm text-muted-foreground">{appMode ? t.install.review.writes.appOnlyUntouched : t.install.review.writes.neverTouched(untouched)}</p>
       </div>
 
       {decision.mode === "switch-image" && (
@@ -134,20 +140,60 @@ export function ReviewStage({ inst, headingRef }: { inst: Installer; headingRef:
         </Alert>
       )}
 
-      {decision.mode === "update" && build.update.app_only === true && (
-        <Alert>
+      {appMode && (
+        <Alert variant="warning">
+          <TriangleAlert aria-hidden />
+          <AlertTitle>{t.install.review.appNotAtomic.title}</AlertTitle>
+          <AlertDescription>{t.install.review.appNotAtomic.text}</AlertDescription>
+        </Alert>
+      )}
+
+      {decision.mode === "app-reinstall" && (
+        <Alert data-testid="reinstall-note">
           <Info aria-hidden />
-          <AlertTitle>{t.install.review.updateHint.title}</AlertTitle>
+          <AlertTitle>{t.install.review.reinstallNote.title}</AlertTitle>
+          <AlertDescription>{t.install.review.reinstallNote.text}</AlertDescription>
+        </Alert>
+      )}
+
+      {decision.mode === "app-downgrade" && (
+        <Alert variant="destructive" data-testid="downgrade-warning">
+          <ShieldAlert aria-hidden />
+          <AlertTitle>{t.install.review.downgradeWarning.title}</AlertTitle>
+          <AlertDescription>{t.install.review.downgradeWarning.text}</AlertDescription>
+        </Alert>
+      )}
+
+      {decision.mode === "app-repair" && (
+        <Alert data-testid="repair-note">
+          <Info aria-hidden />
+          <AlertTitle>{t.install.review.repairNote.title}</AlertTitle>
+          <AlertDescription>{t.install.review.repairNote.text}</AlertDescription>
+        </Alert>
+      )}
+
+      {refusal && (
+        <Alert data-testid="app-only-refusal">
+          <Info aria-hidden />
+          <AlertTitle>{t.install.review.appOnly.reasons[refusal.reason].title}</AlertTitle>
           <AlertDescription>
-            <p>{t.install.review.updateHint.text}</p>
-            <Button asChild variant="link">
-              <Link to="/update">{t.install.review.updateHint.link}</Link>
-            </Button>
+            <p>{t.install.review.appOnly.reasons[refusal.reason].text}</p>
+            <p>{t.install.review.appOnly.fullInstead}</p>
+            <p className="text-xs">
+              {t.install.review.data.why} <span lang="en">{refusal.detail}</span>
+            </p>
+            {refusal.reason === "recovery-unverified" && (
+              <div>
+                <Button type="button" variant="outline" size="sm" onClick={() => void actions.discardPending()}>
+                  {t.install.review.appOnly.discard}
+                </Button>
+              </div>
+            )}
           </AlertDescription>
         </Alert>
       )}
 
-      <Alert variant={decision.mode === "repurpose" || decision.mode === "update-forced" ? "destructive" : "default"}>
+      <Alert variant={decision.mode === "repurpose" || decision.mode === "update-forced" ? "destructive" : decision.mode === "app-downgrade" ? "warning" : "default"}>
         {decision.mode === "repurpose" || decision.mode === "update-forced" ? <ShieldAlert aria-hidden /> : <Info aria-hidden />}
         <AlertTitle>{t.install.review.data.title}</AlertTitle>
         <AlertDescription>

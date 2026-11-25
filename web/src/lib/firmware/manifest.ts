@@ -197,6 +197,9 @@ function validateBuild(raw: unknown, i: number, version: string, tag: string, sc
   strings(b, "protected_partitions", where);
   const update = obj(b.update, `${where}.update`);
   if (!parseSemver(str(update, "data_preserving_from", `${where}.update`))) fail(`${where}.update.data_preserving_from is not semver`);
+  if (update.downgrade_floor !== undefined && update.downgrade_floor !== null && (typeof update.downgrade_floor !== "string" || !parseSemver(update.downgrade_floor))) {
+    fail(`${where}.update.downgrade_floor is not semver`);
+  }
   if (update.app_only !== undefined && typeof update.app_only !== "boolean") fail(`${where}.update.app_only is not a boolean`);
 
   const { assetHw: _assetHw, product_name, custom_name, ...profileFields } = hw;

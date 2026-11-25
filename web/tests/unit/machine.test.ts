@@ -129,3 +129,49 @@ describe("BACK", () => {
     expect(run([{ type: "BACK" }], flashing).phase).toBe("flashing");
   });
 });
+
+describe("CHANGE_FIRMWARE and DECISION_CHANGED", () => {
+  it("CHANGE_FIRMWARE from awaiting-confirmation returns to firmware selection and clears the attempt but keeps the release", () => {
+    const at = run(TO_CONFIRM);
+    expect(at.phase).toBe("awaiting-confirmation");
+    const s = run([{ type: "CHANGE_FIRMWARE" }], at);
+    expect(s.phase).toBe("firmware-selection");
+    expect([s.chip, s.decision, s.port, s.buildId, s.profileId, s.support]).toEqual([null, null, null, null, null, null]);
+    expect(s.milestones).toEqual({ downloaded: false, integrityVerified: false, written: false, flashVerified: false, deviceDetected: false });
+    expect(s.tag).toBe("v0.2.0");
+    // The person can pick again and carry on from the start of the board stages.
+    expect(run([{ type: "FIRMWARE_SELECTED", tag: "v0.3.0", image: "auto" }], s)).toMatchObject({ phase: "requesting-permission", tag: "v0.3.0", image: "auto" });
+  });
+
+  it("CHANGE_FIRMWARE is ignored while writing and in other phases", () => {
+    const flashing = run([...TO_CONFIRM, { type: "CONFIRMED", acks: ["dev-firmware", "switch-image"] }]);
+    expect(run([{ type: "CHANGE_FIRMWARE" }], flashing)).toBe(flashing);
+    const earlier = run(TO_CONFIRM.slice(0, 8));
+    expect(run([{ type: "CHANGE_FIRMWARE" }], earlier)).toBe(earlier);
+  });
+
+  it("DECISION_CHANGED to an allowed decision keeps the review and replaces the decision (the old acknowledgements no longer count)", () => {
+    const next = decision(["dev-firmware", "switch-image", "switch-image-typed"]);
+    const s = run([{ type: "DECISION_CHANGED", decision: next }], run(TO_CONFIRM));
+    expect(s.phase).toBe("awaiting-confirmation");
+    expect(s.decision).toBe(next);
+    expect(run([{ type: "CONFIRMED", acks: ["dev-firmware", "switch-image"] }], s).phase).toBe("awaiting-confirmation");
+    expect(run([{ type: "CONFIRMED", acks: next.acks }], s).phase).toBe("flashing");
+  });
+
+  it("DECISION_CHANGED to a refused decision fails with storage-incompatible", () => {
+    const s = run([{ type: "DECISION_CHANGED", decision: { ...decision([]), mode: "blocked", allowed: false, reason: "layout" } }], run(TO_CONFIRM));
+    expect(s.phase).toBe("failed");
+    expect(s.error?.code).toBe("storage-incompatible");
+  });
+
+  it("a blocked decision with reason different-key fails with the different-key error code, on the first decision and on a re-read", () => {
+    const blocked: InstallDecision = { ...decision([]), mode: "blocked", allowed: false, reason: "different-key" };
+    const first = run([...TO_CONFIRM.slice(0, -1), { type: "SAFETY_DECIDED", decision: blocked }]);
+    expect(first.phase).toBe("failed");
+    expect(first.error?.code).toBe("different-key");
+    const reread = run([{ type: "DECISION_CHANGED", decision: blocked }], run(TO_CONFIRM));
+    expect(reread.phase).toBe("failed");
+    expect(reread.error?.code).toBe("different-key");
+  });
+});

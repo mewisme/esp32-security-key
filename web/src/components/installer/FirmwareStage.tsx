@@ -17,19 +17,26 @@ import { FALLBACK_DEFAULT_NAME, validateDeviceName } from "@/lib/device/device-n
 import type { NameRequest } from "@/lib/device/mkauth";
 import { buildsBySize, type CatalogRelease } from "@/lib/firmware/catalog";
 import { useI18n } from "@/i18n/context";
+import type { FlashImageChoice } from "@/lib/flashing/machine";
 import { profileById } from "@/lib/firmware/policy";
 import { StageCard } from "./StageCard";
+import { BaselineSection } from "./BaselineSection";
 
-type Image = "fido" | "openpgp";
+type Image = FlashImageChoice;
+
+/** "auto" resolves to the FIDO2 image for display: the board's own image decides later, a blank board gets FIDO2. */
+function familyOf(image: Image): "fido" | "openpgp" {
+  return image === "auto" ? "fido" : image;
+}
 
 function hasImage(release: CatalogRelease, image: Image): boolean {
-  return release.manifest.builds.some((b) => b.image === image);
+  return release.manifest.builds.some((b) => b.image === familyOf(image));
 }
 
 /** "4 / 8 / 16 MB" from the chosen image's builds' profiles, smallest first. */
 function sizesLabel(release: CatalogRelease, image: Image): string {
   const labels = buildsBySize(release.manifest.builds)
-    .filter((b) => b.image === image)
+    .filter((b) => b.image === familyOf(image))
     .map((b) => (profileById(b.profile_id)?.label ?? b.flash_size).replace(/\s*MB$/, ""));
   return labels.length ? `${labels.join(" / ")} MB` : "";
 }
@@ -103,7 +110,7 @@ function FirmwareSection({ inst, selected }: { inst: Installer; selected: Catalo
 
   // "Latest" means the newest stable release; the newest release overall may be a pre-release.
   const latestStableTag = releases.find((r) => !r.prerelease)?.tag;
-  const build = selected.manifest.builds.find((b) => b.image === config.image);
+  const build = selected.manifest.builds.find((b) => b.image === familyOf(config.image));
   const sizes = sizesLabel(selected, config.image);
   const date = selected.publishedAt ? formatDate(selected.publishedAt, locale) : null;
   const openpgpAvailable = hasImage(selected, "openpgp");
@@ -154,18 +161,17 @@ function FirmwareSection({ inst, selected }: { inst: Installer; selected: Catalo
           </Select>
         </Field>
       )}
+      {releases.length > 1 && <p className="text-sm text-muted-foreground">{t.install.firmware.olderHint}</p>}
 
       {openpgpAvailable || config.image === "openpgp" ? (
         <FieldSet className="gap-2">
-          <FieldLegend variant="label">
-            {t.install.firmware.imageLegend}
-          </FieldLegend>
+          <FieldLegend variant="label">{t.install.firmware.imageLegend}</FieldLegend>
           <RadioGroup
             value={config.image}
-            onValueChange={(v) => (v === "fido" || v === "openpgp") && actions.setImage(v)}
+            onValueChange={(v) => (v === "auto" || v === "fido" || v === "openpgp") && actions.setImage(v)}
             className="flex flex-wrap items-center gap-x-6 gap-y-2"
           >
-            {(["fido", "openpgp"] as const).map((img) => (
+            {(["auto", "fido", "openpgp"] as const).map((img) => (
               <Field key={img} orientation="horizontal" className="w-auto" data-disabled={hasImage(selected, img) ? undefined : "true"}>
                 <RadioGroupItem id={`image-${img}`} value={img} disabled={!hasImage(selected, img)} />
                 <FieldLabel htmlFor={`image-${img}`} className="cursor-pointer">
@@ -300,6 +306,9 @@ export function FirmwareStage({ inst, headingRef }: { inst: Installer; headingRe
           </FieldSet>
         </>
       )}
+
+      <Separator />
+      <BaselineSection inst={inst} />
     </StageCard>
   );
 }

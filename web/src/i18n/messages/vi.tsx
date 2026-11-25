@@ -125,6 +125,11 @@ const errors: Messages["errors"] = {
     what: "Bo mạch đang chạy MultiKeys với cách bố trí vùng lưu trữ khác. Cài đặt sẽ phá hủy các khóa đã lưu, nên trình cài đặt dừng lại.",
     next: ["Tiếp tục dùng firmware đang có trên bo mạch, hoặc nhờ trợ giúp trên GitHub trước khi thay đổi bất cứ điều gì."],
   },
+  "different-key": {
+    title: "Đây không phải khóa bạn đã đọc",
+    what: "Bo mạch ở chế độ nạp báo phiên bản, firmware hoặc dung lượng flash khác với khóa đã đọc trước đó qua WebUSB. Chưa có gì được ghi.",
+    next: ["Rút các khóa khác ra, rồi làm lại từ đầu với bo mạch bạn muốn thay đổi.", "Hoặc bỏ qua “Đọc khóa của tôi trước” và chạy lại quá trình cài đặt."],
+  },
   "device-disconnected": {
     title: "Bo mạch đã bị ngắt kết nối",
     what: "Kết nối với bo mạch bị mất trước khi có gì được ghi.",
@@ -217,6 +222,14 @@ const risk: Messages["install"]["review"]["data"]["risk"] = {
     "Bo mạch đang chạy firmware không phải MultiKeys nhưng dùng cùng cách bố trí vùng lưu trữ. Firmware đó sẽ bị thay thế; vùng lưu trữ không bị ghi.",
   repurpose: () =>
     "Bo mạch dùng cách bố trí vùng lưu trữ khác, ví dụ firmware demo của nhà sản xuất. Để cài MultiKeys, trình cài đặt trước tiên xóa các vùng nvs và part0 — mọi thứ firmware trước đã lưu ở đó sẽ bị xóa — rồi mới ghi MultiKeys. Không có gì khác bị xóa.",
+  "app-update": () =>
+    "Chỉ ứng dụng được ghi. Credential, mã PIN và tên khóa của bạn nằm trong part0, vùng không bị ghi. Trang này không đọc được chúng nên không hứa là còn nguyên vẹn; sau khi ghi, trang kiểm tra những gì đọc được.",
+  "app-reinstall": () =>
+    "Chỉ ứng dụng được ghi lại. Credential, mã PIN và tên khóa của bạn nằm trong part0, vùng không bị ghi. Trang này không đọc được chúng nên không hứa là còn nguyên vẹn; sau khi ghi, trang kiểm tra những gì đọc được.",
+  "app-downgrade": () =>
+    "Chỉ ứng dụng được ghi. Bản phát hành đang cài khai báo rằng phiên bản cũ hơn này đọc được dữ liệu nó lưu. Đó là một lời khai báo, không phải điều trang này phát hiện được. Credential, mã PIN và tên khóa của bạn nằm trong part0, vùng không bị ghi, và trang này không đọc được chúng.",
+  "app-repair": () =>
+    "Chỉ ứng dụng được ghi. Credential, mã PIN và tên khóa của bạn nằm trong part0, vùng không bị ghi. Trang này không đọc được chúng nên không hứa là còn nguyên vẹn; sau khi ghi, trang kiểm tra những gì đọc được.",
 };
 
 export const vi: Messages = {
@@ -250,7 +263,7 @@ export const vi: Messages = {
     skipToContent: "Chuyển đến nội dung",
     mainNav: "Điều hướng chính",
     mobileNav: "Điều hướng di động",
-    nav: { install: "Cài đặt", update: "Cập nhật", firstUse: "Dùng lần đầu", passkeys: "Passkey", keyInfo: "Khóa của bạn", help: "Trợ giúp", releases: "Bản phát hành" },
+    nav: { install: "Cài đặt & cập nhật", firstUse: "Dùng lần đầu", passkeys: "Passkey", keyInfo: "Khóa của bạn", help: "Trợ giúp", releases: "Bản phát hành" },
     githubRepository: "Kho mã GitHub",
     github: "GitHub",
     openMenu: "Mở menu",
@@ -271,7 +284,6 @@ export const vi: Messages = {
     title: "Biến ESP32-S3 thành khóa bảo mật FIDO2",
     lead: "Cài đặt MultiKeys ngay từ trình duyệt trong vài phút, không cần dòng lệnh.",
     source: "Mã nguồn trên GitHub",
-    updateFirmware: "Cập nhật firmware",
     verified: "Đã kiểm chứng trên phần cứng ESP32-S3 N16R8",
     how: {
       title: "Cách hoạt động",
@@ -349,7 +361,6 @@ export const vi: Messages = {
     imageNames: { fido: "FIDO2", openpgp: "OpenPGP" },
     facts: (images: string, sizes: string, chip: string) => `${images} · ${sizes} · ${chip}`,
     installCta: "Cài đặt firmware",
-    updateCta: "Cập nhật firmware",
     sourceCommit: "Commit nguồn",
     downloadsTitle: "Tải firmware",
     firmwareType: "Loại firmware",
@@ -399,8 +410,8 @@ export const vi: Messages = {
 
   install: {
     loading: "Đang tải trình cài đặt…",
-    title: "Cài đặt MultiKeys",
-    lead: "Đưa firmware MultiKeys FIDO2 lên bo mạch ESP32-S3 ngay từ trình duyệt của bạn.",
+    title: "Cài đặt hoặc cập nhật MultiKeys",
+    lead: "Cài MultiKeys lên bo mạch ESP32-S3, hoặc cập nhật, cài lại hay hạ cấp firmware của khóa đã chạy MultiKeys, ngay từ trình duyệt của bạn. Trang tự xác định trường hợp nào áp dụng dựa trên bo mạch bạn kết nối.",
     cancelled: { title: "Đã hủy cài đặt", text: "Chưa có gì được ghi vào bo mạch." },
     steps: {
       "get-started": "Bắt đầu",
@@ -419,10 +430,10 @@ export const vi: Messages = {
     firmwareName: (label: ReactNode) => <>MultiKeys FIDO2 — {label}</>,
 
     getStarted: {
-      description: "Cài đặt firmware MultiKeys FIDO2 lên bo mạch ESP32-S3. Mất khoảng năm phút.",
+      description: "Cài đặt hoặc cập nhật firmware MultiKeys trên bo mạch ESP32-S3. Mất khoảng năm phút.",
       whatHappens: {
         title: "Điều sẽ diễn ra",
-        text: "Bạn chọn firmware, đưa bo mạch vào chế độ nạp, kiểm tra những gì trình cài đặt tìm thấy, rồi cài đặt. Sau đó bạn có thể đặt tên riêng cho khóa.",
+        text: "Bạn chọn phiên bản firmware, đưa bo mạch vào chế độ nạp, kiểm tra những gì trang tìm thấy trên đó, rồi xác nhận. Trang tự xác định từ bo mạch xem đây là cài đặt lần đầu, cập nhật, cài lại hay hạ cấp. Sau đó bạn có thể đặt tên riêng cho khóa.",
       },
       whatYouNeed: {
         title: "Bạn cần",
@@ -449,7 +460,27 @@ export const vi: Messages = {
       imageLegend: "Loại firmware",
       experimental: "Thử nghiệm",
       openpgpUnavailable: "Chưa có image OpenPGP được công bố cho bản phát hành này.",
+      olderHint: "Chọn phiên bản cũ hơn bản trên khóa là hạ cấp. Trang kiểm tra việc đó ở màn hình Xem lại và từ chối nếu không chứng minh được là an toàn.",
+      baseline: {
+        title: "Đọc khóa của tôi trước (tùy chọn)",
+        text: "Cắm khóa bình thường (không ở chế độ nạp) và đọc xem nó đang chạy gì. Chỉ đọc: không cần nhấn nút, không cần PIN, không ghi gì cả. Với lần đọc này, trang có thể từ chối một bo mạch hóa ra là khóa khác, và so sánh khóa trước và sau khi ghi.",
+        choose: "Đọc khóa của tôi",
+        reading: "Đang đọc khóa…",
+        clear: "Quên lần đọc này",
+        failed: "Không đọc được khóa nào. Có thể chưa chọn khóa nào, firmware quá cũ, chương trình khác đang dùng khóa, hoặc trình duyệt này không giao tiếp được với khóa qua WebUSB.",
+        unsupported: "Trình duyệt này không giao tiếp được với khóa qua WebUSB.",
+        reported: "Khóa báo cáo",
+        rows: { firmware: "Firmware", commit: "Commit", image: "SHA-256 của ảnh", name: "Tên USB", pin: "Mã PIN quản lý" },
+        pinSet: "Đã thiết lập",
+        pinNotSet: "Chưa thiết lập",
+        unreadable: "Không đọc được",
+        outdated: "Firmware này cũ hơn v0.3.1 nên không báo cáo được bản dựng. Phiên bản sẽ được đọc ở chế độ nạp.",
+      },
       images: {
+        auto: {
+          title: "Tự động",
+          text: "Theo firmware đang có trên khóa (FIDO2 hoặc OpenPGP). Bo mạch trống sẽ nhận FIDO2.",
+        },
         fido: {
           title: "MultiKeys FIDO2",
           text: "Passkey, khóa bảo mật FIDO2/U2F với nút BOOT làm xác nhận hiện diện. Image được khuyên dùng.",
@@ -539,6 +570,10 @@ export const vi: Messages = {
         "switch-image": "Chuyển sang firmware MultiKeys khác",
         "replace-compatible-layout": "Thay thế firmware trên bo mạch này",
         repurpose: "Tái sử dụng bo mạch này",
+        "app-update": "Chỉ cập nhật ứng dụng",
+        "app-reinstall": "Cài lại ứng dụng",
+        "app-downgrade": "Hạ cấp ứng dụng",
+        "app-repair": "Sửa chữa ứng dụng",
         blocked: "Bị chặn",
       } satisfies Record<InstallMode, string>,
       writes: {
@@ -550,16 +585,104 @@ export const vi: Messages = {
         roles: { bootloader: "Bootloader", "partition-table": "Bảng phân vùng", app: "Ứng dụng MultiKeys" } as Record<string, string>,
         neverTouched: (partitions: string[]) =>
           `Luôn được giữ nguyên: ${[...partitions.map((p) => (p === "part0" ? "part0 (các khóa của bạn)" : p)), "eFuse (cài đặt chip vĩnh viễn)"].join(", ")}.`,
+        appOnlyUntouched:
+          "Luôn được giữ nguyên: bootloader, bảng phân vùng, nvs, phy_init, part0 (credential, mã PIN và tên của bạn), eFuse (cài đặt chip vĩnh viễn).",
       },
       switchWarning: {
         title: "FIDO2 và OpenPGP lưu dữ liệu riêng",
         text: "Cả hai firmware dùng cùng vùng lưu trữ (part0) nhưng mỗi bên đọc theo định dạng riêng. Trình cài đặt này không xóa gì, nhưng khóa và credential do firmware bị thay thế tạo ra sẽ không dùng được và có thể bị ghi đè khi firmware mới chạy. Hãy sao lưu những gì cần thiết trước. Chuyển lại sau này nghĩa là cài lại firmware kia; credential không quay lại.",
       },
       data: { title: "Dữ liệu của bạn", why: "Lý do:", risk },
-      updateHint: {
-        title: "Có cách cập nhật nhỏ hơn",
-        text: "Khóa này đã chạy MultiKeys. Trang Cập nhật firmware chỉ thay ứng dụng và không động đến bootloader và bảng phân vùng.",
-        link: "Mở Cập nhật firmware",
+      changeFirmware: "Chọn phiên bản khác",
+      appOnly: {
+        fullInstead:
+          "Không thể chỉ ghi ứng dụng, nên thay vào đó trang đề xuất cài đặt đầy đủ. Nó ghi lại bootloader, bảng phân vùng và ứng dụng (part0 không bao giờ bị ghi) và cần các xác nhận bên dưới.",
+        discard: "Bỏ ghi nhận và bắt đầu lại",
+        reasons: {
+          ok: { title: "Cập nhật tương thích", text: "Bản phát hành này khai báo có thể dùng dữ liệu do phiên bản đang cài lưu. Chỉ ứng dụng bị thay thế." },
+          "interrupted-write": {
+            title: "Một lần ghi trước chưa hoàn tất",
+            text: "Trình duyệt này đã ghi nhận một lần ghi ứng dụng của chính bản phát hành này được bắt đầu nhưng chưa được xác minh, trên chip có cùng địa chỉ MAC với chip này. Ghi lại ứng dụng sẽ sửa lỗi này. Không ghi gì khác.",
+          },
+          "same-version-different-image": {
+            title: "Cùng phiên bản, nội dung khác",
+            text: "Ứng dụng đang cài có cùng số phiên bản nhưng nội dung khác với bản dựng đã phát hành. Ghi lại bản đã phát hành chỉ thay ứng dụng.",
+          },
+          downgrade: {
+            title: "Đây sẽ là hạ cấp",
+            text: "Phiên bản đang cài mới hơn bản phát hành này, và bản phát hành đang cài không khai báo rằng phiên bản cũ hơn này đọc được dữ liệu của nó. Phiên bản mới hơn có thể đã đổi cách lưu dữ liệu.",
+          },
+          storage: {
+            title: "Chưa chứng minh dữ liệu đã lưu tương thích",
+            text: "Phiên bản đang cài cũ hơn phiên bản cũ nhất mà bản phát hành này khai báo tương thích, nên các khóa nó đã lưu có thể không dùng được.",
+          },
+          layout: {
+            title: "Bố trí vùng lưu trữ khác",
+            text: "Bảng phân vùng trên khóa này không phải bảng mà bản phát hành này dùng, nên không chứng minh được việc chỉ ghi ứng dụng là an toàn.",
+          },
+          "app-too-large": { title: "Ứng dụng không vừa", text: "Ứng dụng mới lớn hơn phân vùng ứng dụng trên khóa này." },
+          "protected-overlap": {
+            title: "Việc ghi sẽ chạm vào vùng được bảo vệ",
+            text: "Việc chỉ ghi ứng dụng bị từ chối vì nó sẽ chạm vào bootloader, bảng phân vùng hoặc một vùng lưu trữ.",
+          },
+          "flash-profile": {
+            title: "Dung lượng flash khác",
+            text: "Bootloader trên khóa này được dựng cho dung lượng flash khác với bản dựng này.",
+          },
+          "different-family": {
+            title: "Firmware MultiKeys khác",
+            text: "Khóa đang chạy firmware MultiKeys kia (FIDO2 hoặc OpenPGP). Chuyển đổi làm thay đổi cách đọc dữ liệu đã lưu, nên đây không phải việc chỉ ghi ứng dụng.",
+          },
+          reinstall: {
+            title: "Ghi lại đúng ứng dụng này",
+            text: "Ứng dụng trên khóa giống từng byte với bản phát hành này. Chỉ ứng dụng được ghi; bootloader, bảng phân vùng và vùng lưu trữ (part0) không bị đụng tới.",
+          },
+          "different-key": {
+            title: "Đây không phải khóa bạn đã đọc",
+            text: "Khóa ở chế độ nạp báo phiên bản, firmware hoặc dung lượng flash khác với khóa đã đọc trước đó. Rút các khóa khác ra và làm lại từ đầu.",
+          },
+          "not-multikeys": {
+            title: "Không phải khóa MultiKeys",
+            text: "Bo mạch này không chạy MultiKeys, hoặc flash đang trống, nên không có ứng dụng MultiKeys nào để chỉ thay riêng.",
+          },
+          "release-unsupported": {
+            title: "Bản phát hành này không cho phép chỉ ghi ứng dụng",
+            text: "Bản phát hành phải khai báo rằng việc chỉ ghi ứng dụng là an toàn, mà bản này không khai báo.",
+          },
+          "unreadable-bootloader": { title: "Không đọc được bootloader", text: "Những byte đầu của flash không phải ảnh bootloader hợp lệ." },
+          "unreadable-descriptor": {
+            title: "Không đọc được ứng dụng đang cài",
+            text: "Khóa không có mô tả ứng dụng đọc được. Việc này có thể xảy ra sau khi ghi bị gián đoạn, nhưng trình duyệt này không có ghi nhận nào như vậy.",
+          },
+          "recovery-unverified": {
+            title: "Không gắn được việc khôi phục với chip này",
+            text: "Khóa không có ứng dụng đọc được, và trình duyệt này có ghi nhận một lần ghi bị gián đoạn. Ghi nhận đó không khớp với chip, bản phát hành và ảnh firmware này, nên không đề xuất sửa chỉ-ứng-dụng. Cài đặt đầy đủ thay firmware sau khi bạn xác nhận, giữ nguyên vùng lưu trữ của khóa khi bảng phân vùng còn nguyên vẹn và cảnh báo khi không. Nếu ghi nhận đã cũ hoặc thuộc khóa khác, hãy bỏ nó.",
+          },
+          "unparsable-version": {
+            title: "Phiên bản đang cài không phải số phiên bản",
+            text: "Không thể so sánh với bản phát hành này, nên không chứng minh được tính tương thích.",
+          },
+          "downgrade-declared": {
+            title: "Hạ cấp được khai báo là an toàn",
+            text: "Bản phát hành đang cài khai báo rằng phiên bản cũ hơn này đọc được dữ liệu nó lưu. Chỉ ứng dụng bị thay thế.",
+          },
+        },
+      },
+      appNotAtomic: {
+        title: "Không nguyên tử, không hoàn tác",
+        text: "Ứng dụng được ghi vào một vùng duy nhất. Nếu việc ghi bị gián đoạn, khóa sẽ không khởi động được cho đến khi ứng dụng được ghi lại từ chế độ nạp (download mode). Đây không phải cập nhật qua mạng (OTA) và không thể tự hoàn tác.",
+      },
+      reinstallNote: {
+        title: "Bo mạch đã chạy đúng bản dựng này",
+        text: "Ứng dụng trên khóa giống từng byte với bản phát hành này (byte giống hệt). Tiếp tục sẽ ghi lại nó; chỉ ứng dụng được ghi.",
+      },
+      downgradeWarning: {
+        title: "Thao tác này cài một phiên bản cũ hơn",
+        text: "Phiên bản cũ hơn có thể thiếu các bản vá bảo mật mà bản mới có. Bản phát hành đang cài khai báo rằng dữ liệu nó lưu đọc được bởi phiên bản cũ hơn này; trang không phát hiện được điều đó, chỉ dựa vào lời khai báo. Chỉ tiếp tục nếu bạn cần phiên bản này.",
+      },
+      repairNote: {
+        title: "Ứng dụng sẽ được ghi lại",
+        text: "Ứng dụng trên khóa không phải bản dựng đã phát hành của phiên bản đó, hoặc một lần ghi trước chưa hoàn tất. Ghi lại bản đã phát hành chỉ thay ứng dụng. Không ghi gì khác.",
       },
       untested: {
         title: "Chưa được thử trên bo mạch này",
@@ -582,11 +705,15 @@ export const vi: Messages = {
           "unsigned-release": "Tôi hiểu bản phát hành này không có chữ ký nên không có gì chứng minh ai là người phát hành.",
           "force-storage":
             "Tôi hiểu bản phát hành này không được chứng minh là đọc được các khóa đang lưu trên bo mạch. Trình cài đặt không xóa các khóa, nhưng chúng có thể không dùng được hoặc bị mất, và firmware cũ có thể không trả lại. Tôi đã sao lưu những gì cần.",
+          "app-write-confirm":
+            "Tôi hiểu rằng chỉ ứng dụng MultiKeys bị thay thế, việc ghi không nguyên tử và nếu bị gián đoạn thì phải chạy lại.",
+          "downgrade-confirm": "Tôi hiểu thao tác này cài một phiên bản cũ hơn có thể thiếu các bản vá bảo mật, và việc nó có đọc được dữ liệu đã lưu của tôi hay không không được phát hiện.",
         },
         typedLabels: {
           "repurpose-typed": "Nhập REPURPOSE để xác nhận các vùng nvs và part0 sẽ bị xóa",
           "switch-image-typed": "Nhập SWITCH để xác nhận bạn đang chuyển giữa firmware FIDO2 và OpenPGP",
           "force-typed": "Nhập FORCE để xác nhận bạn cài đè lên các khóa mà bản phát hành này không được biết là đọc được",
+          "repair-typed": "Gõ REPAIR để xác nhận rằng ứng dụng sẽ được ghi lại",
         },
       },
     },
@@ -632,206 +759,27 @@ export const vi: Messages = {
         replugHint: "Sau khi cắm lại, bo mạch xuất hiện như đầu đọc thẻ thông minh (CCID), không phải khóa bảo mật.",
         done: "Tôi đã cắm lại",
       },
-    },
-  },
-
-  update: {
-    title: "Cập nhật firmware",
-    lead: "Chỉ thay ứng dụng MultiKeys trên khóa đã chạy MultiKeys. Bootloader, bảng phân vùng và các vùng lưu trữ (part0 chứa credential, mã PIN và tên của bạn) không bị ghi.",
-    steps: {
-      connect: "Kết nối khóa",
-      check: "Kiểm tra bản mới",
-      review: "Xem lại",
-      update: "Cập nhật",
-      verify: "Xác minh",
-    },
-    stepper: {
-      label: "Tiến trình cập nhật",
-      completed: ", đã xong",
-      stepOf: (n: number, total: number) => `Bước ${n}/${total}`,
-    },
-    notAtomic: {
-      title: "Không nguyên tử, không hoàn tác",
-      text: "Ứng dụng được ghi vào một vùng duy nhất. Nếu việc ghi bị gián đoạn, khóa sẽ không khởi động được cho đến khi bạn chạy lại bản cập nhật này từ chế độ nạp (download mode). Đây không phải cập nhật qua mạng (OTA) và không thể tự hoàn tác.",
-    },
-    connect: {
-      description: "Đọc xem khóa đang chạy gì. Chỉ đọc: không cần nhấn nút, không cần PIN, không ghi gì cả.",
-      hint: "Cắm khóa bình thường (không ở chế độ nạp), nhấn “Chọn khóa” rồi chọn mục MultiKeys.",
-      choose: "Chọn khóa",
-      reading: "Đang đọc khóa…",
-      notChosen: "Chưa chọn khóa nào.",
-      failed: "Không đọc được khóa qua WebUSB. Firmware có thể quá cũ, hoặc chương trình khác đang dùng khóa.",
-      unsupported: "Trình duyệt này không giao tiếp được với khóa qua WebUSB.",
-      skip: "Tiếp tục mà không đọc khóa",
-      skipNote: "Không có lần đọc này, trang không thể so sánh khóa trước và sau khi cập nhật.",
-      reported: "Khóa báo cáo",
-      rows: { firmware: "Firmware", commit: "Commit", image: "SHA-256 của ảnh", name: "Tên USB", pin: "Mã PIN quản lý" },
-      pinSet: "Đã thiết lập",
-      pinNotSet: "Chưa thiết lập",
-      unreadable: "Không đọc được",
-      outdated: "Firmware này cũ hơn v0.3.1 nên không báo cáo được bản dựng. Phiên bản sẽ được đọc ở chế độ nạp.",
-    },
-    check: {
-      description: "Chọn phiên bản để cập nhật. Chỉ liệt kê các bản mới hơn bản trên khóa; bản ngay sau đó được chọn trước.",
-      loading: "Đang tải danh sách bản phát hành…",
-      installed: "Đang cài",
-      offered: "Đề xuất",
-      notRead: "Chưa đọc",
-      versionLine: (title: string, version: string, tag: string) => `${title}, phiên bản ${version} (${tag})`,
-      upToDate: { title: "Đã là bản mới nhất", text: "Ứng dụng trên khóa giống từng byte với bản phát hành mới nhất. Không cần cập nhật." },
-      unsupported: {
-        title: "Bản này không có cập nhật chỉ-ứng-dụng",
-        text: (tag: string) =>
-          `Bản ${tag} được phát hành trước khi có cập nhật chỉ-ứng-dụng, nên không khai báo rằng cập nhật này an toàn. Trình cài đặt vẫn cập nhật được khóa; nó ghi cả bootloader và bảng phân vùng và giữ nguyên part0.`,
-      },
-      noRelease: "Không có bản phát hành nào có bản dựng cho firmware này.",
-      nothingNewer: "Không có bản phát hành nào mới hơn phiên bản trên khóa.",
-      useInstaller: "Mở trình cài đặt",
-      reinstall: "Cài lại ứng dụng",
-    },
-    review: {
-      bootDescription: "Đưa khóa vào chế độ nạp. Chưa ghi gì cả.",
-      workingDescription: "Đang đọc khóa và bản phát hành. Chưa ghi gì cả.",
-      rows: { connect: "Khóa ở chế độ nạp", download: "Tải và xác minh bản phát hành", read: "Đọc khóa (chỉ đọc)" },
-      description: "Xem lại những gì sẽ xảy ra. Chưa ghi gì cả.",
-      confirm: "Cập nhật ứng dụng",
-      reinstallConfirm: "Ghi lại ứng dụng",
-      reinstallButton: "Vẫn cài lại ứng dụng",
-      table: { installed: "Đang cài", offered: "Phiên bản mới", type: "Loại cập nhật", flash: "Flash" },
-      type: "Cập nhật chỉ ứng dụng",
-      unreadable: "Không đọc được",
-      untouched:
-        "Luôn được giữ nguyên: bootloader, bảng phân vùng, nvs, phy_init, part0 (credential, mã PIN và tên của bạn), eFuse (cài đặt chip vĩnh viễn).",
-      data: {
-        title: "Dữ liệu của bạn",
-        text: "Bản cập nhật này được thiết kế để giữ credential, mã PIN và tên khóa: chúng nằm trong part0, vùng không bị ghi. Trang này không đọc được chúng nên không hứa là còn nguyên vẹn; sau khi cập nhật, trang kiểm tra những gì đọc được.",
-      },
-      labels: {
-        "safe-update": "Tương thích",
-        repair: "Sửa chữa",
-        "already-current": "Đã mới nhất",
-        reinstall: "Cài lại",
-        downgrade: "Hạ cấp",
-        incompatible: "Không tương thích",
-        unknown: "Chưa chứng minh an toàn",
-        "different-family": "Firmware khác",
-        "not-multikeys": "Không phải MultiKeys",
-        "release-unsupported": "Không được đề xuất",
-      },
-      outcomes: {
-        ok: { title: "Cập nhật tương thích", text: "Bản phát hành này khai báo có thể dùng dữ liệu do phiên bản đang cài lưu. Chỉ ứng dụng bị thay thế." },
-        "interrupted-write": {
-          title: "Một lần cập nhật trước chưa hoàn tất",
-          text: "Trình duyệt này đã ghi nhận một lần ghi ứng dụng của chính bản phát hành này được bắt đầu nhưng chưa được xác minh, trên chip có cùng địa chỉ MAC với chip này. Ghi lại ứng dụng sẽ sửa lỗi này. Không ghi gì khác.",
+      report: {
+        title: "Những gì trang đã kiểm tra",
+        description: "Ứng dụng đã được ghi và xác minh. Đây là những gì trang kiểm tra được trên khóa đang chạy.",
+        table: { check: "Kiểm tra", result: "Kết quả" },
+        rows: {
+          image: "Ảnh đang chạy khớp với bản phát hành",
+          version: "Phiên bản khớp với bản phát hành",
+          name: "Tên USB không đổi",
+          mkauth: "Trạng thái mã PIN quản lý và mã thiết bị không đổi",
+          fido: "Credential FIDO và mã PIN",
         },
-        "same-version-different-image": {
-          title: "Cùng phiên bản, nội dung khác",
-          text: "Ứng dụng đang cài có cùng số phiên bản nhưng nội dung khác với bản dựng đã phát hành. Ghi lại bản đã phát hành chỉ thay ứng dụng.",
-        },
-        current: { title: "Đã là bản mới nhất", text: "Ứng dụng trên khóa giống từng byte với bản phát hành này. Không có gì để ghi." },
-        downgrade: {
-          title: "Đây sẽ là hạ cấp",
-          text: "Phiên bản đang cài mới hơn bản phát hành này. Không hỗ trợ hạ cấp vì phiên bản mới hơn có thể đã đổi cách lưu dữ liệu. Chưa ghi gì.",
-        },
-        storage: {
-          title: "Chưa chứng minh dữ liệu đã lưu tương thích",
-          text: "Phiên bản đang cài cũ hơn phiên bản cũ nhất mà bản phát hành này khai báo tương thích, nên các khóa nó đã lưu có thể không dùng được. Chưa ghi gì.",
-        },
-        layout: {
-          title: "Bố trí vùng lưu trữ khác",
-          text: "Bảng phân vùng trên khóa này không phải bảng mà bản phát hành này dùng, nên không chứng minh được cập nhật chỉ-ứng-dụng là an toàn. Chưa ghi gì.",
-        },
-        "app-too-large": { title: "Ứng dụng không vừa", text: "Ứng dụng mới lớn hơn phân vùng ứng dụng trên khóa này. Chưa ghi gì." },
-        "protected-overlap": {
-          title: "Việc ghi sẽ chạm vào vùng được bảo vệ",
-          text: "Bản cập nhật bị từ chối vì lần ghi của nó sẽ chạm vào bootloader, bảng phân vùng hoặc một vùng lưu trữ. Chưa ghi gì.",
-        },
-        "flash-profile": {
-          title: "Dung lượng flash khác",
-          text: "Bootloader trên khóa này được dựng cho dung lượng flash khác với bản dựng này. Chưa ghi gì.",
-        },
-        reinstall: {
-          title: "Ghi lại đúng ứng dụng này",
-          text: "Ứng dụng trên khóa giống từng byte với bản phát hành này. Bạn đã chọn ghi lại; chỉ ứng dụng được ghi. Bootloader, bảng phân vùng và vùng lưu trữ (part0) không bị đụng tới.",
-        },
-        "different-family": {
-          title: "Firmware MultiKeys khác",
-          text: "Khóa đang chạy firmware MultiKeys kia (FIDO2 hoặc OpenPGP). Chuyển đổi làm thay đổi cách đọc dữ liệu đã lưu, nên đây không phải cập nhật chỉ-ứng-dụng. Trình cài đặt có thể chuyển đổi sau khi bạn xác nhận. Chưa ghi gì.",
-        },
-        "different-key": {
-          title: "Đây không phải khóa bạn đã đọc",
-          text: "Khóa ở chế độ nạp báo phiên bản, firmware hoặc dung lượng flash khác với khóa đã đọc ở bước đầu. Rút các khóa khác ra và làm lại từ đầu. Chưa ghi gì.",
-        },
-        "not-multikeys": {
-          title: "Không phải khóa MultiKeys",
-          text: "Bo mạch này không chạy MultiKeys, hoặc flash đang trống. Cập nhật chỉ thay ứng dụng MultiKeys có sẵn; các trường hợp khác hãy dùng trình cài đặt. Chưa ghi gì.",
-        },
-        "release-unsupported": {
-          title: "Bản phát hành này không có cập nhật chỉ-ứng-dụng",
-          text: "Bản phát hành phải khai báo rằng cập nhật này an toàn, mà bản này không khai báo. Hãy dùng trình cài đặt hoặc đợi bản mới hơn. Chưa ghi gì.",
-        },
-        "unreadable-bootloader": { title: "Không đọc được bootloader", text: "Những byte đầu của flash không phải ảnh bootloader hợp lệ. Chưa ghi gì." },
-        "unreadable-descriptor": {
-          title: "Không đọc được ứng dụng đang cài",
-          text: "Khóa không có mô tả ứng dụng đọc được. Việc này có thể xảy ra sau khi ghi bị gián đoạn, nhưng trình duyệt này không có ghi nhận nào như vậy, nên chưa ghi gì.",
-        },
-        "recovery-unverified": {
-          title: "Không gắn được việc khôi phục với chip này",
-          text: "Khóa không có ứng dụng đọc được, và trình duyệt này có ghi nhận một lần ghi bị gián đoạn. Ghi nhận đó không khớp với chip, bản phát hành và ảnh firmware này, nên chưa ghi gì. Trang này không liên kết được khóa đang chạy với chip đang ở chế độ nạp (download mode), nên chỉ sửa chip mà nó đã thấy lần ghi bắt đầu. Để khôi phục, hãy dùng trình cài đặt: nó thay firmware sau khi bạn xác nhận, giữ nguyên vùng lưu trữ của khóa khi bảng phân vùng còn nguyên vẹn và cảnh báo khi không. Nếu ghi nhận đã cũ hoặc thuộc khóa khác, hãy bỏ nó.",
-        },
-        "unparsable-version": {
-          title: "Phiên bản đang cài không phải số phiên bản",
-          text: "Không thể so sánh với bản phát hành này, nên không chứng minh được tính tương thích. Chưa ghi gì.",
+        results: { yes: "Đã xác minh", no: "Không khớp", unknown: "Chưa kiểm tra" },
+        fidoNote: "Trang này không đọc chúng. Để dùng thử một credential, hãy chạy bài thử passkey tùy chọn.",
+        passkeyTest: "Mở bài thử passkey",
+        verdicts: {
+          verified: { title: "Đã xác minh cập nhật", text: "Khóa chạy đúng ảnh đã phát hành và giữ nguyên tên cùng trạng thái mã PIN quản lý." },
+          partial: { title: "Đã ghi cập nhật; một số kiểm tra không thực hiện được", text: "Mọi thứ đọc được đều khớp. Các hàng ghi chưa kiểm tra không thể so sánh được." },
+          unchecked: { title: "Đã ghi cập nhật; chưa kiểm tra khóa", text: "Flash đã được xác minh khi ghi. Khóa đang chạy chưa được đọc." },
+          mismatch: { title: "Khóa không khớp với dự kiến", text: "Có điểm khác với bản phát hành hoặc với khóa trước khi ghi. Hãy cắm lại khóa và kiểm tra lần nữa; nếu vẫn vậy, xem chi tiết bên dưới." },
         },
       },
-      openInstaller: "Mở trình cài đặt",
-      discardRecord: "Bỏ ghi nhận và bắt đầu lại",
-      seeReleases: "Xem các bản phát hành",
-      before: {
-        legend: "Trước khi cập nhật",
-        acks: {
-          "update-confirm":
-            "Tôi hiểu rằng chỉ ứng dụng MultiKeys bị thay thế, việc ghi không nguyên tử và nếu bị gián đoạn thì phải chạy lại bản cập nhật này.",
-          "untested-hardware": "Tôi hiểu chính bo mạch này chưa được thử với MultiKeys",
-          "unsigned-release": "Tôi hiểu bản phát hành này không có chữ ký nên không có gì chứng minh ai là người phát hành.",
-          "experimental-image":
-            "Tôi hiểu firmware OpenPGP còn thử nghiệm, chưa được thử trên phần cứng và không phù hợp cho các khóa tôi tin cậy.",
-        },
-        typedLabels: {
-          "repair-typed": "Gõ REPAIR để xác nhận rằng ứng dụng sẽ được ghi lại",
-        },
-      },
-    },
-    updating: {
-      description: "Chỉ ghi ứng dụng. Bootloader, bảng phân vùng và vùng lưu trữ không bị ghi.",
-    },
-    verify: {
-      replugDescription: "Ứng dụng đã được ghi và xác minh. Hãy cắm lại khóa để kiểm tra.",
-      checking: "Đang kiểm tra khóa…",
-      doneDescription: "Cập nhật đã xong. Đây là những gì trang kiểm tra được.",
-      table: { check: "Kiểm tra", result: "Kết quả" },
-      rows: {
-        image: "Ảnh đang chạy khớp với bản phát hành",
-        version: "Phiên bản khớp với bản phát hành",
-        name: "Tên USB không đổi",
-        mkauth: "Trạng thái mã PIN quản lý và mã thiết bị không đổi",
-        fido: "Credential FIDO và mã PIN",
-      },
-      results: { yes: "Đã xác minh", no: "Không khớp", unknown: "Chưa kiểm tra" },
-      fidoNote: "Trang này không đọc chúng. Để dùng thử một credential, hãy chạy bài thử passkey tùy chọn.",
-      passkeyTest: "Mở bài thử passkey",
-      verdicts: {
-        verified: { title: "Đã xác minh cập nhật", text: "Khóa chạy đúng ảnh đã phát hành và giữ nguyên tên cùng trạng thái mã PIN quản lý." },
-        partial: { title: "Đã ghi cập nhật; một số kiểm tra không thực hiện được", text: "Mọi thứ đọc được đều khớp. Các hàng ghi chưa kiểm tra không thể so sánh được." },
-        unchecked: { title: "Đã ghi cập nhật; chưa kiểm tra khóa", text: "Flash đã được xác minh khi ghi. Khóa đang chạy chưa được đọc." },
-        mismatch: { title: "Khóa không khớp với dự kiến", text: "Có điểm khác với bản phát hành hoặc với khóa trước khi cập nhật. Hãy cắm lại khóa và kiểm tra lần nữa; nếu vẫn vậy, xem chi tiết bên dưới." },
-      },
-      again: "Cập nhật khóa khác",
-    },
-    failed: {
-      recoveryTitle: "Nếu khóa không khởi động",
-      recoveryText:
-        "Ứng dụng có thể mới được ghi một phần. Hãy đưa khóa vào chế độ nạp và chạy lại bản cập nhật này: nó chỉ ghi lại ứng dụng. Trình duyệt này lưu ghi nhận về lần ghi chưa xong để bản cập nhật có thể đề nghị sửa chữa đó.",
     },
   },
 

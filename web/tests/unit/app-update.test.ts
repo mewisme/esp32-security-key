@@ -41,27 +41,37 @@ describe("decideAppUpdate", () => {
     const d = decideAppUpdate(input());
     expect(summary(d)).toEqual({ outcome: "safe-update", reason: "ok", allowed: true, writes: [0x20000] });
     expect(d.writes).toEqual([{ offset: 0x20000, length: appOnly.images.app.length, kind: "image", role: "app" }]);
-    expect(d.acks).toEqual(["update-confirm"]);
+    expect(d.acks).toEqual(["app-write-confirm"]);
     expect(d.installed).toEqual({ project: "multikey-fido", version: "0.3.1" });
     expect(d.target).toEqual({ project: "multikey-fido", version: "0.3.3", tag: "v0.3.3" });
   });
 
-  it("does nothing when the flash already holds this image", () => {
+  it("an identical image is allowed as a reinstall: the same single app write, confirmed by the person", () => {
     const d = decideAppUpdate(input({ installedAppMd5: md5Hex(appOnly.images.app) }, "0.3.3"));
-    expect(summary(d)).toEqual({ outcome: "already-current", reason: "current", allowed: false, writes: [] });
-  });
-
-  it("writes the identical image again only when reinstall is asked for, still as the single app write", () => {
-    const d = decideAppUpdate(input({ installedAppMd5: md5Hex(appOnly.images.app), reinstall: true }, "0.3.3"));
     expect(summary(d)).toEqual({ outcome: "reinstall", reason: "reinstall", allowed: true, writes: [0x20000] });
-    expect(d.acks).toEqual(["update-confirm"]);
+    expect(d.acks).toEqual(["app-write-confirm"]);
     // The other safety checks still apply: a changed layout is refused even when reinstalling.
-    const bad = decideAppUpdate(input({ installedAppMd5: md5Hex(appOnly.images.app), reinstall: true, table: withFactorySize(0x1000) }, "0.3.3"));
+    const bad = decideAppUpdate(input({ installedAppMd5: md5Hex(appOnly.images.app), table: withFactorySize(0x1000) }, "0.3.3"));
     expect(bad.allowed).toBe(false);
   });
 
-  it("blocks a downgrade", () => {
+  it("refuses a downgrade when the installed release declares no floor", () => {
     expect(summary(decideAppUpdate(input({}, "0.4.0")))).toEqual({ outcome: "downgrade", reason: "downgrade", allowed: false, writes: [] });
+    expect(decideAppUpdate(input({ installedDowngradeFloor: null }, "0.4.0")).allowed).toBe(false);
+  });
+
+  it("allows a downgrade when the installed release declares a floor at or below the target version", () => {
+    for (const floor of ["0.3.3", "0.3.0"]) {
+      const d = decideAppUpdate(input({ installedDowngradeFloor: floor }, "0.4.0"));
+      expect(summary(d)).toEqual({ outcome: "downgrade", reason: "downgrade-declared", allowed: true, writes: [0x20000] });
+      expect(d.acks).toEqual(["app-write-confirm", "downgrade-confirm"]);
+    }
+  });
+
+  it("refuses a downgrade below the declared floor", () => {
+    const d = decideAppUpdate(input({ installedDowngradeFloor: "0.3.5" }, "0.4.0"));
+    expect(summary(d)).toEqual({ outcome: "downgrade", reason: "downgrade", allowed: false, writes: [] });
+    expect(d.detail).toContain("0.3.5");
   });
 
   it("blocks an image older than data_preserving_from", () => {
@@ -128,7 +138,7 @@ describe("decideAppUpdate", () => {
     it("repairs a chip it saw the write start on, for the same release and image, after REPAIR is typed", () => {
       const d = unreadable(record());
       expect(summary(d)).toEqual({ outcome: "repair", reason: "interrupted-write", allowed: true, writes: [0x20000] });
-      expect(d.acks).toEqual(["update-confirm", "repair-typed"]);
+      expect(d.acks).toEqual(["app-write-confirm", "repair-typed"]);
     });
 
     it("matches the MAC regardless of letter case", () => {
@@ -223,7 +233,7 @@ describe("decideAppUpdate", () => {
     const build = appOnly.builds.find((b) => b.image === "openpgp" && b.profile_id === "esp32s3-16mb")!;
     const d = decideAppUpdate(input({ build, appDesc: desc("0.3.1", "multikey-openpgp") }));
     expect(d.outcome).toBe("safe-update");
-    expect(d.acks).toEqual(["update-confirm", "experimental-image"]);
+    expect(d.acks).toEqual(["app-write-confirm", "experimental-image"]);
   });
 
   it("every allowed decision writes only the app region, clear of the bootloader, the table and every protected partition", () => {

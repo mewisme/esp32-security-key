@@ -357,7 +357,7 @@ test("OpenPGP: from a FIDO2 board the switch needs three acknowledgements and SW
   await page.goto("/install");
   await page.getByRole("checkbox", { name: HARDWARE_CHECK }).check();
   await next(page).click();
-  await expect(page.locator("#image-fido")).toBeChecked();
+  await expect(page.locator("#image-auto")).toBeChecked();
   await page.locator("#image-openpgp").check();
   await expect(page.getByText("Read this before choosing OpenPGP")).toBeVisible();
   await expect(page.getByRole("radio", { name: "Custom name" })).toHaveCount(0);

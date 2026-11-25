@@ -54,7 +54,9 @@ Tested boards and what is not supported: [multikeys.mewis.me](https://multikeys.
 [multikeys.mewis.me](https://multikeys.mewis.me) reads your board's chip and flash size, picks the 4, 8 or 16 MB firmware, downloads
 it from the official release, verifies it, and shows exactly what it will write before writing anything. You can name your key
 beforehand (for example "Mew's Security Key"); the name is applied after the flash is verified, needs a BOOT press, and can be changed
-later on the First use page. Tested on real hardware on one board (Windows/Chrome): updating an existing install, naming and renaming
+later on the First use page. A single page, `/install`, detects what is on the connected board (read-only) and offers a first install,
+an update, a reinstall, a downgrade (only where the installed release allows it), a repair or a full write; reinstall, downgrade and
+detection are tested against a simulated board only. Tested on real hardware on one board (Windows/Chrome): updating an existing install, naming and renaming
 the key ([installer report](docs/hw-reports/2026-11-23-web-installer.md),
 [naming report](docs/hw-reports/2026-11-23-profiles-and-personalization.md)). The site is available in English and Vietnamese and
 also has a Passkey lab (`/passkeys`) that registers a test passkey on the key; the lab is tested with a virtual authenticator only, not yet on

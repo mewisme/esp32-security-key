@@ -28,6 +28,12 @@ class FakeDriver implements FlashDriver {
     } else if (d === "fido-0.3.1" || d === "openpgp-0.3.1") {
       this.flash.set(0x8000, partitionTable());
       this.flash.set(0x20000, appImage("0.3.1", d === "fido-0.3.1" ? "multikey-fido" : "multikey-openpgp"));
+    } else if (d === "fido-0.3.3" || d === "fido-0.3.3-current") {
+      this.flash.set(0x8000, partitionTable());
+      const app = appImage("0.3.3");
+      // "-current" is byte-identical to what the fake release v0.3.3 publishes (fixtures/firmware.ts pack sets image header bytes 2-3).
+      if (d === "fido-0.3.3-current") app.set([0x02, (sizeNibble << 4) | 0xf], 2);
+      this.flash.set(0x20000, app);
     } else if (d === "fido-garbled") {
       // An application whose descriptor is unreadable, as after an interrupted write.
       this.flash.set(0x8000, partitionTable());

@@ -64,11 +64,20 @@ legacy build). `firmware.json` inside a legacy zip is still compared with the en
 use. The Install wizard offers a matching-layout key running anything outside that range only as `update-forced` (tick plus
 `FORCE` typed; `part0` is still not written, but its keys may become unreadable); the Update page refuses it.
 
+`update.downgrade_floor` (optional, string semver or `null`) is the oldest version whose firmware can still read the data
+(`part0`, `nvs`) that this release writes. A downgrade from the installed release to an older target is offered as an
+application-only write only when the installed release declares a floor and the target is at or above it. Absent or `null` means
+no downgrade from this release is declared safe; releases published before the field existed lack it, so a downgrade from them
+is never declared safe. It is a declaration, not a detection (like `data_preserving_from`). `tools/package_firmware.py` emits
+`DOWNGRADE_FLOOR` (0.2.0 for now) in every build. When a release changes the stored format, set it to the oldest version that can
+still read the new format, or to `None` (`null`).
+
 `update.app_only` (`true` from the first release that carries it; absent in v0.2.0 to v0.3.2) states that the release's app image
 may replace the one on a compatible key without rewriting the bootloader or the partition table. `tools/package_firmware.py`
 sets it only when the `factory` partition of `partitions.csv` sits at the app offset of `tools/flash_policy.json` and holds the
-app image, and `verify` recomputes it. The web **Update firmware** page (`/update`) treats a missing field as "not offered",
-never as compatible, and it takes the app image from the same zip as the installer (no separate asset).
+app image, and `verify` recomputes it. The web installer (`/install`) treats a missing field as "application-only not offered"
+(a full install may still be offered), never as compatible, and it takes the app image from the same zip as the installer (no
+separate asset).
 
 ## Install script
 

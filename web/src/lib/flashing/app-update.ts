@@ -8,13 +8,12 @@ import { type FlashPolicy, policy as defaultPolicy, protectedNames } from "../fi
 import type { Build } from "../firmware/types";
 import { compareSemver } from "../firmware/version";
 import { parseAppDescriptor } from "./app-descriptor";
-import type { Write } from "./install-mode";
+import type { AckId, Write } from "./install-mode";
 import { parsePartitionTable } from "./partition-table";
 
 export type AppUpdateOutcome =
   | "safe-update"
   | "repair"
-  | "already-current"
   | "reinstall"
   | "downgrade"
   | "incompatible"
@@ -27,7 +26,6 @@ export type AppUpdateReason =
   | "ok"
   | "interrupted-write"
   | "same-version-different-image"
-  | "current"
   | "downgrade"
   | "storage"
   | "layout"
@@ -42,13 +40,8 @@ export type AppUpdateReason =
   | "unreadable-bootloader"
   | "unreadable-descriptor"
   | "recovery-unverified"
-  | "unparsable-version";
-
-export type UpdateAckId = "update-confirm" | "untested-hardware" | "experimental-image" | "unsigned-release" | "repair-typed";
-
-/** Acknowledgements given by typing a word, with the word to type. */
-export const UPDATE_TYPED_ACKS = { "repair-typed": "REPAIR" } as const;
-export type TypedUpdateAckId = keyof typeof UPDATE_TYPED_ACKS;
+  | "unparsable-version"
+  | "downgrade-declared";
 
 /**
  * Written before the app write starts and removed after the flash MD5 matched: its presence means a write may be
@@ -116,7 +109,7 @@ export interface AppUpdateDecision {
   reason: AppUpdateReason;
   /** English diagnostic for the details line. */
   detail: string;
-  acks: UpdateAckId[];
+  acks: AckId[];
   /** Length 0 or 1: the app image, role "app". */
   writes: Write[];
   installed: { project: string | null; version: string | null };
@@ -149,8 +142,11 @@ export interface AppUpdateInput {
   untestedHardware?: boolean;
   /** True when the release manifest carries no valid signature: the person must acknowledge that first. */
   unsignedRelease?: boolean;
-  /** The person chose to write the application again although it already equals this build. */
-  reinstall?: boolean;
+  /**
+   * `update.downgrade_floor` of the release the installed application comes from (looked up by its version in the
+   * catalog); null when that release is unknown or does not declare one.
+   */
+  installedDowngradeFloor?: string | null;
   policy?: FlashPolicy;
 }
 
@@ -261,15 +257,15 @@ export function decideAppUpdate(input: AppUpdateInput): AppUpdateDecision {
 
   // 6. The flash content, not the version string, says whether there is anything to do.
   if (input.installedAppMd5 !== null && input.installedAppMd5 === input.targetAppMd5) {
-    if (!input.reinstall) return refuse("already-current", "current", `installed ${inst} is byte-identical to this build`);
-    // The person asked for it: the same single app write, with the same layout, family and flash-size checks above.
+    // Nothing differs, so this is only ever a deliberate rewrite of the same application: the same single app write,
+    // with the same layout, family and flash-size checks as above, and the person confirms it.
     return {
       mode: "app-only-update",
       outcome: "reinstall",
       allowed: true,
       reason: "reinstall",
       detail: `installed ${inst} is byte-identical to this build; the application is written again`,
-      acks: acksFor("safe-update", build, untestedHardware, unsignedRelease),
+      acks: acksFor("reinstall", build, untestedHardware, unsignedRelease),
       writes: [appWrite(appImage)],
       installed,
       target,
@@ -279,7 +275,31 @@ export function decideAppUpdate(input: AppUpdateInput): AppUpdateDecision {
   // 7. Version order and the release's declared data compatibility.
   const order = compareSemver(inst, build.version);
   if (order === null) return refuse("unknown", "unparsable-version", `installed version ${inst} is not a version number`);
-  if (order > 0) return refuse("downgrade", "downgrade", `installed ${inst} is newer than ${build.version}`);
+  if (order > 0) {
+    // Newer than this release: allowed only when the INSTALLED release declared that the data it writes stays readable
+    // down to this version (`update.downgrade_floor`, looked up by the caller). Absent or higher than this version: refused.
+    const floor = input.installedDowngradeFloor ?? null;
+    if (floor === null || (compareSemver(build.version, floor) ?? -1) < 0) {
+      return refuse(
+        "downgrade",
+        "downgrade",
+        floor === null
+          ? `installed ${inst} does not declare that older versions can read its data`
+          : `installed ${inst} declares its data readable only down to ${floor}, not ${build.version}`,
+      );
+    }
+    return {
+      mode: "app-only-update",
+      outcome: "downgrade",
+      allowed: true,
+      reason: "downgrade-declared",
+      detail: `${inst} to ${build.version}; the installed release declares its data readable down to ${floor}`,
+      acks: acksFor("downgrade", build, untestedHardware, unsignedRelease),
+      writes: [appWrite(appImage)],
+      installed,
+      target,
+    };
+  }
   if (order === 0) {
     return {
       mode: "app-only-update",
@@ -316,8 +336,9 @@ function appWrite(image: { offset: number; size: number }): Write {
   return { offset: image.offset, length: image.size, kind: "image", role: "app" };
 }
 
-function acksFor(outcome: "safe-update" | "repair", build: Build, untestedHardware: boolean, unsignedRelease: boolean): UpdateAckId[] {
-  const acks: UpdateAckId[] = ["update-confirm"];
+function acksFor(outcome: "safe-update" | "repair" | "reinstall" | "downgrade", build: Build, untestedHardware: boolean, unsignedRelease: boolean): AckId[] {
+  const acks: AckId[] = ["app-write-confirm"];
+  if (outcome === "downgrade") acks.push("downgrade-confirm");
   if (untestedHardware) acks.push("untested-hardware");
   if (build.image === "openpgp") acks.push("experimental-image");
   if (unsignedRelease) acks.push("unsigned-release");

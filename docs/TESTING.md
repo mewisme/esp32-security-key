@@ -79,9 +79,11 @@ credentials survive reboot. Status: pending hardware.
 - `python -m unittest discover tests/flash` (75 tests: flash safety rules, hardware profiles, descriptor tool) and `tests/release` (60
   tests: deterministic packaging, manifest schema 2, workflow guards, `install.sh`/`install.ps1` against a fake release; the shell
   tests run on Linux, the PowerShell tests on Windows).
-- `cd web && pnpm lint && pnpm test && pnpm build`: eslint, 174 unit tests (manifest v1/v2, profile selection, installer state machine,
-  MKAUTH APDUs, WebCCID framing, renaming orchestration including a silent or slow key, locale detection), production build and the check
-  that no test double is in the bundle. `pnpm test:e2e` runs 58 Playwright `test()` cases (installer, site, Passkey lab at `/passkeys`,
-  reduced-motion; some loop over pages) against a simulated board, a simulated key and a virtual authenticator, with English and
+- `cd web && pnpm lint && pnpm test && pnpm build`: eslint, unit tests (manifest v1/v2, profile selection, installer state machine,
+  update planning in `plan.test.ts` and `app-update.test.ts`, MKAUTH APDUs, WebCCID framing, renaming orchestration including a silent
+  or slow key, locale detection), production build and the check that no test double is in the bundle. `pnpm test:e2e` runs the
+  Playwright cases (installer, site, Passkey lab at `/passkeys`, reduced-motion; some loop over pages): `install.spec.ts` covers
+  detect-and-plan scenarios on the single `/install` page (update, reinstall, downgrade, fallback to the full write) against a
+  simulated board, plus a simulated key and a virtual authenticator, with English and
   Vietnamese checks (`web/README.md`); they are not hardware tests.
 - `.github/workflows/release.yml` verifies the packaged artifact itself (version output, help, static CRT, PAM symbols/load/fail-closed).

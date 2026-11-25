@@ -54,9 +54,6 @@ export function HomePage() {
               <Link to="/install">{t.layout.nav.install}</Link>
             </Button>
             <Button asChild size="lg" variant="outline">
-              <Link to="/update">{t.home.updateFirmware}</Link>
-            </Button>
-            <Button asChild size="lg" variant="outline">
               <Link to="/first-use">{t.layout.nav.firstUse}</Link>
             </Button>
             <Button asChild size="lg" variant="link">

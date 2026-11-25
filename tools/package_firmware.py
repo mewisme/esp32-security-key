@@ -43,6 +43,9 @@ ASSET_RE = re.compile(r"^multikey-firmware-v(?P<version>\d+\.\d+\.\d+(?:-[0-9A-Z
                       r"(?P<image>fido|openpgp)-dev\.zip$")
 COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 DATA_PRESERVING_FROM = "0.2.0"
+# Oldest version whose firmware can still read the data (part0 / nvs) THIS release writes. Declared, not detected
+# (like DATA_PRESERVING_FROM); raise it, or set None, when a release changes the stored format.
+DOWNGRADE_FLOOR = DATA_PRESERVING_FROM
 INSTALL_MODES = ["first-install", "update", "switch-image", "replace-compatible-layout", "repurpose"]
 TITLES = {"fido": "MultiKeys FIDO2 — Development Firmware",
           "openpgp": "MultiKeys OpenPGP — Experimental Development Firmware"}
@@ -239,7 +242,7 @@ def package(build_dir: Path, sdkconfig: Path, app: str, hw: str, version: str, c
                         "size": p["size"]} for n, p in parts.items()],
         "layout_id": layout_id(parts), "partition_schema": layout_id(parts),
         "protected_partitions": list(fd.PROTECTED), "repurpose_fill": list(fd.POLICY["repurpose_fill"]),
-        "update": {"data_preserving_from": DATA_PRESERVING_FROM,
+        "update": {"data_preserving_from": DATA_PRESERVING_FROM, "downgrade_floor": DOWNGRADE_FLOOR,
                    "app_only": app_only_supported(parts, by_role["app"][0], len(by_role["app"][1]))},
         "install_modes": INSTALL_MODES,
         "verified_hardware": ([v["label"] for v in prof["verified_hardware"]] if app in HARDWARE_VERIFIED_IMAGES

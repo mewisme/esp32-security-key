@@ -23,4 +23,8 @@ Host apps (browser, ssh, git, gpg, PAM, multikey CLI)
 - MKAUTH rides on CCID (and on the WebCCID interface from the browser), so it needs no interface of its own.
 - Source layout: `pico-*` submodules (pinned, never edited), `patches/` (our changes to them), `components/` (our
   firmware components), `host/` (Rust workspace), `web/` (web installer), `tools/`, `docs/`.
+- Web flashing: one flow at `/install`. `web/src/lib/flashing/plan.ts` (`planFlash`) combines `decideAppUpdate` (application-only
+  writes: update, reinstall, downgrade, repair) and `decideInstallMode` (full writes) into one decision; a single hook
+  (`useInstaller`) and state machine (`machine.ts`) run it. The former separate update page and its hook were removed. See
+  [SECURITY](SECURITY.md#detect-and-plan-one-flow-at-install).
 - See [ADR-0001](ADR-0001-foundation.md) for the reasons behind each choice and ROADMAP for what exists today.

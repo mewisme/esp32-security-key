@@ -21,9 +21,19 @@ describe("parseConfig", () => {
     expect(parseConfig(json(c))).toEqual(c);
   });
 
+  it("defaults to the auto image, which follows the MultiKeys image on the board", () => {
+    expect(DEFAULT_CONFIG.image).toBe("auto");
+  });
+
+  it("round-trips the auto image", () => {
+    const c = { tag: "v0.4.0", image: "auto" as const, name: { mode: "keep" as const } };
+    expect(parseConfig(json(c))).toEqual(c);
+    expect(parseConfig(json({ tag: null, image: "auto", name: { mode: "keep" } }))).toEqual(DEFAULT_CONFIG);
+  });
+
   it("accepts an unset release", () => {
-    expect(parseConfig(json({ tag: null, image: "fido", name: { mode: "keep" } }))).toEqual(DEFAULT_CONFIG);
-    expect(parseConfig(json({ image: "fido", name: { mode: "keep" } }))).toEqual(DEFAULT_CONFIG);
+    expect(parseConfig(json({ tag: null, image: "auto", name: { mode: "keep" } }))).toEqual(DEFAULT_CONFIG);
+    expect(parseConfig(json({ image: "auto", name: { mode: "keep" } }))).toEqual(DEFAULT_CONFIG);
   });
 
   it("falls back to the default for an unknown mode, image or tag type", () => {

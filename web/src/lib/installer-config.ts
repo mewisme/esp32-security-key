@@ -2,16 +2,17 @@
 // and a reload keep it. Kept apart from the installer hook so pages that only read it (First use) don't pull in esptool-js.
 import { validateDeviceName } from "./device/device-name";
 import type { NameRequest } from "./device/mkauth";
+import type { FlashImageChoice } from "./flashing/machine";
 
 export interface InstallerConfig {
   /** Release tag, or null for "the default release". */
   tag: string | null;
-  image: "fido" | "openpgp";
+  image: FlashImageChoice;
   name: NameRequest;
 }
 
 export const CONFIG_KEY = "multikeys-installer-config";
-export const DEFAULT_CONFIG: InstallerConfig = { tag: null, image: "fido", name: { mode: "keep" } };
+export const DEFAULT_CONFIG: InstallerConfig = { tag: null, image: "auto", name: { mode: "keep" } };
 
 /** Validates a stored config; anything unexpected (bad JSON, unknown mode, a name the key would refuse) -> the default. */
 export function parseConfig(raw: string | null): InstallerConfig {
@@ -20,7 +21,7 @@ export function parseConfig(raw: string | null): InstallerConfig {
     const v = JSON.parse(raw) as { tag?: unknown; image?: unknown; name?: { mode?: unknown; name?: unknown } } | null;
     if (!v || typeof v !== "object") return DEFAULT_CONFIG;
     const tag = v.tag ?? null;
-    const image = v.image === "fido" || v.image === "openpgp" ? v.image : null;
+    const image = v.image === "auto" || v.image === "fido" || v.image === "openpgp" ? v.image : null;
     if ((tag !== null && typeof tag !== "string") || !image || !v.name || typeof v.name !== "object") return DEFAULT_CONFIG;
     const { mode } = v.name;
     if (mode === "keep" || mode === "default") return { tag, image, name: { mode } };

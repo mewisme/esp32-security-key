@@ -8,7 +8,7 @@ import { allSizesIn, imagesIn, megabytes } from "@/lib/firmware/release-select";
 import { formatDate } from "./format-date";
 import { NotesLink } from "./NotesLink";
 
-/** The newest stable release (else the newest pre-release): facts from its manifest, and links to the Install and Update pages. */
+/** The newest stable release (else the newest pre-release): facts from its manifest, and and a link to the Install page. */
 export function LatestRelease({ catalog, release: r }: { catalog: Catalog; release: CatalogRelease }) {
   const { t, locale } = useI18n();
   const latestStable = catalog.releases.find((x) => !x.prerelease);
@@ -45,9 +45,6 @@ export function LatestRelease({ catalog, release: r }: { catalog: Catalog; relea
         <div className="flex flex-wrap gap-2">
           <Button asChild>
             <Link to="/install">{t.releases.installCta}</Link>
-          </Button>
-          <Button asChild variant="outline">
-            <Link to="/update">{t.releases.updateCta}</Link>
           </Button>
         </div>
       </FramePanel>

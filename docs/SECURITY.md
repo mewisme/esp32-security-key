@@ -97,45 +97,68 @@ what it guarantees:
 - **After writing.** Each written region is read back (MD5 from the chip) before the installer reports success; detecting the
   running key afterwards is optional and only reads USB descriptors.
 
-### Application-only update (`/update`)
+### Detect and plan (one flow at `/install`)
 
-A separate page replaces only the app image on a key that already runs MultiKeys. What it does and does not guarantee:
+There is one web flow, `/install`. It reads the connected board in ROM download mode (read-only: partition table, app
+descriptor, bootloader header, MD5 of the app region) and plans exactly one of: first install, update, reinstall (the identical
+app written again), downgrade, repair, or a full-install mode (full update, forced update, switch image, replace layout,
+repurpose). The decision is made by `web/src/lib/flashing/plan.ts` (`planFlash`), which combines `decideAppUpdate`
+(`app-update.ts`) and `decideInstallMode` (`install-mode.ts`). What it does and does not guarantee:
 
-- **One write.** The single region written is the app image at `0x20000`, inside the `factory` partition. It never writes the
-  bootloader, the partition table, `nvs`, `phy_init` or `part0`, never erases anything, never fills, never touches eFuses.
-  `web/src/lib/flashing/app-update.ts` returns at most that one write and a unit test checks it for every allowed decision.
-- **What it requires.** The release declares `update.app_only`; the device partition table equals the release layout entry for entry (every
-  partition's name, type, subtype, offset and size, no extra partition, a valid checksum entry, no overlap, nothing outside the
-  flash) and has `factory` at the app offset with room for the image; a table that only keeps `nvs`, `phy_init` and `part0` in
-  place is *compatible for a full install* but not exact, so the application-only update refuses it; the bootloader and the new app are for the same flash size; the installed
-  app is a MultiKeys image of the same family at a version from `update.data_preserving_from` up to the new one (no downgrade);
-  the flash content is not already the new image. Anything not shown compatible is refused with the reason, and nothing is
-  written. There is no override and no automatic fallback to the installer.
-- **Same key.** The page may first read the running key over WebUSB (read-only: BUILD_INFO, name, MKAUTH status). In download mode
-  it refuses a key whose version, family or flash size differs from that reading. It does **not** prove that the key in download
-  mode is physically the one that was read: the chip serial seen by the firmware has not been correlated with the ROM-mode
-  reading, so the page says "plug in only the key you checked".
-- **Data.** `part0` is not written, and the update is designed to keep credentials, the FIDO PIN, the MKAUTH record and the name.
-  The page cannot read credentials or the PIN, so it never claims they are intact. After the update it reports: the running
-  image SHA-256 equals the published one, the version matches, the name and the MKAUTH enrollment and device id equal the ones
-  read before; the FIDO credentials and PIN are shown as "not checked".
-- **Not atomic.** A single slot is written: an interrupted write leaves the key unable to start until the update is run again
+- **Application-only writes** (modes `app-update`, `app-reinstall`, `app-downgrade`, `app-repair`) write exactly one region: the
+  app image at `0x20000`, inside the `factory` partition. They never write the bootloader, the partition table, `nvs`,
+  `phy_init` or `part0`, never erase, never fill, never touch eFuses. `app-update.ts` returns at most that one write and a unit
+  test checks it for every allowed decision.
+- **What they require.** The release declares `update.app_only`; the device partition table equals the release layout entry for
+  entry (every partition's name, type, subtype, offset and size, no extra partition, a valid checksum entry, no overlap, nothing
+  outside the flash) and has `factory` at the app offset with room for the image; a table that only keeps `nvs`, `phy_init` and
+  `part0` in place is *compatible for a full install* but not exact, so the application-only path refuses it; the bootloader and
+  the new app are for the same flash size; the installed app is a MultiKeys image of the same family. Anything not shown
+  compatible is refused with the reason, and nothing is written on this path.
+- **Update** (installed version older than the target) needs the installed version to be at least `update.data_preserving_from`.
+- **Reinstall.** The flash MD5 of the app region equals the target image. The same single write is made; the person confirms with
+  the `app-write-confirm` checkbox.
+- **Downgrade** (installed version newer than the target). Allowed as application-only only if the *installed* release's manifest
+  declares `update.downgrade_floor` at or below the target version (absent or `null` means not declared; `docs/RELEASES.md`). It
+  needs the `downgrade-confirm` checkbox. Older versions may lack security fixes. **There is no anti-rollback on the board**: no
+  eFuse or secure-boot version counter, so nothing prevents going back, or forward again.
+- **Repair.** Same version but different content, or a pending-write record of this browser that matches the chip MAC, release and
+  image and is less than 7 days old. It needs the typed word `REPAIR`.
+- **Fallback to the full write is offered, never applied silently.** When the application-only path is refused (layout not exact,
+  version outside the declared range, downgrade not declared, release without `update.app_only`, installed app unreadable or
+  without a matching record, unparsable version) and a same-family board with a matching layout is detected, the page offers the
+  full write: bootloader, partition table and app, `part0` untouched (mode `update`, or `update-forced` with `FORCE` typed). It
+  shows why the application-only path was refused and writes only after the acknowledgements listed above for those modes.
+- **Final re-check.** The decision is re-read and re-made on the same open connection immediately before writing; if it
+  differs, the new decision is shown instead of writing.
+- **Same key.** The page may first read the running key over WebUSB (read-only: BUILD_INFO, name, MKAUTH status). A board in
+  download mode whose version, family or flash size differs from that reading is refused outright (`different-key`), without
+  fallback. It does **not** prove that the key in download mode is physically the one that was read: the chip serial seen by the
+  firmware has not been correlated with the ROM-mode reading, so the page says "plug in only the key you checked".
+- **Data.** `part0` is not written, and the application-only paths are designed to keep credentials, the FIDO PIN, the MKAUTH
+  record and the name. The page cannot read credentials or the PIN, so it never claims they are intact. After an application-only
+  write it reports (when the key was read beforehand): the running image SHA-256 equals the published one, the version matches,
+  the name and the MKAUTH enrollment and device id equal the ones read before; the FIDO credentials and PIN are shown as "not
+  checked" (never read).
+- **Not atomic.** A single slot is written: an interrupted write leaves the key unable to start until the write is run again
   from download mode. It is not an OTA update, has no rollback and no A/B slots. The browser records the started write
   (`localStorage`, `multikeys-pending-update`) until the flash MD5 matches; only with that record, and only for the same build,
   does the page offer a typed-`REPAIR` rewrite of an application whose descriptor is unreadable. The record names the release
   tag, the image family and profile, the application SHA-256 and the ROM-mode MAC address of the chip the write started on, and
   is used only when all of them equal what is connected now and it is less than 7 days old. A record from an older page, a stale
   one, one for another release or image, for another MAC, or made or checked without a readable MAC is refused
-  (`recovery-unverified`) and the person is pointed to the installer (which keeps `part0` when the partition table is intact) or
-  offered to discard it. A MAC address is not a secret and the running firmware's WebUSB identity is not linked to it, so this
+  (`recovery-unverified`) and the person is offered to discard it or to run a full install (which keeps `part0` when the partition
+  table is intact). A MAC address is not a secret and the running firmware's WebUSB identity is not linked to it, so this
   shows "the same chip as when the write started" as far as a MAC does, not that the chip is the one that was inspected. Without
-  a record the key is refused as unknown.
+  a record the key is not repaired.
 - **Storage compatibility is declared, not detected.** The key's file system has no version marker. Compatibility rests on
-  `update.data_preserving_from` (release process: `docs/RELEASES.md`) and on code inspection that nothing in the stored formats
-  changed since 0.2.0; it has not been tested across versions on hardware.
+  `update.data_preserving_from` and `update.downgrade_floor` (release process: `docs/RELEASES.md`) and on code inspection that
+  nothing in the stored formats changed since 0.2.0; it has not been tested across versions on hardware.
 
-The installer is unit- and e2e-tested against a simulated board and was run once on real hardware (one board, update path,
-`docs/hw-reports/2026-11-23-web-installer.md`); see `docs/ROADMAP.md`.
+Status: the installer is unit tested (`plan.test.ts`, `app-update.test.ts`) and integration tested with a simulated board
+(Playwright). Only the former application-only update path was run once on real hardware (one board,
+`docs/hw-reports/2026-11-23-web-installer.md`). Reinstall, downgrade, automatic detection, the full-write fallback and the merged
+page are **not Hardware verified**; see `docs/ROADMAP.md`.
 
 ### Renaming the key from the browser (WebUSB management)
 

@@ -66,7 +66,7 @@ fallback; `public/_headers` sets CSP (`connect-src 'self'`), `Permissions-Policy
 
 ## Known limitations
 
-- Hardware coverage: updates on one board, 16 MB (`docs/hw-reports/2026-11-23-web-installer.md`,
+- Hardware coverage: the former application-only update on one board, 16 MB (`docs/hw-reports/2026-11-23-web-installer.md`,
   `docs/hw-reports/2026-11-23-profiles-and-personalization.md`), and renaming from the browser on that board (Windows 11, Chrome).
   4 and 8 MB builds were never run on a board; a key with a management PIN was only run against the simulated key. esptool-js only
   offers an RTS `hard_reset` after writing, which left the native-USB board in download mode (as with the developer script, which
@@ -96,16 +96,17 @@ fallback; `public/_headers` sets CSP (`connect-src 'self'`), `Permissions-Policy
 - `src/hooks/useInstaller.ts`: performs side effects (driver, download, decisions) and dispatches events; the choices made
   before connecting (release, device name) live in `config`, persisted per tab in `sessionStorage`
   (`src/lib/installer-config.ts`: release tag, image, requested name; never a PIN).
-- `src/hooks/useUpdater.ts` and `src/lib/flashing/app-update.ts`: the application-only **Update firmware** page (`/update`).
-  `decideAppUpdate` is pure and returns at most one write, the app image at 0x20000; it refuses unless the release declares
-  `update.app_only`, the device layout equals the release's, the flash sizes agree and the installed MultiKeys image is of the
-  same family within the declared data-compatible range (no downgrades, no override). The hook re-decides on the open
-  connection right before the write, keeps `multikeys-pending-update` in `localStorage` until the flash MD5 matches, and after
-  the replug reports what could be checked (`update-report.ts`); FIDO credentials and the PIN are never read. It is not atomic
-  and not hardware verified: see `docs/SECURITY.md`. `update-pending.ts` holds the interrupted-write record (version 2: release,
-  image, application SHA-256 and the ROM-mode MAC; an older record is never used to repair), `partition-table.ts` the strict
-  table check (`protectedCompatible` for a full install, `matchesLayoutExactly` for this update), shared test vectors with
-  `tools/flash_dev.py` in `tests/vectors/partition_tables.json`.
+- `src/lib/flashing/plan.ts`: `planFlash`, the single decision function of `/install`. It combines `decideAppUpdate`
+  (`app-update.ts`, pure, at most one write: the app image at 0x20000; modes `app-update`, `app-reinstall`, `app-downgrade`,
+  `app-repair`) and `decideInstallMode` (`install-mode.ts`, the full writes). When the application-only path is refused and a
+  full write is possible, the decision carries `appOnlyRefusal` and the page offers the full write with the reason. The hook
+  re-decides on the open connection right before the write, keeps `multikeys-pending-update` in `localStorage` until the flash
+  MD5 matches, and after the replug reports what could be checked (`update-report.ts`); FIDO credentials and the PIN are never
+  read. Application-only writes are not atomic and not hardware verified (only the former update path ran once): see
+  `docs/SECURITY.md`. `update-pending.ts` holds the interrupted-write record (version 2: release, image, application SHA-256
+  and the ROM-mode MAC; an older record is never used to repair), `partition-table.ts` the strict table check
+  (`protectedCompatible` for a full install, `matchesLayoutExactly` for application-only writes), shared test vectors with
+  `tools/flash_dev.py` in `tests/vectors/partition_tables.json`. There is no separate hook or page for updates.
 - `src/lib/firmware/signature.ts` and `release-keys.ts`: verification of a detached Ed25519 signature of the manifest against
   keys built into the site (`docs/RELEASE_SIGNING.md`). The key list is empty: no release is signed yet, so every release is
   shown as "Not authenticated".

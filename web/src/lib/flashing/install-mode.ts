@@ -11,6 +11,8 @@
 //     switch between the two images also needs SWITCH typed (the FIDO2 / OpenPGP data areas are not interchangeable)
 // Outside repurpose no write ever touches a protected partition. A table that cannot be read never gets here: the
 // caller fails with `unsafe-layout`.
+// The app-* modes (app-update, app-reinstall, app-downgrade, app-repair) are not decided here: they come from
+// decideAppUpdate in app-update.ts and are chosen over rule 2 by plan.ts when they are allowed.
 import { type FlashPolicy, policy as defaultPolicy, protectedNames, protectedRanges } from "../firmware/policy";
 import type { Build } from "../firmware/types";
 import { compareSemver } from "../firmware/version";
@@ -24,6 +26,10 @@ export type InstallMode =
   | "switch-image"
   | "replace-compatible-layout"
   | "repurpose"
+  | "app-update"
+  | "app-reinstall"
+  | "app-downgrade"
+  | "app-repair"
   | "blocked";
 
 export type AckId =
@@ -36,10 +42,13 @@ export type AckId =
   | "force-storage"
   | "force-typed"
   | "untested-hardware"
-  | "unsigned-release";
+  | "unsigned-release"
+  | "app-write-confirm"
+  | "downgrade-confirm"
+  | "repair-typed";
 
 /** Acknowledgements the person gives by typing a word instead of ticking a box, with the word to type. */
-export const TYPED_ACKS = { "repurpose-typed": "REPURPOSE", "switch-image-typed": "SWITCH", "force-typed": "FORCE" } as const;
+export const TYPED_ACKS = { "repurpose-typed": "REPURPOSE", "switch-image-typed": "SWITCH", "force-typed": "FORCE", "repair-typed": "REPAIR" } as const;
 export type TypedAckId = keyof typeof TYPED_ACKS;
 
 export interface Write {
@@ -55,6 +64,8 @@ export interface InstallDecision {
   acks: AckId[];
   writes: Write[];
   reason: string;
+  /** Set when the application-only path was considered and refused: why the full install is what is offered instead. */
+  appOnlyRefusal?: { reason: string; detail: string };
 }
 
 export function decideInstallMode(input: {

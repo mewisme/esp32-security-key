@@ -20,6 +20,7 @@ export type ErrorCode =
   | "checksum-mismatch"
   | "unsafe-layout"
   | "storage-incompatible"
+  | "different-key"
   | "device-disconnected"
   | "disconnected-during-flash"
   | "flash-write-failed"
@@ -55,7 +56,7 @@ export interface ErrorText {
 }
 
 /** Errors that must never offer "continue anyway". */
-export const NO_BYPASS: readonly ErrorCode[] = ["checksum-mismatch", "manifest-invalid", "unsafe-layout", "storage-incompatible"];
+export const NO_BYPASS: readonly ErrorCode[] = ["checksum-mismatch", "manifest-invalid", "unsafe-layout", "storage-incompatible", "different-key"];
 
 export const ERRORS: Record<ErrorCode, ErrorInfo> = {
   "browser-unsupported": { group: "Browser", retry: false },
@@ -79,6 +80,7 @@ export const ERRORS: Record<ErrorCode, ErrorInfo> = {
   "checksum-mismatch": { group: "Firmware", retry: true },
   "unsafe-layout": { group: "Firmware", retry: true },
   "storage-incompatible": { group: "Firmware", retry: false },
+  "different-key": { group: "Board", retry: false },
   "device-disconnected": { group: "Connecting", retry: true },
   "disconnected-during-flash": { group: "Flashing", retry: true },
   "flash-write-failed": { group: "Flashing", retry: true },

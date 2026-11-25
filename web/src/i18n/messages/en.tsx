@@ -13,9 +13,8 @@ import { DEVICE_NAME_MAX, type NameProblem } from "@/lib/device/device-name";
 import type { NameRequest } from "@/lib/device/mkauth";
 import type { ErrorCode, ErrorGroup, ErrorText } from "@/lib/errors/catalog";
 import type { AckId, InstallMode, TypedAckId } from "@/lib/flashing/install-mode";
-import type { AppUpdateOutcome, AppUpdateReason, TypedUpdateAckId, UpdateAckId } from "@/lib/flashing/app-update";
+import type { AppUpdateReason } from "@/lib/flashing/app-update";
 import type { UpdateVerdict } from "@/lib/flashing/update-report";
-import type { UpdateStep } from "@/lib/update-steps";
 import type { LabCheck, LabErrorId } from "@/lib/passkey/lab";
 import type { StepId } from "@/lib/wizard-steps";
 import { flashSizeList } from "./shared";
@@ -138,6 +137,11 @@ const errors = {
     what: "The board runs MultiKeys with a different storage layout. Installing would destroy its stored keys, so the installer stops.",
     next: ["Keep using the firmware that is on the board, or ask for help on GitHub before changing anything."],
   },
+  "different-key": {
+    title: "This is not the key you read",
+    what: "The board in download mode reports another version, firmware or flash size than the key read over WebUSB beforehand. Nothing was written.",
+    next: ["Unplug any other keys, then start over with the board you want to change.", "Or skip “Read my key first” and run the install again."],
+  },
   "device-disconnected": {
     title: "The board was disconnected",
     what: "The connection to the board was lost before anything was written.",
@@ -229,6 +233,14 @@ const risk: Record<Exclude<InstallMode, "blocked">, (from: string) => string> = 
     "The board runs firmware that isn't MultiKeys but uses the same storage layout. That firmware will be replaced; the storage area is not written.",
   repurpose: () =>
     "The board uses a different storage layout, for example factory demo firmware. To install MultiKeys the installer first clears the nvs and part0 areas — everything the previous firmware stored there is erased — and then writes MultiKeys. Nothing else is erased.",
+  "app-update": () =>
+    "Only the application is written. Your credentials, PIN and key name live in part0, which is not written. This page cannot read them, so it does not promise they are intact; after the write it checks what it can.",
+  "app-reinstall": () =>
+    "Only the application is written again. Your credentials, PIN and key name live in part0, which is not written. This page cannot read them, so it does not promise they are intact; after the write it checks what it can.",
+  "app-downgrade": () =>
+    "Only the application is written. The installed release declared that this older version can read the data it stores. That is a declaration, not something this page detected. Your credentials, PIN and key name live in part0, which is not written, and this page cannot read them.",
+  "app-repair": () =>
+    "Only the application is written. Your credentials, PIN and key name live in part0, which is not written. This page cannot read them, so it does not promise they are intact; after the write it checks what it can.",
 };
 
 export const en = {
@@ -263,7 +275,7 @@ export const en = {
     skipToContent: "Skip to content",
     mainNav: "Main",
     mobileNav: "Mobile",
-    nav: { install: "Install", update: "Update", firstUse: "First use", passkeys: "Passkeys", keyInfo: "Your key", help: "Help", releases: "Releases" },
+    nav: { install: "Install & update", firstUse: "First use", passkeys: "Passkeys", keyInfo: "Your key", help: "Help", releases: "Releases" },
     githubRepository: "GitHub repository",
     github: "GitHub",
     openMenu: "Open menu",
@@ -284,7 +296,6 @@ export const en = {
     title: "Turn an ESP32-S3 into a FIDO2 security key",
     lead: "Install MultiKeys from your browser in a few minutes, no command line needed.",
     source: "Source on GitHub",
-    updateFirmware: "Update firmware",
     verified: "Hardware verified on ESP32-S3 N16R8",
     how: {
       title: "How it works",
@@ -362,7 +373,6 @@ export const en = {
     imageNames: { fido: "FIDO2", openpgp: "OpenPGP" } satisfies Record<"fido" | "openpgp", string>,
     facts: (images: string, sizes: string, chip: string) => `${images} · ${sizes} · ${chip}`,
     installCta: "Install firmware",
-    updateCta: "Update firmware",
     sourceCommit: "Source commit",
     downloadsTitle: "Download firmware",
     firmwareType: "Firmware type",
@@ -412,8 +422,8 @@ export const en = {
 
   install: {
     loading: "Loading the installer…",
-    title: "Install MultiKeys",
-    lead: "Put the MultiKeys FIDO2 firmware on an ESP32-S3 board, straight from your browser.",
+    title: "Install or update MultiKeys",
+    lead: "Install MultiKeys on an ESP32-S3 board, or update, reinstall or downgrade the firmware of a key that already runs it, straight from your browser. The page works out which one applies from the board you connect.",
     cancelled: { title: "Installation cancelled", text: "Nothing was written to the board." },
     steps: {
       "get-started": "Get started",
@@ -433,10 +443,10 @@ export const en = {
     firmwareName: (label: ReactNode) => <>MultiKeys FIDO2 — {label}</>,
 
     getStarted: {
-      description: "Install the MultiKeys FIDO2 firmware on an ESP32-S3 board. It takes about five minutes.",
+      description: "Install or update the MultiKeys firmware on an ESP32-S3 board. It takes about five minutes.",
       whatHappens: {
         title: "What happens",
-        text: "You pick the firmware, put the board in download mode, check what the installer found, and install. Afterwards you can give the key its own name.",
+        text: "You pick the firmware version, put the board in download mode, check what the page found on it, and confirm. The page decides from the board whether this is a first install, an update, a reinstall or a downgrade. Afterwards you can give the key its own name.",
       },
       whatYouNeed: {
         title: "What you need",
@@ -463,7 +473,27 @@ export const en = {
       imageLegend: "Firmware type",
       experimental: "Experimental",
       openpgpUnavailable: "An OpenPGP image has not been published for this release.",
+      olderHint: "Choosing a version older than the one on the key is a downgrade. The page checks it on the Review screen and refuses it unless it is shown to be safe.",
+      baseline: {
+        title: "Read my key first (optional)",
+        text: "Plug the key in normally (not in download mode) and read what it runs now. It is read-only: no button press, no PIN, nothing is written. With this reading the page can refuse a board that turns out to be a different key, and compare the key before and after the write.",
+        choose: "Read my key",
+        reading: "Reading the key…",
+        clear: "Forget this reading",
+        failed: "No key was read. Either none was chosen, or its firmware is too old, or another program is using it, or this browser cannot talk to the key over WebUSB.",
+        unsupported: "This browser cannot talk to the key over WebUSB.",
+        reported: "The key reports",
+        rows: { firmware: "Firmware", commit: "Commit", image: "Image SHA-256", name: "USB name", pin: "Management PIN" },
+        pinSet: "Set up",
+        pinNotSet: "Not set up",
+        unreadable: "Not readable",
+        outdated: "This firmware is older than v0.3.1 and cannot report its build. Its version is read in download mode instead.",
+      },
       images: {
+        auto: {
+          title: "Automatic",
+          text: "Follows the firmware already on the key (FIDO2 or OpenPGP). A blank board gets FIDO2.",
+        },
         fido: {
           title: "MultiKeys FIDO2",
           text: "Passkeys, FIDO2/U2F security key with the BOOT button as user presence. The recommended image.",
@@ -553,6 +583,10 @@ export const en = {
         "switch-image": "Switch to a different MultiKeys firmware",
         "replace-compatible-layout": "Replace the firmware on this board",
         repurpose: "Repurpose this board",
+        "app-update": "Update the application only",
+        "app-reinstall": "Reinstall the application",
+        "app-downgrade": "Downgrade the application",
+        "app-repair": "Repair the application",
         blocked: "Blocked",
       } satisfies Record<InstallMode, string>,
       writes: {
@@ -565,16 +599,104 @@ export const en = {
         roles: { bootloader: "Bootloader", "partition-table": "Partition table", app: "MultiKeys app" } as Record<string, string>,
         neverTouched: (partitions: string[]) =>
           `Never touched: ${[...partitions.map((p) => (p === "part0" ? "part0 (your keys)" : p)), "eFuses (permanent chip settings)"].join(", ")}.`,
+        appOnlyUntouched:
+          "Never touched: bootloader, partition table, nvs, phy_init, part0 (your credentials, PIN and name), eFuses (permanent chip settings).",
       },
       switchWarning: {
         title: "FIDO2 and OpenPGP keep separate data",
         text: "Both firmwares use the same storage area (part0), but each one reads it in its own format. Nothing is erased by this installer, yet the keys and credentials made by the firmware being replaced will not be usable, and may be overwritten once the new firmware starts. Back up what you need first. Switching back later means installing the other firmware again; the credentials do not return.",
       },
       data: { title: "Your data", why: "Why:", risk },
-      updateHint: {
-        title: "A smaller update is available",
-        text: "This key already runs MultiKeys. The Update firmware page replaces only the application and leaves the bootloader and the partition table alone.",
-        link: "Open Update firmware",
+      changeFirmware: "Choose another version",
+      appOnly: {
+        fullInstead:
+          "The application-only write was not possible, so the full install is offered instead. It rewrites the bootloader, the partition table and the application (part0 is never written) and needs the confirmations below.",
+        discard: "Discard the record and start over",
+        reasons: {
+          ok: { title: "Compatible update", text: "This release declares that it can use the data stored by the installed version. Only the application is replaced." },
+          "interrupted-write": {
+            title: "An earlier write did not finish",
+            text: "This browser recorded an application write of this same release that was started and never verified, on a chip with the same MAC address as this one. Writing the application again repairs it. Nothing else is written.",
+          },
+          "same-version-different-image": {
+            title: "Same version, different content",
+            text: "The installed application has this version number but its content differs from the published build. Writing the published build replaces only the application.",
+          },
+          downgrade: {
+            title: "That would be a downgrade",
+            text: "The installed version is newer than this release, and the installed release does not declare that this older version can read its data. The newer version may have changed how it stores data.",
+          },
+          storage: {
+            title: "Stored data not shown compatible",
+            text: "The installed version is older than the oldest version this release declares compatible, so the keys it stored may not be usable.",
+          },
+          layout: {
+            title: "Different storage layout",
+            text: "The partition table on this key is not the one this release uses, so an application-only write cannot be shown safe.",
+          },
+          "app-too-large": { title: "The application does not fit", text: "The new application is larger than the app partition on this key." },
+          "protected-overlap": {
+            title: "The write would reach protected storage",
+            text: "The application-only write was refused because it would touch the bootloader, the partition table or a storage area.",
+          },
+          "flash-profile": {
+            title: "Different flash size",
+            text: "The bootloader on this key was built for a different flash size than this build.",
+          },
+          "different-family": {
+            title: "The other MultiKeys firmware",
+            text: "The key runs the other MultiKeys firmware (FIDO2 or OpenPGP). Switching changes how stored data is read, so it is not an application-only write.",
+          },
+          reinstall: {
+            title: "Write the same application again",
+            text: "The application on the key is byte-identical to this release. Only the application is written; the bootloader, partition table and storage (part0) are not touched.",
+          },
+          "different-key": {
+            title: "This is not the key you read",
+            text: "The key in download mode reports another version, firmware or flash size than the key read beforehand. Unplug other keys and start over.",
+          },
+          "not-multikeys": {
+            title: "Not a MultiKeys key",
+            text: "This board does not run MultiKeys, or its flash is empty, so there is no MultiKeys application to replace on its own.",
+          },
+          "release-unsupported": {
+            title: "This release has no application-only write",
+            text: "A release must declare that an application-only write is safe, and this one does not.",
+          },
+          "unreadable-bootloader": { title: "The bootloader could not be read", text: "The first bytes of the flash are not a valid bootloader image." },
+          "unreadable-descriptor": {
+            title: "The installed application could not be read",
+            text: "The key has no readable application description. That can follow an interrupted write, but this browser has no record of one.",
+          },
+          "recovery-unverified": {
+            title: "Recovery cannot be tied to this chip",
+            text: "The key has no readable application, and this browser has a record of an interrupted write. That record cannot be matched to this chip, release and image, so no application-only repair is offered. The full install replaces the firmware after you confirm, keeps the key storage when the partition table is intact, and warns when it is not. If the record is old or belongs to another key, discard it.",
+          },
+          "unparsable-version": {
+            title: "The installed version is not a version number",
+            text: "It cannot be compared with this release, so compatibility cannot be shown.",
+          },
+          "downgrade-declared": {
+            title: "Downgrade declared safe",
+            text: "The installed release declares that this older version can read the data it stores. Only the application is replaced.",
+          },
+        } satisfies Record<AppUpdateReason, { title: string; text: string }>,
+      },
+      appNotAtomic: {
+        title: "Not atomic, no rollback",
+        text: "The application is written into a single slot. If the write is interrupted, the key cannot start until the application is written again from download mode. This is not an over-the-air update and it cannot undo itself.",
+      },
+      reinstallNote: {
+        title: "The board already runs exactly this build",
+        text: "The application on the key is byte-identical to this release (identical bytes). Continuing writes it again; only the application is written.",
+      },
+      downgradeWarning: {
+        title: "This installs an older version",
+        text: "Older versions may lack security fixes that newer ones have. The installed release declared that its stored data can be read by this older version; the page cannot detect that, it only relies on the declaration. Continue only if you need this version.",
+      },
+      repairNote: {
+        title: "The application will be written again",
+        text: "The application on the key is not the published build of its version, or an earlier write did not finish. Writing the published build replaces only the application. Nothing else is written.",
       },
       untested: {
         title: "Not tested on this board",
@@ -597,11 +719,15 @@ export const en = {
           "unsigned-release": "I understand this release is not signed, so nothing proves who published it.",
           "force-storage":
             "I understand this release is not shown to read the keys stored on this board. The keys are not erased by the installer, but they may become unusable or be lost, and the old firmware may not return them. I have backed up what I need.",
+          "app-write-confirm":
+            "I understand that only the MultiKeys application is replaced, that the write is not atomic, and that an interrupted write means running it again.",
+          "downgrade-confirm": "I understand this installs an older version that may lack security fixes, and that it is not detected whether it can read my stored data.",
         } satisfies Record<Exclude<AckId, TypedAckId>, string>,
         typedLabels: {
           "repurpose-typed": "Type REPURPOSE to confirm that the nvs and part0 areas will be erased",
           "switch-image-typed": "Type SWITCH to confirm that you are changing between the FIDO2 and OpenPGP firmware",
           "force-typed": "Type FORCE to confirm that you are installing over keys this release is not known to read",
+          "repair-typed": "Type REPAIR to confirm that the application will be written again",
         } satisfies Record<TypedAckId, string>,
       },
     },
@@ -647,206 +773,27 @@ export const en = {
         replugHint: "After the replug the board appears as a smart-card reader (CCID), not as a security key.",
         done: "I replugged it",
       },
-    },
-  },
-
-  update: {
-    title: "Update firmware",
-    lead: "Replace only the MultiKeys application on a key that already runs MultiKeys. The bootloader, the partition table and the storage areas (part0 holds your credentials, PIN and name) are not written.",
-    steps: {
-      connect: "Connect key",
-      check: "Check for updates",
-      review: "Review",
-      update: "Update",
-      verify: "Verify",
-    } satisfies Record<UpdateStep, string>,
-    stepper: {
-      label: "Update progress",
-      completed: ", completed",
-      stepOf: (n: number, total: number) => `Step ${n} of ${total}`,
-    },
-    notAtomic: {
-      title: "Not atomic, no rollback",
-      text: "The application is written into a single slot. If the write is interrupted, the key cannot start until this update is run again from download mode. This is not an over-the-air update and it cannot undo itself.",
-    },
-    connect: {
-      description: "Read what the key runs now. This is read-only: no button press, no PIN, nothing is written.",
-      hint: "Plug the key in normally (not in download mode), click “Choose key” and pick the MultiKeys entry.",
-      choose: "Choose key",
-      reading: "Reading the key…",
-      notChosen: "No key was chosen.",
-      failed: "The key could not be read over WebUSB. Its firmware may be too old, or another program may be using it.",
-      unsupported: "This browser cannot talk to the key over WebUSB.",
-      skip: "Continue without reading the key",
-      skipNote: "Without this reading the page cannot compare the key before and after the update.",
-      reported: "The key reports",
-      rows: { firmware: "Firmware", commit: "Commit", image: "Image SHA-256", name: "USB name", pin: "Management PIN" },
-      pinSet: "Set up",
-      pinNotSet: "Not set up",
-      unreadable: "Not readable",
-      outdated: "This firmware is older than v0.3.1 and cannot report its build. Its version is read in download mode instead.",
-    },
-    check: {
-      description: "Choose the version to update to. Only releases newer than the one on the key are listed; the one right after it is selected first.",
-      loading: "Loading releases…",
-      installed: "Installed",
-      offered: "Offered",
-      notRead: "Not read yet",
-      versionLine: (title: string, version: string, tag: string) => `${title}, version ${version} (${tag})`,
-      upToDate: { title: "Already up to date", text: "The application on the key is byte-identical to the newest release. Nothing to update." },
-      unsupported: {
-        title: "This release has no application-only update",
-        text: (tag: string) =>
-          `Release ${tag} was published before application-only updates existed, so it does not declare that one is safe. The installer can still update the key; it rewrites the bootloader and partition table as well and keeps part0.`,
+      report: {
+        title: "What the page checked",
+        description: "The application is written and verified. This is what the page could check on the running key.",
+        table: { check: "Check", result: "Result" },
+        rows: {
+          image: "Running image matches the release",
+          version: "Version matches the release",
+          name: "USB name unchanged",
+          mkauth: "Management PIN state and device id unchanged",
+          fido: "FIDO credentials and PIN",
+        },
+        results: { yes: "Verified", no: "Does not match", unknown: "Not checked" },
+        fidoNote: "Not read by this page. To use a credential, run the optional passkey test.",
+        passkeyTest: "Open the passkey test",
+        verdicts: {
+          verified: { title: "Update verified", text: "The key runs the published image and kept its name and management PIN state." },
+          partial: { title: "Update written; some checks were not possible", text: "Everything that could be read matches. The rows marked not checked could not be compared." },
+          unchecked: { title: "Update written; the key was not checked", text: "The flash was verified when it was written. The running key was not read." },
+          mismatch: { title: "The key does not match what was expected", text: "Something differs from the release or from the key before the write. Replug the key and check again; if it persists, see the details below." },
+        } satisfies Record<UpdateVerdict, { title: string; text: string }>,
       },
-      noRelease: "No release has a build for this firmware.",
-      nothingNewer: "No published release is newer than the version on the key.",
-      useInstaller: "Open the installer",
-      reinstall: "Reinstall the application",
-    },
-    review: {
-      bootDescription: "Put the key in download mode. Nothing is written yet.",
-      workingDescription: "Reading the key and the release. Nothing is written yet.",
-      rows: { connect: "Key in download mode", download: "Download and verify the release", read: "Read the key (read-only)" },
-      description: "Check what will happen. Nothing has been written yet.",
-      confirm: "Update application",
-      reinstallConfirm: "Write the application again",
-      reinstallButton: "Reinstall the application anyway",
-      table: { installed: "Installed", offered: "New version", type: "Update type", flash: "Flash" },
-      type: "Application-only update",
-      unreadable: "Not readable",
-      untouched:
-        "Never touched: bootloader, partition table, nvs, phy_init, part0 (your credentials, PIN and name), eFuses (permanent chip settings).",
-      data: {
-        title: "Your data",
-        text: "This update is designed to keep your credentials, PIN and key name: they live in part0, which is not written. This page cannot read them, so it does not promise they are intact; after the update it checks what it can.",
-      },
-      labels: {
-        "safe-update": "Compatible",
-        repair: "Repair",
-        "already-current": "Up to date",
-        reinstall: "Reinstall",
-        downgrade: "Downgrade",
-        incompatible: "Incompatible",
-        unknown: "Not shown safe",
-        "different-family": "Other firmware",
-        "not-multikeys": "Not MultiKeys",
-        "release-unsupported": "Not offered",
-      } satisfies Record<AppUpdateOutcome, string>,
-      outcomes: {
-        ok: { title: "Compatible update", text: "This release declares that it can use the data stored by the installed version. Only the application is replaced." },
-        "interrupted-write": {
-          title: "An earlier update did not finish",
-          text: "This browser recorded an application write of this same release that was started and never verified, on a chip with the same MAC address as this one. Writing the application again repairs it. Nothing else is written.",
-        },
-        "same-version-different-image": {
-          title: "Same version, different content",
-          text: "The installed application has this version number but its content differs from the published build. Writing the published build replaces only the application.",
-        },
-        current: { title: "Already up to date", text: "The application on the key is byte-identical to this release. There is nothing to write." },
-        downgrade: {
-          title: "That would be a downgrade",
-          text: "The installed version is newer than this release. Downgrades are not offered, because the newer version may have changed how it stores data. Nothing was written.",
-        },
-        storage: {
-          title: "Stored data not shown compatible",
-          text: "The installed version is older than the oldest version this release declares compatible, so the keys it stored may not be usable. Nothing was written.",
-        },
-        layout: {
-          title: "Different storage layout",
-          text: "The partition table on this key is not the one this release uses, so an application-only update cannot be shown safe. Nothing was written.",
-        },
-        "app-too-large": { title: "The application does not fit", text: "The new application is larger than the app partition on this key. Nothing was written." },
-        "protected-overlap": {
-          title: "The write would reach protected storage",
-          text: "The update was refused because its write would touch the bootloader, the partition table or a storage area. Nothing was written.",
-        },
-        "flash-profile": {
-          title: "Different flash size",
-          text: "The bootloader on this key was built for a different flash size than this build. Nothing was written.",
-        },
-        reinstall: {
-          title: "Write the same application again",
-          text: "The application on the key is byte-identical to this release. You asked to write it again; only the application is written. The bootloader, partition table and storage (part0) are not touched.",
-        },
-        "different-family": {
-          title: "The other MultiKeys firmware",
-          text: "The key runs the other MultiKeys firmware (FIDO2 or OpenPGP). Switching changes how stored data is read, so it is not an application-only update. The installer can switch after you confirm it. Nothing was written.",
-        },
-        "different-key": {
-          title: "This is not the key you read",
-          text: "The key in download mode reports another version, firmware or flash size than the key read in the first step. Unplug other keys and start over. Nothing was written.",
-        },
-        "not-multikeys": {
-          title: "Not a MultiKeys key",
-          text: "This board does not run MultiKeys, or its flash is empty. An update replaces an existing MultiKeys application; use the installer for anything else. Nothing was written.",
-        },
-        "release-unsupported": {
-          title: "This release has no application-only update",
-          text: "A release must declare that the update is safe, and this one does not. Use the installer, or wait for a newer release. Nothing was written.",
-        },
-        "unreadable-bootloader": { title: "The bootloader could not be read", text: "The first bytes of the flash are not a valid bootloader image. Nothing was written." },
-        "unreadable-descriptor": {
-          title: "The installed application could not be read",
-          text: "The key has no readable application description. That can follow an interrupted write, but this browser has no record of one, so nothing was written.",
-        },
-        "recovery-unverified": {
-          title: "Recovery cannot be tied to this chip",
-          text: "The key has no readable application, and this browser has a record of an interrupted write. That record cannot be matched to this chip, release and image, so nothing was written. This page can't link the running key to the chip in download mode, so it only repairs a chip it saw the write start on. To recover, use the installer: it replaces the firmware after you confirm, keeps the key storage when the partition table is intact, and warns when it is not. If the record is old or belongs to another key, discard it.",
-        },
-        "unparsable-version": {
-          title: "The installed version is not a version number",
-          text: "It cannot be compared with this release, so compatibility cannot be shown. Nothing was written.",
-        },
-      } satisfies Record<AppUpdateReason, { title: string; text: string }>,
-      openInstaller: "Open the installer",
-      discardRecord: "Discard the record and start over",
-      seeReleases: "See releases",
-      before: {
-        legend: "Before updating",
-        acks: {
-          "update-confirm":
-            "I understand that only the MultiKeys application is replaced, that the write is not atomic, and that an interrupted write means running this update again.",
-          "untested-hardware": "I understand this exact board hasn't been tested with MultiKeys",
-          "unsigned-release": "I understand this release is not signed, so nothing proves who published it.",
-          "experimental-image":
-            "I understand the OpenPGP firmware is experimental, has not been tested on hardware, and is not suitable for keys I rely on.",
-        } satisfies Record<Exclude<UpdateAckId, TypedUpdateAckId>, string>,
-        typedLabels: {
-          "repair-typed": "Type REPAIR to confirm that the application will be written again",
-        } satisfies Record<TypedUpdateAckId, string>,
-      },
-    },
-    updating: {
-      description: "Writing the application only. The bootloader, partition table and storage are not written.",
-    },
-    verify: {
-      replugDescription: "The application is written and verified. Replug the key to check it.",
-      checking: "Checking the key…",
-      doneDescription: "The update has finished. This is what the page could check.",
-      table: { check: "Check", result: "Result" },
-      rows: {
-        image: "Running image matches the release",
-        version: "Version matches the release",
-        name: "USB name unchanged",
-        mkauth: "Management PIN state and device id unchanged",
-        fido: "FIDO credentials and PIN",
-      },
-      results: { yes: "Verified", no: "Does not match", unknown: "Not checked" },
-      fidoNote: "Not read by this page. To use a credential, run the optional passkey test.",
-      passkeyTest: "Open the passkey test",
-      verdicts: {
-        verified: { title: "Update verified", text: "The key runs the published image and kept its name and management PIN state." },
-        partial: { title: "Update written; some checks were not possible", text: "Everything that could be read matches. The rows marked not checked could not be compared." },
-        unchecked: { title: "Update written; the key was not checked", text: "The flash was verified when it was written. The running key was not read." },
-        mismatch: { title: "The key does not match what was expected", text: "Something differs from the release or from the key before the update. Replug the key and check again; if it persists, see the details below." },
-      } satisfies Record<UpdateVerdict, { title: string; text: string }>,
-      again: "Update another key",
-    },
-    failed: {
-      recoveryTitle: "If the key does not start",
-      recoveryText:
-        "The application may be partly written. Put the key in download mode and run this update again: it rewrites only the application. This browser keeps a record of the unfinished write so the update can offer that repair.",
     },
   },
 

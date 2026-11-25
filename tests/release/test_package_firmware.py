@@ -231,7 +231,8 @@ class Package(Base):
 
     def test_entry_declares_app_only_for_the_real_layout(self):
         _, e = self.package()
-        self.assertEqual(e["update"], {"data_preserving_from": pf.DATA_PRESERVING_FROM, "app_only": True})
+        self.assertEqual(e["update"], {"data_preserving_from": pf.DATA_PRESERVING_FROM,
+                                       "downgrade_floor": pf.DOWNGRADE_FLOOR, "app_only": True})
         self.assertNotIn("update-unverified", e["install_modes"])
 
     def test_app_only_needs_the_app_inside_factory(self):

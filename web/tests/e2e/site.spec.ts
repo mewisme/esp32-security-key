@@ -30,7 +30,7 @@ test("language toggle switches the page to Vietnamese and remembers it", async (
   await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Install" })).toBeVisible();
 });
 
-const ROUTES = ["/", "/install", "/update", "/first-use", "/passkeys", "/key", "/help", "/releases", "/nope"];
+const ROUTES = ["/", "/install", "/first-use", "/passkeys", "/key", "/help", "/releases", "/nope"];
 
 /**
  * The page fits its width, its heading is visible and on top, and nothing in the page body sticks out of the

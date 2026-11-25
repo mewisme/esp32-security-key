@@ -11,6 +11,7 @@ import type { Installer } from "@/hooks/useInstaller";
 import { useI18n } from "@/i18n/context";
 import { FALLBACK_DEFAULT_NAME } from "@/lib/device/device-name";
 import { cn } from "cn";
+import { FlashReport } from "./FlashReport";
 import { StageCard } from "./StageCard";
 
 function ResultRow(props: { icon: LucideIcon; title: string; badge?: React.ReactNode; children?: React.ReactNode }) {
@@ -159,6 +160,13 @@ export function FinishStage({ inst, headingRef }: { inst: Installer; headingRef:
               onRetry={() => void actions.applyName()}
             />
           </ResultRow>
+        </>
+      )}
+
+      {inst.report && (
+        <>
+          <Separator />
+          <FlashReport report={inst.report} />
         </>
       )}
 

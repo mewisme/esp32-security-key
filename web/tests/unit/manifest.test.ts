@@ -41,6 +41,18 @@ describe("validateManifest (schema 2)", () => {
     expect(await rejects((_m, b) => Object.assign(b.update, { app_only: "yes" }))).toMatch(/app_only is not a boolean/);
   });
 
+  it("accepts update.downgrade_floor absent, null or semver, and rejects a non-semver string", async () => {
+    const { manifest } = await makeFirmware();
+    expect(validateManifest(manifest, "v0.2.0", false).builds[0]!.update.downgrade_floor).toBeUndefined();
+    for (const value of [null, "0.2.0"]) {
+      const m = structuredClone(manifest);
+      Object.assign(m.builds[0]!.update, { downgrade_floor: value });
+      expect(validateManifest(m, "v0.2.0", false).builds[0]!.update.downgrade_floor).toBe(value);
+    }
+    expect(await rejects((_m, b) => Object.assign(b.update, { downgrade_floor: "latest" }))).toMatch(/downgrade_floor is not semver/);
+    expect(await rejects((_m, b) => Object.assign(b.update, { downgrade_floor: 2 }))).toMatch(/downgrade_floor is not semver/);
+  });
+
   it("rejects a profile id that is not in the policy", async () => {
     expect(await rejects((_m, b) => (b.profile_id = "esp32s3-2mb"))).toMatch(/profile_id/);
   });

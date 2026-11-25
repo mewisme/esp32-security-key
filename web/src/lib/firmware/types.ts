@@ -49,7 +49,7 @@ export interface Build {
   protected_partitions: string[];
   repurpose_fill: string[];
   /** `app_only`: the publisher states that only the app image (factory partition) may be rewritten on a compatible key. */
-  update: { data_preserving_from: string; app_only?: boolean };
+  update: { data_preserving_from: string; downgrade_floor?: string | null; app_only?: boolean };
   install_modes: string[];
   verified_hardware: string[];
   verification: Verification;

@@ -9,7 +9,7 @@ const download = (page: Page) => page.getByRole("link", { name: "Download" });
 const tab = (page: Page, name: string) => page.getByRole("tab", { name, exact: true });
 
 test.describe("Releases", () => {
-  test("the hero shows the latest stable release and links to Install and Update", async ({ page }) => {
+  test("the hero shows the latest stable release and links to Install", async ({ page }) => {
     await setup(page, {}, { extraReleases: [PRE, OLDER] });
     await page.goto("/releases");
     await expect(page.getByRole("heading", { level: 1, name: "Releases" })).toBeVisible();
@@ -20,7 +20,6 @@ test.describe("Releases", () => {
     await expect(panel.getByText("Stable", { exact: true })).toBeVisible();
     await expect(panel.getByRole("link", { name: /Release notes/ })).toHaveAttribute("href", "https://example.invalid/notes");
     await expect(panel.getByRole("link", { name: "Install firmware" })).toHaveAttribute("href", "/install");
-    await expect(panel.getByRole("link", { name: "Update firmware" })).toHaveAttribute("href", "/update");
   });
 
   test("a newer pre-release is labelled in the history and is not the hero", async ({ page }) => {
