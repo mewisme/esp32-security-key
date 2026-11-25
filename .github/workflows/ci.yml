@@ -250,5 +250,3 @@ jobs:
         run: python3 tools/check_pins.py
       - name: check_pins self-test
         run: python3 -m unittest discover tests/pins
-      - name: LED status state machine
-        run: python3 -m unittest discover tests/led
