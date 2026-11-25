@@ -28,6 +28,7 @@ pastes a real report into `docs/hw-reports/`. Reports so far: `2026-11-23-read-o
 | MKAUTH device name, device-side validation | `.venv\Scripts\python tools\mkauth_name_test.py --nobutton` | `pip install pyscard`; PC/SC | yes (no press needed) | see docs/hw-reports |
 | Rename flow incl. re-enumeration and replug | `python tools/name_flow_test.py` | built `multikey` CLI; unenrolled MKAUTH | yes (2 presses, 1 replug) | see docs/hw-reports |
 | Firmware per hardware profile | `python tools/build.py dev --hw esp32s3-4mb --board esp32s3-boot-button --clean` (also `esp32s3-8mb`, `esp32s3-16mb`) | ESP-IDF v5.5.6 exported; submodules + patches applied | no | Build verified (image header flash-size bytes `2f`/`3f`/`4f` checked, see HARDWARE_PROFILES.md); hardware verified for 16 MB only |
+| LED feedback state machine | `python -m unittest discover tests/led` | gcc or cc; patches applied | no | Unit tested (host C test of `led_status.h`: success, failure, timeout, cancel, stale events, no feedback for polling); LED output on a board: pending hardware |
 | Web installer logic and UI | `cd web && pnpm test` / `pnpm test:e2e` | `pnpm install`; Playwright chromium for e2e | no | Unit tested; Integration tested with a simulated board and key |
 | Rename from the browser (WebCCID) against a real key | web installer or First use page, desktop Chrome/Edge | key with a native USB port; BOOT press (15 s) | yes | Hardware verified (one board, Windows 11, Chrome: set, reset, set; `2026-11-23-profiles-and-personalization.md`) |
 
@@ -40,6 +41,15 @@ The scripts' output proves only what they print for the connected device; it is 
 touch wait for Enter first and print `TOUCH NOW` when the key is actually waiting. `ctap_uv_test.py`, `ctap_survival.py`,
 `ctap_up_test.py`, `mkauth_name_test.py`, `name_flow_test.py` and `usb_identity.py` never set a PIN, never reset the authenticator and
 write nothing but non-resident test credentials for `multikey.test` / `multikey.survival` (and, for the rename tests, the device-name file).
+
+## Status LED hardware checklist (pending; owner approval needed to flash)
+
+1. Identify the LED GPIO with the candidate profiles (HARDWARE.md, "Identifying the LED of a board"): blue pulse at power-up.
+2. Elevated shell, `tools\run_elevated.ps1 tools\ctap_up_test.py`: while waiting, blue 0.8 s blink; after BOOT, green flash then 2 green flashes.
+3. No touch for the timeout: 2 yellow flashes, no later red/green.
+4. `tools\ctap_cancel_probe.py`: LED goes dark, no success flash.
+5. Put Windows to sleep or unplug: LED dark, nothing replayed on resume.
+Never set a PIN or reset the key for this test.
 
 ## Hardware reports (`docs/hw-reports/`)
 
