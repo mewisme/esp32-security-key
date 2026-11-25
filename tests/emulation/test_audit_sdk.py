@@ -120,7 +120,13 @@ def test_busy_other_channel_is_rejected_and_job_keeps_its_channel(up_dev):
     assert busy is not None, "no CHANNEL_BUSY for the foreign channel"
     assert busy[0] == other and busy[1] == CMD_ERROR and busy[2][:1] == bytes([CTAP1_ERR_CHANNEL_BUSY]), busy
     # the foreign continuation frame produced nothing, and a broadcast INIT is busy as well
-    assert [m for m in d.drain(0.6) if m[1] != CMD_KEEPALIVE] == []
+    window_end = time.monotonic() + 0.6                   # fixed window: keepalives would keep drain() going for the whole job
+    leaked = []
+    while time.monotonic() < window_end:
+        m = d.frame(max(window_end - time.monotonic(), 0.01))
+        if m is not None and m[1] != CMD_KEEPALIVE:
+            leaked.append(m)
+    assert leaked == []
     d.send(CMD_INIT, os.urandom(8), cid=CID_BROADCAST)
     deadline = time.monotonic() + 3
     got = None
